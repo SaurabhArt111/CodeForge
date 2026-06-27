@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeForge</title>
+  <!-- Font Awesome with cross-origin fallback -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    crossorigin="anonymous">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.5.0/css/all.css" media="none"
+    onload="if(document.styleSheets.length<2)this.media='all'">
+  <!-- Libraries: try CDN, fallback inline stubs -->
+  <script>
+    // Stub JSZip/marked so app doesn't crash if CDN is blocked
+    window.JSZip = window.JSZip || null;
+    window.marked = window.marked || { parse: function (s) { return '<pre>' + s + '</pre>'; } };
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"
+    onerror="console.warn('JSZip CDN blocked - ZIP features unavailable')"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous"
+    onerror="console.warn('marked CDN blocked - using plain-text fallback')"></script>
+  <link rel="stylesheet" href="codeforge.css">
+  <link rel="stylesheet" href="mobile.css">
+  <link rel="stylesheet" href="codeforge-v4.css">
+
+  <style>
+    * {
+      -webkit-tab-highlight-color: transparent;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- TITLEBAR (mobile-first) -->
+  <div id="titlebar">
+    <button class="hamburger-btn" id="hamburger-btn" onclick="toggleHamburgerMenu()" title="Menu" aria-label="Menu">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div class="logo"><i class="fas fa-code"></i><span id="app-title">CodeForge</span></div>
+    <!-- Hamburger menu dropdown (replaces menu-bar on mobile) -->
+    <div id="hamburger-menu" class="hamburger-menu" style="display:none">
+      <div class="hm-section">File</div>
+      <div class="hm-item" onclick="createNewFile();closeHamburgerMenu()"><i class="far fa-file"></i> New File <span
+          class="hm-key">Ctrl+N</span></div>
+      <div class="hm-item" onclick="document.getElementById('hidden-file-input').click();closeHamburgerMenu()"><i
+          class="fas fa-upload"></i> Upload Files</div>
+      <div class="hm-item" onclick="document.getElementById('hidden-zip-input').click();closeHamburgerMenu()"><i
+          class="fas fa-file-archive"></i> Open ZIP</div>
+      <div class="hm-item" onclick="saveCurrentFile();closeHamburgerMenu()"><i class="fas fa-save"></i> Save <span
+          class="hm-key">Ctrl+S</span></div>
+      <div class="hm-item" onclick="downloadAllAsZip();closeHamburgerMenu()"><i class="fas fa-download"></i> Export ZIP
+      </div>
+      <div class="hm-sep"></div>
+      <div class="hm-section">View</div>
+      <div class="hm-item" onclick="toggleSidebar();closeHamburgerMenu()"><i class="fas fa-columns"></i> Toggle Sidebar
+      </div>
+      <div class="hm-item" onclick="toggleLivePreview();closeHamburgerMenu()"><i class="fas fa-eye"></i> Live Preview
+      </div>
+      <div class="hm-item" onclick="togglePanel();closeHamburgerMenu()"><i class="fas fa-terminal"></i> Terminal</div>
+      <div class="hm-item" onclick="toggleZenMode();closeHamburgerMenu()"><i class="fas fa-expand"></i> Zen Mode</div>
+      <div class="hm-sep"></div>
+      <div class="hm-section">Editor</div>
+      <div class="hm-item" onclick="showCommandPalette();closeHamburgerMenu()"><i class="fas fa-search"></i> Command
+        Palette <span class="hm-key">Ctrl+Shift+P</span></div>
+      <div class="hm-item" onclick="showQuickOpen();closeHamburgerMenu()"><i class="fas fa-file-code"></i> Quick Open
+        <span class="hm-key">Ctrl+P</span>
+      </div>
+      <div class="hm-item" onclick="openSettings();closeHamburgerMenu()"><i class="fas fa-cog"></i> Settings</div>
+    </div>
+    <div id="menu-bar">
+      <div class="menu-item">File
+        <div class="menu-dropdown">
+          <div class="menu-option" onclick="createNewFile()"><span><i class="far fa-file"
+                style="margin-right:8px"></i>New File</span><span class="shortcut">Ctrl+N</span></div>
+          <div class="menu-option" onclick="createNewFolder()"><span><i class="far fa-folder"
+                style="margin-right:8px"></i>New Folder</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-option" onclick="document.getElementById('hidden-file-input').click()"><span><i
+                class="fas fa-upload" style="margin-right:8px"></i>Upload Files</span><span
+              class="shortcut">Ctrl+U</span></div>
+          <div class="menu-option" onclick="document.getElementById('hidden-folder-input').click()"><span><i
+                class="fas fa-folder-open" style="margin-right:8px"></i>Upload Folder</span></div>
+          <div class="menu-option" onclick="document.getElementById('hidden-zip-input').click()"><span><i
+                class="fas fa-file-archive" style="margin-right:8px"></i>Open ZIP...</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-option" onclick="saveCurrentFile()"><span><i class="fas fa-save"
+                style="margin-right:8px"></i>Save</span><span class="shortcut">Ctrl+S</span></div>
+          <div class="menu-option" onclick="saveAllFiles()"><span><i class="fas fa-save"
+                style="margin-right:8px"></i>Save All</span><span class="shortcut">Ctrl+Shift+S</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-option" onclick="downloadCurrentFile()"><span><i class="fas fa-download"
+                style="margin-right:8px"></i>Download File</span></div>
+          <div class="menu-option" onclick="downloadAllAsZip()"><span><i class="fas fa-file-archive"
+                style="margin-right:8px"></i>Download as ZIP</span></div>
+        </div>
+      </div>
+      <div class="menu-item">Edit
+        <div class="menu-dropdown">
+          <div class="menu-option" onclick="toggleFind()"><span><i class="fas fa-search"
+                style="margin-right:8px"></i>Find</span><span class="shortcut">Ctrl+F</span></div>
+          <div class="menu-option" onclick="toggleFind(true)"><span><i class="fas fa-exchange-alt"
+                style="margin-right:8px"></i>Find &amp; Replace</span><span class="shortcut">Ctrl+H</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-option" onclick="commentToggle()"><span><i class="fas fa-comment"
+                style="margin-right:8px"></i>Toggle Comment</span><span class="shortcut">Ctrl+/</span></div>
+          <div class="menu-option" onclick="formatCurrentFile()"><span><i class="fas fa-align-left"
+                style="margin-right:8px"></i>Format Document</span><span class="shortcut">Shift+Alt+F</span></div>
+        </div>
+      </div>
+      <div class="menu-item">View
+        <div class="menu-dropdown">
+          <div class="menu-option" onclick="toggleSidebar()"><span><i class="fas fa-columns"
+                style="margin-right:8px"></i>Toggle Sidebar</span><span class="shortcut">Ctrl+B</span></div>
+          <div class="menu-option" onclick="togglePanel()"><span><i class="fas fa-terminal"
+                style="margin-right:8px"></i>Toggle Terminal</span><span class="shortcut">Ctrl+`</span></div>
+          <div class="menu-option" onclick="toggleLivePreview()"><span><i class="fas fa-eye"
+                style="margin-right:8px"></i>Live Preview</span><span class="shortcut">Ctrl+Shift+L</span></div>
+          <div class="menu-option" onclick="toggleZenMode()"><span><i class="fas fa-expand"
+                style="margin-right:8px"></i>Zen Mode</span><span class="shortcut">F11</span></div>
+          <div class="menu-option" onclick="openFullscreenPreview()"><span><i class="fas fa-desktop"
+                style="margin-right:8px"></i>Fullscreen Preview</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-option" onclick="toggleSplitEditor()"><span><i class="fas fa-columns"
+                style="margin-right:8px"></i>Split Editor</span><span class="shortcut">Ctrl+\</span></div>
+          <div class="menu-option" onclick="openDiffViewer()"><span><i class="fas fa-code-branch"
+                style="margin-right:8px"></i>Diff Viewer</span></div>
+          <div class="menu-option" onclick="toggleMinimap()"><span><i class="fas fa-map"
+                style="margin-right:8px"></i>Toggle Minimap</span></div>
+          <div class="menu-option" onclick="toggleMarkdownPreview()"><span><i class="fab fa-markdown"
+                style="margin-right:8px"></i>Markdown Preview</span><span class="shortcut">Ctrl+Shift+M</span></div>
+        </div>
+      </div>
+      <div class="menu-item">Go
+        <div class="menu-dropdown">
+          <div class="menu-option" onclick="showQuickOpen()"><span><i class="fas fa-search"
+                style="margin-right:8px"></i>Quick Open</span><span class="shortcut">Ctrl+P</span></div>
+          <div class="menu-option" onclick="showCommandPalette()"><span><i class="fas fa-terminal"
+                style="margin-right:8px"></i>Command Palette</span><span class="shortcut">Ctrl+Shift+P</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-option" onclick="goToLine()"><span><i class="fas fa-level-down-alt"
+                style="margin-right:8px"></i>Go to Line</span><span class="shortcut">Ctrl+G</span></div>
+        </div>
+      </div>
+      <div class="menu-item">Settings
+        <div class="menu-dropdown">
+          <div class="menu-option" onclick="openSettings()"><span><i class="fas fa-cog"
+                style="margin-right:8px"></i>Preferences</span><span class="shortcut">Ctrl+,</span></div>
+          <div class="menu-option" onclick="openKeybindings()"><span><i class="fas fa-keyboard"
+                style="margin-right:8px"></i>Keybindings</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="title-center">CodeForge</div>
+    <div class="window-controls">
+      <div class="win-btn" onclick="togglePanel()">&#9472;</div>
+      <div class="win-btn" onclick="toggleZenMode()">&#9723;</div>
+      <!-- <div class="win-btn close">&#10005;</div> -->
+    </div>
+  </div>
+
+  <div id="main">
+    <!-- ACTIVITY BAR -->
+    <div id="activitybar">
+      <div class="activity-btn active" id="ab-explorer" onclick="switchActivity('explorer')">
+        <i class="far fa-copy"></i><span class="tooltip">Explorer</span>
+      </div>
+      <div class="activity-btn" id="ab-search" onclick="switchActivity('search')">
+        <i class="fas fa-search"></i><span class="tooltip">Search</span>
+      </div>
+      <div class="activity-btn" id="ab-git" onclick="switchActivity('git')">
+        <i class="fas fa-code-branch"></i><span class="tooltip">Source Control</span>
+      </div>
+      <div class="activity-btn" id="ab-extensions" onclick="switchActivity('extensions')">
+        <i class="fas fa-puzzle-piece"></i><span class="tooltip">Extensions</span>
+      </div>
+      <div class="activity-btn" id="ab-snippets" onclick="switchActivity('snippets')">
+        <i class="fas fa-magic" style="font-size:18px"></i><span class="tooltip">Snippets</span>
+      </div>
+      <div class="activity-btn activity-bottom" id="ab-settings" onclick="openSettings()">
+        <i class="fas fa-cog"></i><span class="tooltip">Settings</span>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+      <!-- EXPLORER -->
+      <div class="sidebar-content" id="sb-explorer" style="display:flex">
+        <div class="sidebar-header">
+          <span>Explorer</span>
+          <div class="actions">
+            <div class="sidebar-action" onclick="createNewFile()" title="New File"><i class="far fa-file"></i></div>
+            <div class="sidebar-action" onclick="createNewFolder()" title="New Folder"><i class="far fa-folder"></i>
+            </div>
+            <div class="sidebar-action" onclick="refreshTree()" title="Refresh"><i class="fas fa-sync-alt"></i></div>
+            <div class="sidebar-action" onclick="collapseAll()" title="Collapse All"><i class="fas fa-compress-alt"></i>
+            </div>
+          </div>
+        </div>
+        <div class="explorer-top-btns">
+          <button class="vsc-tool-btn" onclick="document.getElementById('hidden-file-input').click()"
+            title="Upload File(s)">
+            <i class="fas fa-upload"></i><span>Upload</span>
+          </button>
+          <button class="vsc-tool-btn" onclick="document.getElementById('hidden-folder-input').click()"
+            title="Upload Folder">
+            <i class="fas fa-folder-open"></i><span>Folder</span>
+          </button>
+          <button class="vsc-tool-btn" onclick="document.getElementById('hidden-zip-input').click()" title="Open ZIP">
+            <i class="fas fa-file-archive"></i><span>ZIP</span>
+          </button>
+          <button class="vsc-tool-btn" onclick="downloadAllAsZip()" title="Download all as ZIP">
+            <i class="fas fa-download"></i><span>Export</span>
+          </button>
+          <button class="vsc-tool-btn" onclick="pasteItem()" title="Paste" id="paste-btn" style="display:none">
+            <i class="fas fa-paste"></i><span>Paste</span>
+          </button>
+        </div>
+        <div id="file-tree"></div>
+        <div id="upload-zone"><i class="fas fa-cloud-upload-alt"></i>Drop files here<br><small>or click to
+            upload</small></div>
+      </div>
+
+      <!-- SEARCH -->
+      <div class="sidebar-content" id="sb-search">
+        <div class="sidebar-header"><span>Search</span></div>
+        <div id="search-sidebar">
+          <input id="search-input-box" placeholder="Search across files..." oninput="doSearch(this.value)">
+          <div class="search-replace-row">
+            <input class="search-replace-input" id="search-replace-box" placeholder="Replace...">
+            <button class="search-replace-btn" onclick="replaceAllInSearch()">Replace All</button>
+          </div>
+          <div id="search-results"></div>
+        </div>
+      </div>
+
+      <!-- GIT -->
+      <div class="sidebar-content" id="sb-git">
+        <div class="sidebar-header"><span>Source Control</span></div>
+        <div style="padding:16px;color:var(--text-muted);font-size:12px;text-align:center;margin-top:8px">
+          <i class="fas fa-code-branch"
+            style="font-size:32px;color:var(--text-secondary);display:block;margin-bottom:8px"></i>
+          Git integration is not available in browser mode.<br><br>
+          Download your project as ZIP to use with local Git.
+        </div>
+      </div>
+
+      <!-- EXTENSIONS -->
+      <div class="sidebar-content" id="sb-extensions">
+        <div class="sidebar-header"><span>Extensions</span></div>
+        <div style="padding:8px">
+          <div
+            style="background:var(--bg-input);border:1px solid var(--border);border-radius:3px;padding:4px 8px;display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <i class="fas fa-search" style="color:var(--text-muted);font-size:11px"></i>
+            <input
+              style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:13px;width:100%"
+              placeholder="Search Extensions...">
+          </div>
+          <div
+            style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">
+            Installed</div>
+          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
+            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-palette"
+                style="color:#c586c0"></i><span>Theme Support</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active · Multiple
+              themes</div>
+          </div>
+          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
+            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-terminal"
+                style="color:#4ec9b0"></i><span>Built-in Terminal</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active</div>
+          </div>
+          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
+            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-highlighter"
+                style="color:#dcdcaa"></i><span>Syntax Highlighting</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active ·
+              HTML/CSS/JS/TS/Py/JSON</div>
+          </div>
+          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
+            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-eye"
+                style="color:#61afef"></i><span>Live Preview</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active · VFS Navigation
+            </div>
+          </div>
+          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
+            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-file-archive"
+                style="color:#e5c07b"></i><span>ZIP Support</span></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active · Unzip, Create
+              ZIP</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SNIPPETS -->
+      <div class="sidebar-content" id="sb-snippets">
+        <div class="sidebar-header"><span>Snippets</span>
+          <div class="actions">
+            <div class="sidebar-action" onclick="addCustomSnippet()" title="Add Snippet"><i class="fas fa-plus"></i>
+            </div>
+          </div>
+        </div>
+        <div id="snippets-list" style="overflow-y:auto;flex:1;padding:4px 0;"></div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR RESIZE -->
+    <div id="sidebar-resize"></div>
+
+    <!-- EDITOR AREA -->
+    <div id="editor-area">
+      <div id="tabs-bar"></div>
+      <div id="breadcrumb"><span style="color:var(--text-muted)">No file open</span></div>
+
+      <div id="editor-preview-split">
+        <div id="split-editor">
+          <!-- FIND BAR -->
+          <div id="find-bar">
+            <div class="find-row">
+              <input id="find-input" placeholder="Find..." oninput="doFind(this.value)" onkeydown="findKeyNav(event)">
+              <span id="find-count">0 of 0</span>
+              <div class="find-btn" onclick="findPrev()" title="Previous"><i class="fas fa-chevron-up"></i></div>
+              <div class="find-btn" onclick="findNext()" title="Next"><i class="fas fa-chevron-down"></i></div>
+              <div class="find-btn" id="find-case-btn" onclick="toggleFindCase()" title="Match Case">Aa</div>
+              <div class="find-btn" id="find-regex-btn" onclick="toggleFindRegex()" title="Use Regex">.*</div>
+              <div class="find-btn" onclick="closeFindBar()" title="Close"><i class="fas fa-times"></i></div>
+            </div>
+            <div class="find-row" id="replace-row" style="display:none">
+              <input id="replace-input" placeholder="Replace..." onkeydown="replaceKeyNav(event)">
+              <button class="find-replace-btn" onclick="replaceOne()">Replace</button>
+              <button class="find-replace-btn" onclick="replaceAll()">Replace All</button>
+            </div>
+          </div>
+
+          <!-- SPLIT PANE CONTAINER -->
+          <div id="split-pane-container">
+            <div id="pane-left">
+              <div id="editors-container"></div>
+            </div>
+            <div id="pane-divider"></div>
+            <div id="pane-right">
+              <!-- RIGHT PANE TABS + CLOSE BUTTON -->
+              <div
+                style="display:flex;align-items:flex-end;background:var(--bg-tab);border-bottom:1px solid var(--border);flex-shrink:0;">
+                <div id="pane-right-tabs" style="flex:1;height:35px;display:flex;align-items:flex-end;overflow-x:auto;">
+                </div>
+                <div id="pane-right-close" onclick="closeSplitEditor()" title="Close Split Editor"><i
+                    class="fas fa-times"></i></div>
+              </div>
+              <div id="pane-right-editors"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LIVE PREVIEW PANEL -->
+        <div id="split-preview">
+          <div id="split-preview-bar">
+            <span style="color:var(--accent);font-size:12px"><i class="fas fa-eye"
+                style="margin-right:4px"></i>Preview</span>
+            <div class="preview-btn" onclick="previewNavBack()" title="Back"><i class="fas fa-arrow-left"></i></div>
+            <div class="preview-btn" onclick="previewNavForward()" title="Forward"><i class="fas fa-arrow-right"></i>
+            </div>
+            <input id="preview-url-bar" class="cf-url-bar" placeholder="Navigate URL..."
+              onkeydown="previewNavigate(event)">
+            <div class="viewport-btns">
+              <button class="vp-btn active" onclick="setViewport('full')" id="vp-full" title="Full">Full</button>
+              <button class="vp-btn" onclick="setViewport('tablet')" id="vp-tablet" title="Tablet">Tab</button>
+              <button class="vp-btn" onclick="setViewport('mobile')" id="vp-mobile" title="Mobile">Mob</button>
+            </div>
+            <span id="viewport-size"></span>
+            <div class="preview-btn" onclick="refreshPreview()" title="Refresh"><i class="fas fa-redo"></i></div>
+            <div class="preview-btn" onclick="openFullscreenPreview()" title="Fullscreen"><i class="fas fa-expand"></i>
+            </div>
+            <div class="preview-btn" onclick="toggleLivePreview()" title="Close"><i class="fas fa-times"></i></div>
+          </div>
+          <iframe id="split-preview-frame" name="split-preview-frame"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        </div>
+      </div>
+
+      <!-- PANEL RESIZE -->
+      <div id="panel-resize"></div>
+
+      <!-- PANEL -->
+      <div id="panel">
+        <div id="panel-tabs">
+          <div class="panel-tab active" onclick="switchPanel('terminal')">TERMINAL</div>
+          <div class="panel-tab"
+            onclick="switchPanel('console');var b=document.getElementById('console-badge');if(b){b.style.display='none';b.textContent='0'}">
+            OUTPUT <span id="console-badge"
+              style="display:none;background:var(--red);color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:3px">0</span>
+          </div>
+          <div class="panel-tab" onclick="switchPanel('problems')">PROBLEMS</div>
+          <div class="panel-close" onclick="togglePanel()"><i class="fas fa-times"></i></div>
+        </div>
+        <div id="panel-content" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+          <div id="pv-terminal" class="panel-view active">
+            <div id="terminal"></div>
+            <div id="terminal-input-row">
+              <span id="terminal-prompt">$ </span>
+              <input id="terminal-input" autocomplete="off" spellcheck="false" onkeydown="terminalKey(event)">
+            </div>
+          </div>
+          <div id="pv-console" class="panel-view">
+            <div
+              style="display:flex;align-items:center;padding:4px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary);gap:6px;">
+              <span style="font-size:11px;color:var(--text-muted)">OUTPUT</span>
+              <span class="console-clear-btn"
+                onclick="document.getElementById('console-output').innerHTML=''">Clear</span>
+            </div>
+            <div id="console-output"
+              style="flex:1;overflow-y:auto;padding:8px 12px;font-family:var(--font-mono);font-size:13px;"></div>
+            <div class="console-input-row">
+              <span class="console-prompt">&gt;</span>
+              <input id="console-repl-input" placeholder="Evaluate JavaScript..." autocomplete="off" spellcheck="false"
+                onkeydown="replEval(event)">
+            </div>
+          </div>
+          <div id="pv-problems" class="panel-view">
+            <div id="problems-list" style="overflow-y:auto;flex:1;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div id="statusbar">
+    <div class="statusbar-item" onclick="togglePanel()"><i class="fas fa-code-branch"></i><span>main</span></div>
+    <div class="statusbar-item" onclick="runCode()"><i class="fas fa-play" style="font-size:10px"></i><span>Run</span>
+    </div>
+    <span id="live-preview-btn" onclick="toggleLivePreview()">⚡ Live Preview</span>
+    <div class="statusbar-item" onclick="toggleZenMode()"><i class="fas fa-expand"
+        style="font-size:10px"></i><span>Zen</span></div>
+    <div class="statusbar-item" onclick="switchPanel('problems');if(!state.panelVisible)togglePanel();"
+      id="sb-problems-badge" title="Problems">
+      <span class="sb-err-count"><i class="fas fa-times-circle" style="font-size:10px"></i> <span
+          id="sb-err-count">0</span></span>
+      <span class="sb-warn-count"><i class="fas fa-exclamation-triangle" style="font-size:10px"></i> <span
+          id="sb-warn-count">0</span></span>
+    </div>
+    <div class="statusbar-right">
+      <div class="statusbar-item" onclick="toggleMarkdownPreview()" id="sb-md-btn" style="display:none"
+        title="Toggle Markdown Preview">MD</div>
+      <div class="statusbar-item" id="sb-cursor">Ln 1, Col 1</div>
+      <div class="statusbar-item" id="sb-sel-count" style="display:none"></div>
+      <div class="statusbar-item" id="sb-lang" onclick="changeLang()" title="Click to change language">Plain Text</div>
+      <div class="statusbar-item" id="sb-encoding">UTF-8</div>
+      <div class="statusbar-item" id="sb-spaces">Spaces: 2</div>
+      <div class="statusbar-item" id="sb-storage">IDB</div>
+    </div>
+  </div>
+
+  <!-- FULLSCREEN PREVIEW -->
+  <div id="fullscreen-preview">
+    <div id="fp-bar">
+      <span style="color:var(--accent);font-size:13px"><i class="fas fa-desktop" style="margin-right:6px"></i>Full
+        Preview</span>
+      <input id="fp-url-bar" class="cf-url-bar"
+        style="flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:3px;padding:3px 10px;color:var(--text-primary);font-size:12px;outline:none;font-family:var(--font-mono)"
+        placeholder="URL..." onkeydown="previewNavigate(event)">
+      <button class="preview-btn" onclick="fpNavBack()" title="Back"><i class="fas fa-arrow-left"></i></button>
+      <button class="preview-btn" onclick="fpNavForward()" title="Forward"><i class="fas fa-arrow-right"></i></button>
+      <button class="preview-btn" onclick="refreshPreview()" title="Refresh"><i class="fas fa-redo"></i></button>
+      <button class="preview-btn" onclick="closeFullscreenPreview()"><i class="fas fa-times"></i> Exit</button>
+    </div>
+    <!-- Singleton iframe is mounted here programmatically by fixes.js -->
+    <div id="fp-frame-slot" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;"></div>
+  </div>
+
+  <!-- ZEN MODE EXIT -->
+  <div id="zen-exit" onclick="toggleZenMode()"><i class="fas fa-compress"></i> Exit Zen (F11)</div>
+
+  <!-- CONTEXT MENU -->
+  <div id="ctx-menu" class="context-menu">
+    <div class="ctx-option" id="ctx-open" onclick="ctxAction('open')"><i class="far fa-file-alt"></i> Open</div>
+    <div class="ctx-option" onclick="ctxAction('rename')"><i class="fas fa-pencil-alt"></i> Rename</div>
+    <div class="ctx-option" onclick="ctxAction('duplicate')"><i class="far fa-copy"></i> Duplicate</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-option" onclick="ctxAction('cut')"><i class="fas fa-cut"></i> Cut</div>
+    <div class="ctx-option" onclick="ctxAction('copy')"><i class="far fa-copy"></i> Copy</div>
+    <div class="ctx-option" onclick="ctxAction('paste')"><i class="fas fa-paste"></i> Paste</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-option" onclick="ctxAction('moveto')"><i class="fas fa-folder-open"></i> Move to Folder...</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-option" onclick="ctxAction('unzip')" id="ctx-unzip" style="display:none"><i
+        class="fas fa-file-archive"></i> Extract Here</div>
+    <div class="ctx-option" onclick="ctxAction('download')"><i class="fas fa-download"></i> Download</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-option" onclick="ctxAction('delete')" style="color:#f44747"><i class="fas fa-trash"
+        style="color:#f44747"></i> Delete</div>
+  </div>
+
+  <!-- EDITOR CONTEXT MENU -->
+  <div id="editor-ctx-menu" class="context-menu">
+    <div class="ctx-option" onclick="editorCtxAction('cut')"><i class="fas fa-cut"></i> Cut</div>
+    <div class="ctx-option" onclick="editorCtxAction('copy')"><i class="far fa-copy"></i> Copy</div>
+    <div class="ctx-option" onclick="editorCtxAction('paste')"><i class="fas fa-paste"></i> Paste</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-option" onclick="editorCtxAction('selectAll')"><i class="fas fa-check-square"></i> Select All</div>
+    <div class="ctx-option" onclick="editorCtxAction('undo')"><i class="fas fa-undo"></i> Undo</div>
+    <div class="ctx-option" onclick="editorCtxAction('redo')"><i class="fas fa-redo"></i> Redo</div>
+  </div>
+
+  <!-- MODAL -->
+  <div id="modal-overlay">
+    <div class="modal">
+      <div class="modal-title" id="modal-title">Dialog</div>
+      <div id="modal-body">
+        <input class="modal-input" id="modal-input" placeholder="" onkeydown="if(event.key==='Enter')modalConfirm()">
+      </div>
+      <div class="modal-btns">
+        <div class="modal-btn" onclick="closeModal()">Cancel</div>
+        <div class="modal-btn primary" id="modal-ok" onclick="modalConfirm()">OK</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DELETE CONFIRM MODAL -->
+  <div id="delete-confirm-overlay">
+    <div class="modal">
+      <div class="modal-title" id="delete-confirm-title" style="color:var(--red)"><i class="fas fa-exclamation-triangle"
+          style="margin-right:8px"></i>Confirm Delete</div>
+      <div id="delete-confirm-msg" style="padding:12px 0 4px;font-size:13px;color:var(--text-secondary)"></div>
+      <div class="modal-btns" style="margin-top:16px">
+        <div class="modal-btn" onclick="closeDeleteConfirm()">Cancel</div>
+        <div class="modal-btn" onclick="confirmDelete()"
+          style="background:#c0392b;border-color:#c0392b;color:white;cursor:pointer"><i class="fas fa-trash"
+            style="margin-right:6px"></i>Delete</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUICK OPEN -->
+  <div id="quick-open">
+    <input id="quick-input" placeholder="Search files (type to filter)..." oninput="quickSearch(this.value)"
+      onkeydown="quickKeyNav(event)">
+    <div id="quick-results"></div>
+  </div>
+
+  <!-- AUTOCOMPLETE -->
+  <div id="autocomplete-list"></div>
+
+  <!-- EMMET HINT -->
+  <div id="emmet-hint"></div>
+
+  <!-- COMMAND PALETTE -->
+  <div id="cmd-palette">
+    <input id="cmd-input" placeholder="Type a command..." oninput="cmdSearch(this.value)" onkeydown="cmdKeyNav(event)"
+      autocomplete="off">
+    <div id="cmd-results"></div>
+  </div>
+
+  <!-- NOTIFICATION -->
+  <div id="notification"><i class="fas fa-info-circle" style="margin-right:6px"></i><span id="notification-text"></span>
+  </div>
+
+  <!-- HIDDEN INPUTS -->
+  <input type="file" id="hidden-file-input" multiple onchange="handleFileUpload(this.files)">
+  <input type="file" id="hidden-folder-input" webkitdirectory multiple onchange="handleFolderUpload(this.files)">
+  <input type="file" id="hidden-zip-input" accept=".zip" onchange="handleZipUpload(this.files[0])">
+
+  <!-- SCRIPTS v4 — load order matters -->
+  <script src="js/state.js"></script>
+  <script src="js/worker-bridge.js"></script>
+  <script src="js/snippets/snippet-engine.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/filetree.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/tabs.js"></script>
+  <script src="js/highlight.js"></script>
+  <script src="js/autocomplete.js"></script>
+  <script src="js/find.js"></script>
+  <script src="js/preview.js"></script>
+  <script src="js/terminal.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/commands.js"></script>
+  <script src="js/fixes.js"></script>
+  <script src="js/editor-v4-patch.js"></script>
+  <script src="js/device-capability.js"></script>
+  <script src="js/init.js"></script>
+</body>
+
+</html>

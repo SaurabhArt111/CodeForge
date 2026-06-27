@@ -1,0 +1,711 @@
+/* =====================================================
+   CODEFORGE — MOBILE-FIRST UX  (v5)
+   ===================================================== */
+
+/* ─── Preview Tab ─────────────────────────────────── */
+.preview-tab-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--bg-editor);
+}
+
+.preview-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 36px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.preview-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.preview-tab-label {
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.preview-nav-group {
+  display: flex;
+  gap: 2px;
+}
+
+.preview-nav-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.preview-nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.preview-nav-btn:active {
+  background: var(--bg-hover);
+}
+
+.preview-url-input {
+  flex: 1;
+  min-width: 60px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 3px 8px;
+  outline: none;
+  font-family: var(--font-mono);
+}
+
+.preview-url-input:focus {
+  border-color: var(--accent);
+}
+
+.preview-viewport-btns {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.vp-btn {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.vp-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.preview-iframe-shell {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-iframe-shell iframe {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* ─── Hamburger Menu ───────────────────────────────── */
+.hamburger-btn {
+  display: none;
+  /* shown on mobile via media query */
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.hamburger-btn:active {
+  background: var(--bg-hover);
+}
+
+#titlebar-run-btn {
+  display: none;
+}
+
+/* shown on mobile */
+
+.hamburger-menu {
+  position: fixed;
+  top: 36px;
+  left: 0;
+  width: min(280px, 90vw);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 0 0 10px 0;
+  box-shadow: 4px 4px 24px rgba(0, 0, 0, 0.5);
+  z-index: 9000;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hm-section {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 10px 14px 4px;
+}
+
+.hm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 0;
+  min-height: 44px;
+}
+
+.hm-item i {
+  width: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.hm-item:active,
+.hm-item:hover {
+  background: var(--bg-hover);
+}
+
+.hm-key {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.hm-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+#titlebar .run-label {
+  display: inline;
+}
+
+.titlebar-run {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--green, #4ec9b0);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.titlebar-run:active {
+  opacity: 0.8;
+}
+
+/* ─── Touch tap targets ────────────────────────────── */
+@media (pointer: coarse) {
+
+  .tab,
+  .activity-btn,
+  .toolbar-btn,
+  .icon-btn,
+  .context-menu-item,
+  .tree-item,
+  .cmd-item,
+  .quick-result,
+  .statusbar-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .activity-btn {
+    width: 52px;
+    height: 52px;
+    font-size: 20px;
+  }
+
+  .tree-item {
+    padding-top: 7px;
+    padding-bottom: 7px;
+    font-size: 14px;
+  }
+
+  .tab {
+    padding: 0 14px;
+    height: 42px;
+  }
+
+  .tab .tab-close {
+    opacity: 0.6 !important;
+  }
+
+  .scroll-rail {
+    width: 10px;
+  }
+
+  .scroll-rail-thumb {
+    min-height: 32px;
+  }
+
+  .toolbar-btn:hover,
+  .icon-btn:hover,
+  .activity-btn:hover {
+    background: transparent;
+  }
+
+  .toolbar-btn:active,
+  .icon-btn:active,
+  .tab:active,
+  .tree-item:active,
+  .activity-btn:active {
+    background: var(--bg-hover);
+  }
+
+  .toolbar-btn,
+  .activity-btn,
+  .tab-close,
+  #activitybar,
+  #titlebar,
+  #statusbar {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .code-area,
+  .terminal-input,
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .code-area {
+    caret-color: var(--accent, #007acc);
+    font-size: max(14px, 1em) !important;
+    -webkit-text-size-adjust: none;
+  }
+
+  .ac-item {
+    min-height: 40px;
+    font-size: 14px;
+    padding: 8px 14px;
+  }
+}
+
+/* ─── Smooth touch scroll ─────────────────────────── */
+#tabs-bar,
+.sidebar-content,
+#sb-explorer,
+#sb-search,
+#sb-git,
+#sb-snippets,
+#console-output,
+.terminal-output,
+.tree-view,
+#terminal,
+#cmd-results,
+#quick-results {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ─── Tablet (769–1024px) ──────────────────────────── */
+@media (max-width: 1024px) and (min-width: 769px) {
+  #sidebar {
+    width: 220px !important;
+    min-width: 220px !important;
+  }
+
+  #menu-bar {
+    display: none;
+  }
+
+  .toolbar-btn .btn-label {
+    display: none;
+  }
+
+  .statusbar-right .statusbar-item:nth-child(n+4) {
+    display: none;
+  }
+
+  .tab {
+    max-width: 140px;
+  }
+
+  .hamburger-btn {
+    display: flex;
+  }
+
+  #titlebar-run-btn {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+  }
+}
+
+/* ─── Mobile (≤768px) ────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* Hamburger visible, desktop menu hidden */
+  .hamburger-btn {
+    display: flex !important;
+  }
+
+  #menu-bar {
+    display: none !important;
+  }
+
+  #titlebar-run-btn {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    margin-right: 6px;
+  }
+
+  #titlebar .run-label {
+    display: none;
+  }
+
+  .titlebar-run {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  /* Titlebar compact */
+  #titlebar {
+    padding: 0 4px;
+    gap: 2px;
+  }
+
+  #app-title {
+    font-size: 13px;
+  }
+
+  .logo span {
+    font-size: 13px;
+  }
+
+  /* Sidebar: slide-over drawer */
+  #sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 500;
+    width: min(80vw, 300px) !important;
+    min-width: 0 !important;
+    transform: translateX(0);
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 28px rgba(0, 0, 0, 0.55);
+  }
+
+  #sidebar.hidden {
+    transform: translateX(-100%);
+    display: flex !important;
+    visibility: visible !important;
+  }
+
+  #sidebar-resize {
+    display: none !important;
+  }
+
+  /* Scrim */
+  #sidebar-scrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 499;
+  }
+
+  body.sidebar-open #sidebar-scrim {
+    display: block;
+  }
+
+  /* Activity bar → bottom dock */
+  #activitybar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    height: 52px;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 600;
+    border-top: 1px solid var(--border);
+    border-right: none;
+    padding: 0;
+  }
+
+  #activitybar .activity-btn {
+    flex: 1;
+    height: 52px;
+    width: auto;
+    border-left: none !important;
+    border-top: 2px solid transparent;
+    border-radius: 0;
+    font-size: 18px;
+  }
+
+  #activitybar .activity-btn.active {
+    border-left-color: transparent !important;
+    border-top-color: var(--text-active, #fff);
+  }
+
+  #activitybar .activity-bottom {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .activity-btn .tooltip {
+    display: none !important;
+  }
+
+  /* Push content above bottom dock */
+  #main {
+    padding-bottom: 52px;
+  }
+
+  #statusbar {
+    margin-bottom: 52px;
+  }
+
+  /* Status bar compact */
+  #statusbar {
+    font-size: 11px;
+    padding: 0 8px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .statusbar-right .statusbar-item:nth-child(n+3) {
+    display: none;
+  }
+
+  /* Tabs: horizontal scroll, mobile-optimized */
+  #tabs-bar {
+    scrollbar-width: none;
+    overflow-x: auto;
+  }
+
+  #tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Mobile tab: hide icon, show only name */
+  .tab {
+    min-width: 64px;
+    max-width: 110px;
+    font-size: 12px;
+    flex-shrink: 0;
+    height: 38px;
+  }
+
+  .tab .tab-icon {
+    display: none;
+  }
+
+  /* hide file icons on mobile */
+  .tab .tab-label {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Swipe tab gesture handled in ui.js — visual feedback */
+  .tab.tab-peek {
+    opacity: 0.6;
+    transform: scale(0.96);
+    transition: all 0.15s;
+  }
+
+  /* Panel max height */
+  #panel {
+    max-height: 40vh;
+  }
+
+  /* Toolbar icon-only */
+  #toolbar {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  #toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toolbar-btn .btn-label {
+    display: none;
+  }
+
+  /* Command palette + quick open: full-width sheet */
+  #cmd-palette,
+  #quick-open {
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    border-radius: 0 0 12px 12px;
+    max-height: 72vh;
+  }
+
+  /* Modal full width */
+  #modal-overlay .modal {
+    width: 95vw !important;
+    max-width: none !important;
+  }
+
+  /* Notification above bottom dock */
+  #notification {
+    bottom: 62px !important;
+    right: 12px !important;
+    max-width: calc(100vw - 24px);
+  }
+
+  /* Find bar compact */
+  #find-bar {
+    padding: 5px 8px;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  /* No split editor on mobile */
+  #pane-right,
+  #pane-divider {
+    display: none !important;
+  }
+
+  /* Welcome screen single column */
+  .ws-root {
+    flex-direction: column;
+  }
+
+  .ws-left {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .ws-right {
+    padding: 16px;
+  }
+
+  .ws-keys-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Preview tab bar: compact */
+  .preview-viewport-btns {
+    display: none;
+  }
+
+  /* hidden on mobile */
+  .preview-tab-label span {
+    display: none;
+  }
+
+  /* just the icon */
+}
+
+/* ─── Small phones (≤480px) ───────────────────────── */
+@media (max-width: 480px) {
+  .tab {
+    min-width: 52px;
+    max-width: 88px;
+    font-size: 11px;
+    height: 34px;
+  }
+
+  #activitybar .activity-btn {
+    font-size: 16px;
+  }
+
+  .code-area,
+  .hl-backdrop {
+    font-size: 13px !important;
+    line-height: 1.65 !important;
+  }
+
+  .line-numbers {
+    width: 24px !important;
+    font-size: 11px !important;
+  }
+
+  #statusbar {
+    font-size: 10px;
+  }
+}
+
+/* ─── Touch context menu ────────────────────────────── */
+#touch-ctx-menu {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#touch-ctx-menu div {
+  padding: 13px 18px;
+  cursor: pointer;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+#touch-ctx-menu div:last-child {
+  border-bottom: none;
+}
+
+#touch-ctx-menu div:active {
+  background: var(--bg-hover);
+}
+
+/* ─── Reduced motion ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+
+  #sidebar,
+  .tab,
+  .cmd-item,
+  #notification,
+  .ac-popup {
+    transition: none !important;
+    animation: none !important;
+  }
+}
