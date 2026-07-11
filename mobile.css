@@ -675,28 +675,6 @@
   }
 }
 
-/* ─── Touch context menu ────────────────────────────── */
-#touch-ctx-menu {
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-#touch-ctx-menu div {
-  padding: 13px 18px;
-  cursor: pointer;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  font-size: 15px;
-}
-
-#touch-ctx-menu div:last-child {
-  border-bottom: none;
-}
-
-#touch-ctx-menu div:active {
-  background: var(--bg-hover);
-}
-
 /* ─── Reduced motion ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
 

@@ -800,6 +800,7 @@ function modalConfirm() {
     const oldPath = act.data;
     const dir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/') + 1) : '';
     const newPath = dir + val;
+    if (state.files[newPath] && newPath !== oldPath) { notify('A file with that name already exists'); return; }
     state.files[newPath] = { ...state.files[oldPath], name: val };
     if (state.db) dbDelete('files', oldPath);
     delete state.files[oldPath];

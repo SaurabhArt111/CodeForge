@@ -128,24 +128,29 @@ document.addEventListener('DOMContentLoaded', () => {
 (function initLongPress() {
   document.addEventListener('DOMContentLoaded', () => {
     let longPressTimer = null;
-    let longPressTarget = null;
 
     document.addEventListener('touchstart', e => {
       const el = e.target.closest('[data-path]') || e.target.closest('.tab-item');
       if (!el) return;
-      longPressTarget = el;
+
       longPressTimer = setTimeout(() => {
         const path = el.dataset.path || el.dataset.tabPath;
         if (path) {
           e.preventDefault();
-          _showTouchContextMenu(path, e.touches[0].clientX, e.touches[0].clientY);
+          const touchEvent = {
+            preventDefault() {},
+            stopPropagation() {},
+            clientX: e.touches[0].clientX,
+            clientY: e.touches[0].clientY,
+            type: 'contextmenu'
+          };
+          showCtxMenu(touchEvent, path, el.dataset.isFolder === 'true');
         }
-      }, 500);
+      }, 500); // Long press threshold
     }, { passive: true });
 
     document.addEventListener('touchend', () => {
       clearTimeout(longPressTimer);
-      longPressTarget = null;
     }, { passive: true });
 
     document.addEventListener('touchmove', () => {
@@ -153,42 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive: true });
   });
 })();
-
-function _showTouchContextMenu(path, x, y) {
-  // Reuse existing context menu if available
-  const existing = document.getElementById('touch-ctx-menu');
-  if (existing) existing.remove();
-
-  const menu = document.createElement('div');
-  menu.id = 'touch-ctx-menu';
-  menu.style.cssText = `
-    position:fixed;z-index:9999;
-    background:var(--bg-secondary);border:1px solid var(--border);
-    border-radius:8px;padding:4px 0;min-width:160px;
-    box-shadow:0 8px 24px rgba(0,0,0,0.4);
-    left:${Math.min(x, window.innerWidth - 180)}px;
-    top:${Math.min(y, window.innerHeight - 200)}px;
-    font-size:14px;
-  `;
-  const items = [
-    { label: '📂 Open', action: () => openFile(path) },
-    { label: '✏️ Rename', action: () => renameFile(path) },
-    { label: '📋 Copy Name', action: () => { navigator.clipboard?.writeText(path.split('/').pop()); notify('Copied'); } },
-    { label: '🗑️ Delete', action: () => deleteFile(path) },
-  ];
-  items.forEach(item => {
-    const d = document.createElement('div');
-    d.style.cssText = 'padding:12px 16px;cursor:pointer;color:var(--text-primary);';
-    d.textContent = item.label;
-    d.addEventListener('touchstart', () => d.style.background = 'var(--bg-hover)', { passive: true });
-    d.addEventListener('touchend', () => { d.style.background = ''; item.action(); menu.remove(); }, { passive: true });
-    d.addEventListener('click', () => { item.action(); menu.remove(); });
-    menu.appendChild(d);
-  });
-
-  document.body.appendChild(menu);
-  setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 100);
-}
 
 // =================== PINCH ZOOM FOR EDITOR ===================
 (function initEditorPinchZoom() {
@@ -439,8 +408,6 @@ document.addEventListener('keydown', e => {
     hideCmdPalette(); hideQuickOpen(); closeModal(); closeFindBar(); hideAutocomplete();
     const fp = document.getElementById('fullscreen-preview');
     if (fp && fp.classList.contains('visible')) closeFullscreenPreview();
-    const tcm = document.getElementById('touch-ctx-menu');
-    if (tcm) tcm.remove();
   }
 });
 

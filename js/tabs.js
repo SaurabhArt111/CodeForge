@@ -48,6 +48,7 @@ function switchTab(path, pane) {
     updateBreadcrumb(path);
     updateStatusBarForFile(path);
     renderTree();
+    if (state.settings.minimap) setTimeout(renderMinimap, 0);
     // Update MD preview
     if (state.mdPreviewVisible && path?.endsWith('.md')) updateMdPreview(path);
   } else if (pane === 'right') {

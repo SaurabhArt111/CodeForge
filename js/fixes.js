@@ -692,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('mousemove', e => {
       if (!dragging) return;
-      const newW = Math.min(Math.max(150, startW + (e.clientX - startX)), 550);
+      const newW = Math.min(Math.max(180, startW + (e.clientX - startX)), 550);
       sidebar.style.width = newW + 'px';
       sidebar.style.minWidth = newW + 'px';
     });

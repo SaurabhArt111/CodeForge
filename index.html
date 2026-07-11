@@ -23,12 +23,6 @@
   <link rel="stylesheet" href="codeforge.css">
   <link rel="stylesheet" href="mobile.css">
   <link rel="stylesheet" href="codeforge-v4.css">
-
-  <style>
-    * {
-      -webkit-tab-highlight-color: transparent;
-    }
-  </style>
 </head>
 
 <body>
@@ -238,57 +232,18 @@
       <!-- GIT -->
       <div class="sidebar-content" id="sb-git">
         <div class="sidebar-header"><span>Source Control</span></div>
-        <div style="padding:16px;color:var(--text-muted);font-size:12px;text-align:center;margin-top:8px">
-          <i class="fas fa-code-branch"
-            style="font-size:32px;color:var(--text-secondary);display:block;margin-bottom:8px"></i>
-          Git integration is not available in browser mode.<br><br>
-          Download your project as ZIP to use with local Git.
-        </div>
+        <div id="git-panel" style="display:flex;flex-direction:column;gap:10px;padding:8px"></div>
       </div>
 
       <!-- EXTENSIONS -->
       <div class="sidebar-content" id="sb-extensions">
         <div class="sidebar-header"><span>Extensions</span></div>
         <div style="padding:8px">
-          <div
-            style="background:var(--bg-input);border:1px solid var(--border);border-radius:3px;padding:4px 8px;display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:3px;padding:4px 8px;display:flex;align-items:center;gap:6px;margin-bottom:8px">
             <i class="fas fa-search" style="color:var(--text-muted);font-size:11px"></i>
-            <input
-              style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:13px;width:100%"
-              placeholder="Search Extensions...">
+            <input id="extensions-search" style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:13px;width:100%" placeholder="Search Extensions..." oninput="renderExtensionsPanel()">
           </div>
-          <div
-            style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">
-            Installed</div>
-          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
-            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-palette"
-                style="color:#c586c0"></i><span>Theme Support</span></div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active · Multiple
-              themes</div>
-          </div>
-          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
-            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-terminal"
-                style="color:#4ec9b0"></i><span>Built-in Terminal</span></div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active</div>
-          </div>
-          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
-            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-highlighter"
-                style="color:#dcdcaa"></i><span>Syntax Highlighting</span></div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active ·
-              HTML/CSS/JS/TS/Py/JSON</div>
-          </div>
-          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
-            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-eye"
-                style="color:#61afef"></i><span>Live Preview</span></div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active · VFS Navigation
-            </div>
-          </div>
-          <div class="tree-item" style="flex-direction:column;align-items:flex-start;padding:8px">
-            <div style="display:flex;gap:8px;align-items:center"><i class="fas fa-file-archive"
-                style="color:#e5c07b"></i><span>ZIP Support</span></div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:22px">Active · Unzip, Create
-              ZIP</div>
-          </div>
+          <div id="extensions-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
       </div>
 
@@ -351,6 +306,8 @@
             </div>
           </div>
         </div>
+
+        <div id="minimap-wrapper" style="display:none"></div>
 
         <!-- LIVE PREVIEW PANEL -->
         <div id="split-preview">
@@ -426,7 +383,7 @@
 
   <!-- STATUS BAR -->
   <div id="statusbar">
-    <div class="statusbar-item" onclick="togglePanel()"><i class="fas fa-code-branch"></i><span>main</span></div>
+    <div class="statusbar-item" id="sb-branch" onclick="togglePanel()"><i class="fas fa-code-branch"></i><span>main</span></div>
     <div class="statusbar-item" onclick="runCode()"><i class="fas fa-play" style="font-size:10px"></i><span>Run</span>
     </div>
     <span id="live-preview-btn" onclick="toggleLivePreview()">⚡ Live Preview</span>
@@ -562,6 +519,7 @@
 
   <!-- SCRIPTS v4 — load order matters -->
   <script src="js/state.js"></script>
+  <script src="js/workspace-sync.js"></script>
   <script src="js/worker-bridge.js"></script>
   <script src="js/snippets/snippet-engine.js"></script>
   <script src="js/storage.js"></script>
@@ -574,6 +532,7 @@
   <script src="js/preview.js"></script>
   <script src="js/terminal.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/ux-panels.js"></script>
   <script src="js/commands.js"></script>
   <script src="js/fixes.js"></script>
   <script src="js/editor-v4-patch.js"></script>

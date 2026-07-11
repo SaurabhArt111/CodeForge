@@ -50,5 +50,22 @@ const state = {
   previewDebounce: null,
   currentViewport: 'full',
   recentProjects: [],
+  extensions: [
+    { id: 'theme-support', name: 'Theme Support', desc: 'Multiple themes', installed: true, category: 'UI' },
+    { id: 'terminal', name: 'Built-in Terminal', desc: 'Terminal panel', installed: true, category: 'Tools' },
+    { id: 'syntax-highlighting', name: 'Syntax Highlighting', desc: 'Language-aware highlighting', installed: true, category: 'Editor' },
+    { id: 'mini-map', name: 'Minimap', desc: 'Code overview overlay', installed: true, category: 'Editor' },
+    { id: 'git-ux', name: 'Git UX', desc: 'Branch and merge tools', installed: true, category: 'Source Control' },
+    { id: 'workspace-sync', name: 'LightningFS Sync', desc: 'Bidirectional workspace watcher', installed: true, category: 'Workspace' },
+  ],
+  gitState: {
+    branch: 'main',
+    branches: ['main', 'feature/preview'],
+    mergeTarget: 'main',
+    staged: [],
+    changed: [],
+  },
+  grammarRegistry: {},
+  workspaceSync: null,
   db: null,
 };

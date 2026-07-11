@@ -35,12 +35,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 7. Re-render problems panel
   updateProblemsPanel();
 
-  // 8. Auto-save timer (belt-and-suspenders)
+  // 8. Initialize workspace sync and UI panels
+  ensureWorkspaceSyncState();
+  refreshGitStateFromFiles();
+  renderGitPanel();
+  renderExtensionsPanel();
+  if (state.settings.minimap) renderMinimap();
+
+  // 9. Auto-save timer (belt-and-suspenders)
   setInterval(() => {
     if (state.settings.autoSave && Object.keys(state.files).length > 0) {
       saveToStorage();
     }
-  }, 30000);
+  }, 30000); // 30s
 
   console.log('%cCodeForge v3.0 loaded', 'color:#007acc;font-size:14px;font-weight:bold');
 });

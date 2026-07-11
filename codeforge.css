@@ -53,7 +53,7 @@
   --font-size-ui: 13px;
   --font-size-editor: 14px;
   --line-height: 1.5;
-  --sidebar-width: 240px;
+  --sidebar-width: 280px;
   --activitybar-width: 48px;
   --panel-height: 200px;
   --titlebar-height: 30px;
@@ -65,6 +65,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -871,7 +872,7 @@ body {
 }
 
 .line-numbers {
-  padding: 0 12px 0 24px;
+  padding: 0 4px;
   color: var(--text-muted);
   text-align: right;
   background: var(--bg-editor);
@@ -892,7 +893,7 @@ body {
   font-family: var(--font-mono);
   font-size: var(--font-size-editor);
   line-height: 21px;
-  padding: 0 16px;
+  padding: 0 10px;
   tab-size: 2;
   white-space: pre;
   overflow: auto;
@@ -2165,7 +2166,7 @@ body.zen-mode #zen-exit {
 }
 
 .settings-nav {
-  width: 180px;
+  width: 120px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   padding: 8px 0;

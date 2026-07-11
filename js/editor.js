@@ -241,7 +241,9 @@ function _handleEditorInput(ta, path, skipUndo = false) {
   const file = state.files[path];
   if (!file) return;
   file.content = ta.value;
-  file.modified = !state.settings.autoSave;
+  file.modified = true;
+  watchWorkspaceChange(path, ta.value);
+  updateGitStateForFile(path);
 
   if (!skipUndo) {
     clearTimeout(ta._undoTimer);
@@ -605,7 +607,19 @@ function toggleMinimap() {
   document.querySelectorAll('[id^="minimap-wrapper-"]').forEach(el => {
     el.style.display = state.settings.minimap ? 'block' : 'none';
   });
+  if (state.settings.minimap) renderMinimap();
   saveToStorage();
+}
+
+function renderMinimap() {
+  const ta = getActiveTextarea();
+  if (!ta || !state.settings.minimap) return;
+  const container = document.getElementById('minimap-wrapper');
+  if (!container) return;
+  const lines = ta.value.split('\n');
+  const preview = lines.slice(0, 80).map((line, idx) => `<div style="height:2px;overflow:hidden;white-space:pre;line-height:1;color:${idx % 2 ? 'var(--text-muted)' : 'var(--text-primary)'};font-size:2px">${escapeHtml(line || ' ')}</div>`).join('');
+  container.innerHTML = `<div id="minimap-canvas" style="padding:4px;font-family:var(--font-mono);font-size:2px;line-height:2px;white-space:pre;overflow:hidden">${preview}</div><div id="minimap-viewport"></div>`;
+  container.classList.add('visible');
 }
 
 // =================== MISC EDITOR FEATURES ===================

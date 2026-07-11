@@ -1,15 +1,3 @@
-/**
- * CodeForge Editor Engine v4.0 — Performance & Integration Patch
- * ─────────────────────────────────────────────────────────────────────────────
- * This file OVERRIDES specific functions from editor.js with v4 versions.
- * Load AFTER editor.js, worker-bridge.js, and snippet-engine.js.
- *
- * KEY CHANGES:
- *   1. handleEditorKey → integrates SnippetEngine before all other handlers
- *   2. lintFile → async, runs in Web Worker (no UI thread blocking)
- *   3. onEditorInput → reduced timer from 250ms→80ms AC, 700ms→500ms lint
- *   4. Typing lag eliminated: RAF-batched DOM updates, no sync work in hot path
- */
 
 'use strict';
 
