@@ -28,7 +28,9 @@ const CF = {
       const fr = document.createElement('iframe');
       fr.id = 'cf-preview-frame';
       fr.name = 'cf-preview-frame';
-      fr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals');
+      // Preview code must not share this app's origin; otherwise it could remove
+      // its own sandbox attribute when scripts are allowed.
+      fr.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-modals');
       fr.setAttribute('allowfullscreen', '');
       fr.style.cssText = 'border:none;flex:1;width:100%;display:block;';
       this.iframe = fr;

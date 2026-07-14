@@ -239,15 +239,15 @@ window.handleEditorKey = function(e, path) {
 // ─────────────────────────────────────────────────────────────────────────────
 // OVERRIDE: onEditorInput — faster timers, RAF-batched
 // ─────────────────────────────────────────────────────────────────────────────
-const _inputRaf = {};
-let inputTimer = null;
+const _v4InputRaf = {};
+let v4InputTimer = null;
 
 window.onEditorInput = function(ta, path, skipUndo = false) {
-  if (inputTimer) cancelAnimationFrame(inputTimer);
-  inputTimer = requestAnimationFrame(() => _handleEditorInput(ta, path, skipUndo));
+  if (v4InputTimer) cancelAnimationFrame(v4InputTimer);
+  v4InputTimer = requestAnimationFrame(() => _handleEditorInputV4(ta, path, skipUndo));
 };
 
-function _handleEditorInput(ta, path, skipUndo = false) {
+function _handleEditorInputV4(ta, path, skipUndo = false) {
   const file = state.files[path];
   if (!file) return;
   file.content = ta.value;
@@ -259,9 +259,9 @@ function _handleEditorInput(ta, path, skipUndo = false) {
   }
 
   // Batch DOM updates via RAF (prevents layout thrash on every keystroke)
-  if (!_inputRaf[path]) {
-    _inputRaf[path] = requestAnimationFrame(() => {
-      delete _inputRaf[path];
+  if (!_v4InputRaf[path]) {
+    _v4InputRaf[path] = requestAnimationFrame(() => {
+      delete _v4InputRaf[path];
       const lnEl = ta.closest('.code-editor-container')?.querySelector('.line-numbers');
       if (lnEl) _scheduleLineNumbers(lnEl.id, ta);
       renderTabs();

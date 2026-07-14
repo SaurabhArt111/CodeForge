@@ -239,9 +239,12 @@
       <div class="sidebar-content" id="sb-extensions">
         <div class="sidebar-header"><span>Extensions</span></div>
         <div style="padding:8px">
-          <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:3px;padding:4px 8px;display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <div
+            style="background:var(--bg-input);border:1px solid var(--border);border-radius:3px;padding:4px 8px;display:flex;align-items:center;gap:6px;margin-bottom:8px">
             <i class="fas fa-search" style="color:var(--text-muted);font-size:11px"></i>
-            <input id="extensions-search" style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:13px;width:100%" placeholder="Search Extensions..." oninput="renderExtensionsPanel()">
+            <input id="extensions-search"
+              style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:13px;width:100%"
+              placeholder="Search Extensions..." oninput="renderExtensionsPanel()">
           </div>
           <div id="extensions-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
@@ -331,7 +334,7 @@
             <div class="preview-btn" onclick="toggleLivePreview()" title="Close"><i class="fas fa-times"></i></div>
           </div>
           <iframe id="split-preview-frame" name="split-preview-frame"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+            sandbox="allow-scripts allow-forms allow-popups"></iframe>
         </div>
       </div>
 
@@ -383,7 +386,8 @@
 
   <!-- STATUS BAR -->
   <div id="statusbar">
-    <div class="statusbar-item" id="sb-branch" onclick="togglePanel()"><i class="fas fa-code-branch"></i><span>main</span></div>
+    <div class="statusbar-item" id="sb-branch" onclick="togglePanel()"><i
+        class="fas fa-code-branch"></i><span>main</span></div>
     <div class="statusbar-item" onclick="runCode()"><i class="fas fa-play" style="font-size:10px"></i><span>Run</span>
     </div>
     <span id="live-preview-btn" onclick="toggleLivePreview()">⚡ Live Preview</span>
