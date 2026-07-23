@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>CodeForge</title>
+<title>CodeForge — Browser IDE</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#252526" />
 <meta name="description" content="CodeForge — a fast, private, browser-based code editor. Nothing you open ever leaves your device." />
@@ -78,6 +78,10 @@
           <input id="set-tabsize" type="number" min="1" max="8" step="1" value="2" />
         </div>
         <div class="toggle-row">
+          <label>Auto Save</label>
+          <div class="switch on" id="set-autosave"><div class="knob"></div></div>
+        </div>
+        <div class="toggle-row">
           <label>Word wrap</label>
           <div class="switch on" id="set-wordwrap"><div class="knob"></div></div>
         </div>
@@ -105,7 +109,7 @@
         </div>
         <div class="privacy-note">
           <span></span>
-          <span>Everything runs on this device. Your files are stored in this browser's local storage only.</span>
+          <span>Everything runs on this device. Your files are stored in this browser's local storage only — nothing is uploaded, synced, or sent to Microsoft, Anthropic, or anyone else.</span>
         </div>
       </div>
     </div>

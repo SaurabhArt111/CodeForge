@@ -32,10 +32,61 @@ const ICON_PATHS = {
   "code": '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>',
   "check": '<polyline points="20 6 9 17 4 12"></polyline>',
   "corner-side": '<polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line>',
+  "globe": '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>',
+  "external-link": '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>',
+  "clipboard": '<rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>',
 };
 function iconSvg(name, extraClass) {
   const d = ICON_PATHS[name] || ICON_PATHS["file"];
   return '<svg class="icon' + (extraClass ? " " + extraClass : "") + '" viewBox="0 0 24 24">' + d + "</svg>";
+}
+function iconSvgColored(name, color, extraClass) {
+  const d = ICON_PATHS[name] || ICON_PATHS["file"];
+  return '<svg class="icon' + (extraClass ? " " + extraClass : "") + '" style="color:' + color + '" viewBox="0 0 24 24">' + d + "</svg>";
+}
+/* Lightweight original color-coded file/folder icon scheme (inspired by the general idea behind
+   themes like Material Icon Theme — quick color scanning by file type — but using our own outline
+   icon set and colors, not that theme's artwork). */
+const EXT_COLORS = {
+  js: "#f0db4f", mjs: "#f0db4f", cjs: "#f0db4f", jsx: "#5ed4f4",
+  ts: "#3178c6", tsx: "#3178c6",
+  json: "#f0c419", jsonc: "#f0c419",
+  html: "#e44d26", htm: "#e44d26",
+  css: "#2965f1", scss: "#cc6699", sass: "#cc6699", less: "#1d5fa8",
+  py: "#4b8bbe", java: "#e0964b", c: "#a4a4a4", h: "#a4a4a4",
+  cpp: "#f34b7d", cc: "#f34b7d", cxx: "#f34b7d", hpp: "#f34b7d",
+  cs: "#a074c4", go: "#00acd7", rs: "#dea584", rb: "#cc342d",
+  php: "#8892bf", swift: "#f05138", kt: "#a97bff", dart: "#39cefd",
+  md: "#6aa1c7", markdown: "#6aa1c7", yml: "#c7263e", yaml: "#c7263e",
+  xml: "#e08845", sql: "#e0a030", sh: "#89e051", bash: "#89e051", zsh: "#89e051",
+  txt: "#b0b0b0", vue: "#41b883", svelte: "#ff3e00",
+  png: "#af7ee0", jpg: "#af7ee0", jpeg: "#af7ee0", gif: "#af7ee0",
+  webp: "#af7ee0", bmp: "#af7ee0", ico: "#af7ee0", svg: "#ffb300",
+  lock: "#8d8d8d", env: "#8fbc6b", toml: "#9c4221", ini: "#9c4221", cfg: "#9c4221",
+};
+const SPECIAL_FILE_COLORS = {
+  "package.json": "#cb3837", "package-lock.json": "#cb3837", "yarn.lock": "#2c8ebb",
+  "tsconfig.json": "#3178c6", ".gitignore": "#e0602b", ".gitattributes": "#e0602b",
+  ".env": "#8fbc6b", "dockerfile": "#0db7ed", "readme.md": "#6aa1c7",
+  "license": "#e0a030", "license.md": "#e0a030",
+};
+const SPECIAL_FOLDER_COLORS = {
+  src: "#4fa8e0", source: "#4fa8e0", test: "#8bc34a", tests: "#8bc34a", "__tests__": "#8bc34a",
+  spec: "#8bc34a", docs: "#e0964b", doc: "#e0964b", assets: "#af7ee0", public: "#4fc3a1",
+  static: "#4fc3a1", dist: "#9e9e9e", build: "#9e9e9e", out: "#9e9e9e", node_modules: "#7a8a6a",
+  ".git": "#e0602b", ".github": "#8a8a8a", config: "#9e9e9e", scripts: "#e0a030",
+  styles: "#2965f1", style: "#2965f1", components: "#4fa8e0", pages: "#4fa8e0",
+  api: "#f05138", vendor: "#9e9e9e", lib: "#9e9e9e", libs: "#9e9e9e", bin: "#9e9e9e",
+};
+function fileColorFor(path) {
+  const bn = baseName(path).toLowerCase();
+  if (SPECIAL_FILE_COLORS[bn]) return SPECIAL_FILE_COLORS[bn];
+  const ext = extOf(path);
+  return EXT_COLORS[ext] || "#c5c5c5";
+}
+function folderColorFor(path) {
+  const bn = baseName(path).toLowerCase();
+  return SPECIAL_FOLDER_COLORS[bn] || "#dcb67a";
 }
 function applyStaticIcons(root) {
   (root || document).querySelectorAll("[data-icon]").forEach(function (el) {
@@ -81,6 +132,23 @@ const BINARY_EXTS = ["png","jpg","jpeg","gif","webp","bmp","ico","woff","woff2",
 const IMAGE_EXTS = ["png","jpg","jpeg","gif","webp","bmp","ico","svg"];
 function isBinaryExt(ext) { return BINARY_EXTS.indexOf(ext) !== -1; }
 function isImageExt(ext) { return IMAGE_EXTS.indexOf(ext) !== -1; }
+function isHtmlExt(ext) { return ext === "html" || ext === "htm"; }
+function copyToClipboard(text) {
+  const ok = function () { toast("Copied to clipboard"); };
+  const fallback = function () {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      ok();
+    } catch (e) { toast("Couldn't copy to clipboard", "error"); }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(ok).catch(fallback);
+  } else fallback();
+}
 function mimeFor(ext) {
   const m = { png:"image/png", jpg:"image/jpeg", jpeg:"image/jpeg", gif:"image/gif",
     webp:"image/webp", bmp:"image/bmp", ico:"image/x-icon", svg:"image/svg+xml" };
@@ -306,7 +374,7 @@ const state = {
   focusedPane: "primary",
   expandedDirs: new Set(),
   selectedPath: null,
-  settings: { fontSize: 14, tabSize: 2, wordWrap: true, minimap: true, whitespace: false, theme: "vs-dark" },
+  settings: { fontSize: 14, tabSize: 2, wordWrap: true, minimap: true, whitespace: false, theme: "vs-dark", autoSave: true },
   primary: { tabs: [], active: -1, previewIndex: -1 },
   secondary: { tabs: [], active: -1, previewIndex: -1 },
 };
@@ -386,7 +454,9 @@ function renderTree() {
   }
   const frag = document.createDocumentFragment();
   rootChildren.forEach(function (node) { frag.appendChild(renderNode(node, 1)); });
-  container.appendChild(frag);
+  const inner = ce("div", "tree-inner");
+  inner.appendChild(frag);
+  container.appendChild(inner);
   if (state.selectedPath) selectRow(state.selectedPath);
 }
 function renderNode(node, depth) {
@@ -400,7 +470,8 @@ function renderNode(node, depth) {
   const chev = ce("span", "chev" + (isDir ? (expanded ? " open" : "") : " hidden-chev"), isDir ? iconSvg("chevron-right") : "");
   row.appendChild(chev);
   const iconName = isDir ? (expanded ? "folder-open" : "folder") : (isImageExt(extOf(node.path)) ? "image" : "file");
-  const icon = ce("span", "row-icon" + (isDir ? " folder-icon" : ""), iconSvg(iconName));
+  const iconColor = isDir ? folderColorFor(node.path) : fileColorFor(node.path);
+  const icon = ce("span", "row-icon" + (isDir ? " folder-icon" : ""), iconSvgColored(iconName, iconColor));
   row.appendChild(icon);
   const nameSpan = ce("span", "row-name", escapeHtml(baseName(node.path)));
   row.appendChild(nameSpan);
@@ -493,11 +564,19 @@ function openContextMenuForNode(node, x, y) {
     items.push("-");
   } else {
     items.push({ label: "Open to the Side", icon: "split", action: function () { openFile(node.path, { preview: false, pane: "secondary" }); } });
+    if (isHtmlExt(extOf(node.path))) {
+      items.push({ label: "Open with Live Server", icon: "globe", action: function () { openWithLiveServer(node.path); } });
+      items.push({ label: "Open in Integrated Browser", icon: "external-link", action: function () { openIntegratedBrowser(node.path); } });
+    }
     items.push({ label: "Download", icon: "download", action: function () { downloadSingleFile(node.path); } });
     items.push("-");
   }
   items.push({ label: "Rename", icon: "edit", action: function () { beginRename(node.path); } });
   items.push({ label: "Duplicate", icon: "copy", action: function () { duplicateEntry(node.path); } });
+  items.push("-");
+  items.push({ label: "Copy Path", icon: "clipboard", action: function () { copyToClipboard("/" + (projectName || "project") + "/" + node.path); } });
+  items.push({ label: "Copy Relative Path", icon: "clipboard", action: function () { copyToClipboard(node.path); } });
+  items.push("-");
   items.push({ label: "Delete", icon: "trash", danger: true, action: function () { deleteEntryWithConfirm(node.path); } });
   showContextMenu(items, x, y);
 }
@@ -675,7 +754,7 @@ function renderTabs(pane) {
     const tab = ce("div", "tab" + (idx === ps.active ? " active" : "") + (t.pinned ? "" : " preview") + (dirtyPaths.has(t.path) ? " dirty" : ""));
     tab.dataset.path = t.path;
     const iconName = isImageExt(extOf(t.path)) ? "image" : "file";
-    tab.innerHTML = iconSvg(iconName, "icon-sm") + '<span class="tab-name">' + escapeHtml(baseName(t.path)) + '</span><span class="tab-dot"></span><span class="tab-close">' + iconSvg("x", "icon-sm") + "</span>";
+    tab.innerHTML = iconSvgColored(iconName, fileColorFor(t.path), "icon-sm") + '<span class="tab-name">' + escapeHtml(baseName(t.path)) + '</span><span class="tab-dot"></span><span class="tab-close">' + iconSvg("x", "icon-sm") + "</span>";
     tab.addEventListener("click", function (e) {
       if (e.target.closest(".tab-close")) { closeTab(pane, idx); return; }
       ps.active = idx; state.focusedPane = pane;
@@ -732,6 +811,7 @@ function setPaneOverlay(pane, mode) {
   const monacoHost = document.getElementById("monaco-host-" + pane);
   const welcome = pane === "primary" ? document.getElementById("welcome-screen") : null;
   const bp = container.querySelector(".binary-preview:not(.split-empty-hint)");
+  const browserEl = container.querySelector(".browser-preview");
   let ep = container.querySelector(".split-empty-hint");
   if (mode === "empty" && !ep) {
     ep = ce("div", "binary-preview split-empty-hint");
@@ -742,6 +822,7 @@ function setPaneOverlay(pane, mode) {
   if (monacoHost) monacoHost.classList.toggle("hidden", mode !== "editor");
   if (bp) bp.classList.toggle("hidden", mode !== "binary");
   if (ep) ep.classList.toggle("hidden", mode !== "empty");
+  if (browserEl) browserEl.classList.toggle("hidden", mode !== "browser");
 }
 function showBinaryPreview(pane, node) {
   const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
@@ -794,7 +875,7 @@ function getOrCreateModel(path, node) {
     const isDirty = model.getValue() !== entry.savedValue;
     if (isDirty) dirtyPaths.add(path); else dirtyPaths.delete(path);
     renderTabs("primary"); renderTabs("secondary");
-    schedulePersist(path);
+    if (state.settings.autoSave) schedulePersist(path);
   });
   return entry;
 }
@@ -813,6 +894,7 @@ function persistNow(path) {
   entry.savedValue = val;
   dirtyPaths.delete(path);
   renderTabs("primary"); renderTabs("secondary");
+  notifyLiveReload();
 }
 function saveActive() {
   const ps = state[state.focusedPane];
@@ -1108,6 +1190,8 @@ function getCommands() {
     { label: "Find in File", hint: "Ctrl+F", action: function () { triggerEditorAction("actions.find"); } },
     { label: "Replace in File", hint: "Ctrl+H", action: function () { triggerEditorAction("editor.action.startFindReplaceAction"); } },
     { label: "Go to Line…", hint: "Ctrl+G", action: function () { triggerEditorAction("editor.action.gotoLine"); } },
+    { label: "Open with Live Server", hint: "", action: function () { withActiveHtmlFile(openWithLiveServer); } },
+    { label: "Open in Integrated Browser", hint: "", action: function () { withActiveHtmlFile(openIntegratedBrowser); } },
     { label: "Quick Open File…", hint: "Ctrl+P", action: openQuickOpen },
     { label: "Toggle Sidebar", hint: "Ctrl+B", action: function () { if (state.isMobile) toggleMobileSidebar(); else toggleSidebarCollapse(); } },
     { label: "Toggle Split Editor", hint: "Ctrl+\\", action: function () { if (state.isMobile) onNavSplitTap(); else activateSplit(!state.splitActive); } },
@@ -1171,7 +1255,8 @@ function renderPaletteList(query) {
   if (!items.length) { list.appendChild(ce("div", "palette-empty", paletteMode === "files" ? "No matching files" : "No matching commands")); return; }
   items.forEach(function (it, idx) {
     const row = ce("div", "palette-item" + (idx === paletteSelIndex ? " sel" : ""));
-    row.innerHTML = "<span>" + escapeHtml(it.label) + "</span><span class=\"p-hint\">" + escapeHtml(it.hint || "") + "</span>";
+    const iconHtml = paletteMode === "files" ? iconSvgColored(isImageExt(extOf(it.hint)) ? "image" : "file", fileColorFor(it.hint), "icon-sm") : "";
+    row.innerHTML = (iconHtml ? '<span style="display:flex;align-items:center;gap:8px;">' + iconHtml + escapeHtml(it.label) + "</span>" : "<span>" + escapeHtml(it.label) + "</span>") + "<span class=\"p-hint\">" + escapeHtml(it.hint || "") + "</span>";
     row.addEventListener("click", function () { closePalette(); it.action(); });
     row.addEventListener("mouseenter", function () { paletteSelIndex = idx; updatePaletteSelection(); });
     list.appendChild(row);
@@ -1264,6 +1349,9 @@ function flushAllPersists() {
   const paths = Array.from(persistTimers.keys());
   persistTimers.clear();
   paths.forEach(function (p) { persistNow(p); });
+}
+function flushAllDirty() {
+  Array.from(dirtyPaths).forEach(function (p) { persistNow(p); });
 }
 
 /* ============================== ZIP IMPORT / EXPORT ============================== */
@@ -1468,6 +1556,106 @@ function handleDroppedItems(dt) {
   if (files.length) importFileList(files);
 }
 
+/* ============================== LIVE SERVER / INTEGRATED BROWSER ============================== */
+const liveChannel = (typeof BroadcastChannel !== "undefined") ? new BroadcastChannel("codeforge-live") : null;
+let swReady = false;
+function initServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").then(function () {
+    return navigator.serviceWorker.ready;
+  }).then(function () {
+    swReady = true;
+  }).catch(function (err) {
+    console.error("CodeForge: service worker registration failed (Live Server/Integrated Browser will be unavailable):", err);
+  });
+}
+function notifyLiveReload() {
+  if (liveChannel) { try { liveChannel.postMessage({ t: Date.now() }); } catch (e) {} }
+}
+function ensureLiveServerReady() {
+  if (!("serviceWorker" in navigator)) return Promise.resolve(false);
+  if (swReady) return Promise.resolve(true);
+  toast("Preparing Live Server\u2026");
+  return navigator.serviceWorker.ready.then(function () { swReady = true; return true; }).catch(function () { return false; });
+}
+function appBaseHref() { return location.pathname.replace(/[^/]*$/, ""); }
+function buildLiveUrl(path) {
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return location.origin + appBaseHref() + "__live__/" + encoded;
+}
+function openWithLiveServer(path) {
+  ensureLiveServerReady().then(function (ok) {
+    if (!ok) { toast("Live Server needs service worker support, which isn't available here.", "error"); return; }
+    flushAllPersists();
+    window.open(buildLiveUrl(path), "_blank");
+    toast("Opened " + baseName(path) + " with Live Server");
+  });
+}
+function paneContainingPath(path) {
+  if (state.primary.tabs.some(function (t) { return t.path === path; })) return "primary";
+  if (state.secondary.tabs.some(function (t) { return t.path === path; })) return "secondary";
+  return null;
+}
+function openIntegratedBrowser(path) {
+  ensureLiveServerReady().then(function (ok) {
+    if (!ok) { toast("Integrated Browser needs service worker support, which isn't available here.", "error"); return; }
+    flushAllPersists();
+    const sourcePane = paneContainingPath(path) || state.focusedPane || "primary";
+    const targetPane = sourcePane === "primary" ? "secondary" : "primary";
+    if (targetPane === "secondary" && !state.splitActive) activateSplit(true);
+    if (state.isMobile && targetPane === "secondary") openMobileSplit();
+    showBrowserPreview(targetPane, path);
+  });
+}
+function showBrowserPreview(pane, path) {
+  const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
+  const container = document.getElementById(cid);
+  if (!container) return;
+  let bp = container.querySelector(".browser-preview");
+  if (!bp) {
+    bp = ce("div", "browser-preview");
+    bp.innerHTML =
+      '<div class="bpv-toolbar">' +
+      '<span class="bpv-icon">' + iconSvg("globe", "icon-sm") + "</span>" +
+      '<span class="bpv-path"></span>' +
+      '<span class="bpv-spacer"></span>' +
+      '<button class="bpv-btn" data-act="refresh" title="Refresh">' + iconSvg("refresh", "icon-sm") + "</button>" +
+      '<button class="bpv-btn" data-act="external" title="Open in new tab">' + iconSvg("external-link", "icon-sm") + "</button>" +
+      '<button class="bpv-btn" data-act="close" title="Close preview">' + iconSvg("x", "icon-sm") + "</button>" +
+      "</div>" +
+      '<iframe class="bpv-frame" sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-popups"></iframe>';
+    container.appendChild(bp);
+    bp.querySelector('[data-act="refresh"]').addEventListener("click", function () {
+      flushAllPersists();
+      const f = bp.querySelector("iframe");
+      if (bp.dataset.path) f.src = buildLiveUrl(bp.dataset.path);
+    });
+    bp.querySelector('[data-act="external"]').addEventListener("click", function () {
+      if (bp.dataset.path) window.open(buildLiveUrl(bp.dataset.path), "_blank");
+    });
+    bp.querySelector('[data-act="close"]').addEventListener("click", function () { closeBrowserPreview(pane); });
+  }
+  bp.dataset.path = path;
+  bp.querySelector(".bpv-path").textContent = path;
+  bp.querySelector("iframe").src = buildLiveUrl(path);
+  setPaneOverlay(pane, "browser");
+}
+function closeBrowserPreview(pane) {
+  const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
+  const container = document.getElementById(cid);
+  const bp = container ? container.querySelector(".browser-preview") : null;
+  if (bp) { bp.querySelector("iframe").src = "about:blank"; bp.remove(); }
+  const ps = state[pane];
+  if (ps.active !== -1 && ps.tabs[ps.active]) activateEditorContent(pane, ps.tabs[ps.active].path);
+  else setPaneOverlay(pane, pane === "primary" ? "welcome" : "empty");
+}
+function withActiveHtmlFile(fn) {
+  const ps = state[state.focusedPane];
+  const active = ps.active !== -1 ? ps.tabs[ps.active] : null;
+  if (!active || !isHtmlExt(extOf(active.path))) { toast("Open an HTML file first", "error"); return; }
+  fn(active.path);
+}
+
 /* ============================== SESSION PERSISTENCE ============================== */
 function saveSession() {
   const session = {
@@ -1618,14 +1806,25 @@ function wireStaticUI() {
     else if (!e.shiftKey && k === "s" && !inInput) { e.preventDefault(); saveActive(); }
   });
   window.addEventListener("resize", debounce(updateResponsiveMode, 150));
+  window.addEventListener("beforeunload", function (e) {
+    if (!state.settings.autoSave && dirtyPaths.size > 0) { e.preventDefault(); e.returnValue = ""; }
+  });
 }
 function initSettingsPanel() {
   qs("#set-fontsize").value = state.settings.fontSize;
   qs("#set-tabsize").value = state.settings.tabSize;
   qs("#set-theme").value = state.settings.theme;
+  syncSwitch("#set-autosave", state.settings.autoSave);
   syncSwitch("#set-wordwrap", state.settings.wordWrap);
   syncSwitch("#set-minimap", state.settings.minimap);
   syncSwitch("#set-whitespace", state.settings.whitespace);
+  qs("#set-autosave").addEventListener("click", function () {
+    state.settings.autoSave = !state.settings.autoSave;
+    syncSwitch("#set-autosave", state.settings.autoSave);
+    saveSettings();
+    if (state.settings.autoSave) { flushAllDirty(); toast("Auto Save on — flushed unsaved changes"); }
+    else toast("Auto Save off — use Ctrl+S to save");
+  });
   qs("#set-fontsize").addEventListener("change", function (e) { state.settings.fontSize = clampInt(e.target.value, 10, 28, 14); e.target.value = state.settings.fontSize; applyOptionsToAllEditors(); saveSettings(); });
   qs("#set-tabsize").addEventListener("change", function (e) { state.settings.tabSize = clampInt(e.target.value, 1, 8, 2); e.target.value = state.settings.tabSize; applyOptionsToAllEditors(); saveSettings(); });
   qs("#set-theme").addEventListener("change", function (e) { state.settings.theme = e.target.value; if (window.monaco) monaco.editor.setTheme(e.target.value); saveSettings(); });
@@ -1655,6 +1854,7 @@ function boot() {
     if (settings) state.settings = Object.assign(state.settings, settings);
     wireStaticUI();
     createPrimaryEditor();
+    initServiceWorker();
     monaco.editor.setTheme(state.settings.theme);
     renderTree();
     if (session) restoreSession(session);

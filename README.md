@@ -31,6 +31,9 @@ box — it's just static files. Wherever you put it, it keeps working exactly th
 because all storage happens in *your browser*, not on whatever server happens to be hosting
 the files.
 
+Live Server / Integrated Browser use a service worker, which needs `localhost` or a real HTTPS
+origin — both options above satisfy that automatically.
+
 ## What it does
 
 - **Upload a ZIP and it opens as a project** — drag one onto the window, or use the ZIP button
@@ -48,6 +51,21 @@ the files.
   search, command palette (`Ctrl+Shift+P`), quick open (`Ctrl+P`), rename/delete/duplicate,
   image preview for binary files, adjustable font size/tab size/word wrap/minimap/theme.
 - **Export back to a ZIP** any time, from the Explorer toolbar or the command palette.
+- **Colored file & folder icons** — a lightweight color-coded scheme (own icons/colors, not
+  a copy of any specific icon theme's artwork) so you can scan a tree by file type at a glance.
+  Common folders like `src`, `test`, `dist`, `assets`, `node_modules` get their own colors too.
+- **Copy Path / Copy Relative Path** — right-click any file or folder.
+- **Auto Save** — on by default (debounced ~600ms after you stop typing). Turn it off in
+  Settings if you'd rather save explicitly with `Ctrl/Cmd + S`; CodeForge will warn you before
+  closing the tab if you have unsaved changes.
+- **Open with Live Server** / **Open in Integrated Browser** — right-click any `.html` file (or
+  use the command palette). "Live Server" opens it in a new browser tab; "Integrated Browser"
+  opens it in a preview pane right inside CodeForge, split next to your editor. Both serve the
+  file — and any relative `<link>`/`<script>`/`<img>` it references — straight out of your
+  project's local storage via a small service worker, and both **live-reload** automatically
+  whenever you save. (Relative paths like `style.css` or `./assets/img.png` work great; a
+  root-absolute path like `/style.css` won't, since there's no real per-project domain root.)
+- **Horizontally-scrolling file tree** — long nested paths scroll instead of getting clipped.
 
 ## What it deliberately doesn't do
 
@@ -75,6 +93,7 @@ explorer, the tabs, the multi-language support, the mobile layout — is fully w
 index.html        the app shell
 style.css          all styling (VS Code Dark+ theme)
 app.js             all application logic
+sw.js               service worker powering Live Server / Integrated Browser preview
 server.js          zero-dependency local server (optional convenience)
 vendor/vs/         Monaco editor, bundled locally (MIT licensed, by Microsoft)
 vendor/jszip.min.js  ZIP read/write, bundled locally (MIT licensed)
