@@ -1880,6 +1880,22 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     require.config({ paths: { vs: "vendor/vs" } });
     require(["vs/editor/editor.main"], function () {
+      // We ship without the ~4.4MB TypeScript language-service worker to keep the download small.
+      // Disabling its "rich" mode up front (before any model exists) means Monaco never tries to
+      // spin that worker up at all, so there's nothing to fail — syntax highlighting (Monarch
+      // tokenizer) and Monaco's built-in word-based autocomplete keep working for every language,
+      // including JS/TS. What's actually gone: semantic/type-aware autocomplete, inline type-error
+      // squiggles, and hover type info for JS/TS specifically.
+      try {
+        const tsCfg = {
+          completionItems: false, hovers: false, documentSymbols: false, definitions: false,
+          references: false, documentHighlights: false, rename: false, diagnostics: false,
+          documentRangeFormattingEdits: false, signatureHelp: false, onTypeFormattingEdits: false,
+          codeActions: false, inlayHints: false,
+        };
+        monaco.languages.typescript.typescriptDefaults.setModeConfiguration(tsCfg);
+        monaco.languages.typescript.javascriptDefaults.setModeConfiguration(tsCfg);
+      } catch (e) { /* non-fatal: worst case is a couple of console warnings */ }
       boot();
     }, function () {
       showBootError(new Error("Couldn't load the editor engine from vendor/vs. Make sure that folder is next to index.html and that you're running CodeForge through a local web server, not by double-clicking the file."));

@@ -109,6 +109,26 @@ does not phone home, does not talk to Microsoft, and does not talk to Anthropic.
 host it somewhere, whoever hosts it can see that people downloaded these static files,
 same as any website — but the files people upload for editing never leave their browser.
 
+## About the download size
+
+This build is trimmed to ~1.7MB zipped (down from ~3MB) with one real tradeoff and one
+free one:
+
+- **Free:** stripped Monaco's non-English locale strings (we only ever run in English, so
+  these were dead weight). Zero effect on anything.
+- **One real change:** removed Monaco's TypeScript/JavaScript *language service* worker
+  (a ~4.4MB bundle of the TypeScript compiler — by far the single biggest thing in the
+  download). Syntax highlighting, editing, and Monaco's own built-in word-based autocomplete
+  still work exactly the same for every language, including JS/TS. What's gone is the
+  *semantic* layer specifically for JS/TS: type-aware autocomplete, inline red-squiggle type
+  errors, and hover tooltips with type info. It's disabled cleanly through Monaco's own
+  config API (not just deleted and left to error), so there's nothing broken or noisy about
+  it — verified with the same automated test pass used for everything else in this app.
+
+If you'd rather have that back and don't mind the extra ~1MB, it's a two-line revert: remove
+the `setModeConfiguration` block near the bottom of `app.js`, then copy `tsWorker.js` from
+[the monaco-editor npm package](https://www.npmjs.com/package/monaco-editor) (`min/vs/language/typescript/tsWorker.js`, version 0.45.0) into `vendor/vs/language/typescript/`.
+
 ## Renaming your project
 
 Look for "CodeForge" in `index.html` (`<title>`, welcome screen) if you'd like to rebrand it.

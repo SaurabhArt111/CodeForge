@@ -31,7 +31,8 @@
   --sidebar-w:260px;
 }
 
-*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-font-smoothing:antialiased;}
+
 html,body{height:100%;}
 body{
   margin:0;
