@@ -33,6 +33,8 @@
       <div class="ab-top">
         <button class="ab-btn active" data-view="explorer" title="Explorer" data-icon="files"></button>
         <button class="ab-btn" data-view="search" title="Search" data-icon="search"></button>
+        <button class="ab-btn" data-view="git" title="Source Control" data-icon="git-branch"></button>
+        <button class="ab-btn" data-view="projects" title="Projects" data-icon="projects"></button>
       </div>
       <div class="ab-bottom">
         <button class="ab-btn" data-view="settings" title="Settings" data-icon="settings"></button>
@@ -65,6 +67,28 @@
           <input id="search-input" type="text" placeholder="Search across files" autocomplete="off" />
         </div>
         <div id="search-results"><div class="search-empty">Type to search file contents across your whole project.</div></div>
+      </div>
+
+      <div id="view-git" class="view">
+        <div class="view-header">
+          <span>Source Control</span>
+          <div class="view-actions">
+            <button id="btn-git-refresh" title="Refresh changes" data-icon="refresh"></button>
+          </div>
+        </div>
+        <div id="git-body"></div>
+      </div>
+
+      <div id="view-projects" class="view">
+        <div class="view-header">
+          <span>Projects</span>
+          <div class="view-actions">
+            <button id="btn-proj-upload-files" title="Upload files as a new project" data-icon="upload"></button>
+            <button id="btn-proj-upload-folder" title="Upload folder as a new project" data-icon="folder-upload"></button>
+            <button id="btn-proj-open-zip" title="Open ZIP as a new project" data-icon="archive"></button>
+          </div>
+        </div>
+        <div id="projects-list"></div>
       </div>
 
       <div id="view-settings" class="view">
@@ -105,11 +129,11 @@
         <div class="setting-row">
           <label>Storage</label>
           <div class="setting-desc" id="storage-info">Calculating on-device storage use…</div>
-          <button class="danger-btn" id="btn-clear-project" style="margin-top:10px;">Clear project &amp; local data</button>
+          <button class="danger-btn" id="btn-clear-project" style="margin-top:10px;">Clear ALL projects &amp; local data</button>
         </div>
         <div class="privacy-note">
           <span></span>
-          <span>Everything runs on this device.</span>
+          <span>Everything runs on this device. Your files are stored in this browser's local storage.</span>
         </div>
       </div>
     </div>
@@ -125,7 +149,7 @@
           <div class="welcome" id="welcome-screen">
             <div class="welcome-inner">
               <h1><span class="icon icon-lg" data-icon="code"></span> CodeForge</h1>
-              <p class="tagline">v5.0 · A fast, private, browser-based code editor</p>
+              <p class="tagline">v6.0 · A fast, private, browser-based code editor</p>
 
               <h2>Start</h2>
               <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span> New File <span style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span></div>
@@ -175,8 +199,10 @@
   <div id="bottom-nav">
     <button class="nav-btn active" data-nav="explorer"><span class="icon" data-icon="files"></span><span class="nav-label">Files</span></button>
     <button class="nav-btn" data-nav="search"><span class="icon" data-icon="search"></span><span class="nav-label">Search</span></button>
+    <button class="nav-btn" data-nav="git"><span class="icon" data-icon="git-branch"></span><span class="nav-label">Git</span></button>
+    <button class="nav-btn" data-nav="projects"><span class="icon" data-icon="projects"></span><span class="nav-label">Projects</span></button>
     <button class="nav-btn" data-nav="split"><span class="icon" data-icon="split"></span><span class="nav-label">Split</span></button>
-    <button class="nav-btn" data-nav="palette"><span class="icon" data-icon="command"></span><span class="nav-label">Commands</span></button>
+    <button class="nav-btn" data-nav="palette"><span class="icon" data-icon="command"></span><span class="nav-label">Cmds</span></button>
     <button class="nav-btn" data-nav="settings"><span class="icon" data-icon="settings"></span><span class="nav-label">Settings</span></button>
   </div>
 

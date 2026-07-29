@@ -35,6 +35,11 @@ const ICON_PATHS = {
   "globe": '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>',
   "external-link": '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>',
   "clipboard": '<rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>',
+  "projects": '<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect>',
+  "git-branch": '<line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>',
+  "git-commit": '<circle cx="12" cy="12" r="4"></circle><line x1="1.05" y1="12" x2="8" y2="12"></line><line x1="16" y1="12" x2="22.95" y2="12"></line>',
+  "cloud-upload": '<path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"></path><polyline points="12 12 16 16 20 12"></polyline><line x1="16" y1="16" x2="16" y2="21"></line>',
+  "key": '<circle cx="7" cy="15" r="4"></circle><line x1="10.5" y1="11.5" x2="21" y2="1"></line><line x1="17" y1="5" x2="20" y2="8"></line><line x1="14" y1="8" x2="17" y2="11"></line>',
 };
 function iconSvg(name, extraClass) {
   const d = ICON_PATHS[name] || ICON_PATHS["file"];
@@ -170,7 +175,7 @@ function toast(msg, kind) {
 
 /* ============================== INDEXEDDB LAYER ============================== */
 const DB_NAME = "codeforge-db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let _db = null;
 function idbOpen() {
   if (_db) return Promise.resolve(_db);
@@ -180,6 +185,8 @@ function idbOpen() {
       const db = e.target.result;
       if (!db.objectStoreNames.contains("nodes")) db.createObjectStore("nodes", { keyPath: "path" });
       if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "key" });
+      if (!db.objectStoreNames.contains("projects")) db.createObjectStore("projects", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("project_snapshots")) db.createObjectStore("project_snapshots", { keyPath: "id" });
     };
     req.onsuccess = function (e) { _db = e.target.result; resolve(_db); };
     req.onerror = function (e) { reject(e.target.error); };
@@ -255,6 +262,78 @@ function idbSetMeta(key, value) {
 }
 function idbClearMeta() {
   return idbTx("meta", "readwrite").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.clear();
+      req.onsuccess = function () { resolve(); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbListProjects() {
+  return idbTx("projects", "readonly").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.getAll();
+      req.onsuccess = function () { resolve(req.result || []); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbPutProjectMeta(entry) {
+  return idbTx("projects", "readwrite").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.put(entry);
+      req.onsuccess = function () { resolve(); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbDeleteProjectMeta(id) {
+  return idbTx("projects", "readwrite").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.delete(id);
+      req.onsuccess = function () { resolve(); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbGetProjectSnapshot(id) {
+  return idbTx("project_snapshots", "readonly").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.get(id);
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbPutProjectSnapshot(id, data) {
+  return idbTx("project_snapshots", "readwrite").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.put(Object.assign({ id: id }, data));
+      req.onsuccess = function () { resolve(); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbDeleteProjectSnapshot(id) {
+  return idbTx("project_snapshots", "readwrite").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.delete(id);
+      req.onsuccess = function () { resolve(); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbClearProjects() {
+  return idbTx("projects", "readwrite").then(function (store) {
+    return new Promise(function (resolve, reject) {
+      const req = store.clear();
+      req.onsuccess = function () { resolve(); };
+      req.onerror = function () { reject(req.error); };
+    });
+  });
+}
+function idbClearProjectSnapshots() {
+  return idbTx("project_snapshots", "readwrite").then(function (store) {
     return new Promise(function (resolve, reject) {
       const req = store.clear();
       req.onsuccess = function () { resolve(); };
@@ -378,7 +457,7 @@ const state = {
   primary: { tabs: [], active: -1, previewIndex: -1 },
   secondary: { tabs: [], active: -1, previewIndex: -1 },
 };
-const editors = { primary: null, secondary: null };
+const editors = { primary: null, secondary: null, diff: null, diffPane: null };
 const models = new Map(); // path -> { model, savedValue }
 const dirtyPaths = new Set();
 let monacoReady = false;
@@ -487,6 +566,7 @@ function renderNode(node, depth) {
 
   row.addEventListener("click", function () {
     selectRow(node.path);
+    qs("#file-tree").focus();
     if (isDir) { toggleDir(node.path); }
     else {
       openFile(node.path, { preview: true });
@@ -506,6 +586,59 @@ function renderNode(node, depth) {
     openContextMenuForNode(node, x, y);
   });
   return wrap;
+}
+
+/* ============================== EXPLORER KEYBOARD NAVIGATION ============================== */
+function visibleTreeRows() { return qsa(".tree-row", qs("#file-tree")); }
+function initExplorerKeyNav() {
+  const treeEl = qs("#file-tree");
+  if (!treeEl || treeEl.__keyNavInit) return;
+  treeEl.__keyNavInit = true;
+  treeEl.setAttribute("tabindex", "0");
+  treeEl.addEventListener("keydown", function (e) {
+    const rows = visibleTreeRows();
+    if (!rows.length) return;
+    let idx = rows.findIndex(function (r) { return r.dataset.path === state.selectedPath; });
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      idx = idx === -1 ? 0 : Math.min(rows.length - 1, idx + 1);
+      selectRow(rows[idx].dataset.path);
+      rows[idx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      idx = idx === -1 ? 0 : Math.max(0, idx - 1);
+      selectRow(rows[idx].dataset.path);
+      rows[idx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (idx === -1) return;
+      const path = rows[idx].dataset.path, node = fs.get(path);
+      if (node && node.type === "dir") {
+        if (!state.expandedDirs.has(path)) { toggleDir(path); }
+        else {
+          const newRows = visibleTreeRows();
+          const ni = newRows.findIndex(function (r) { return r.dataset.path === path; });
+          if (newRows[ni + 1]) selectRow(newRows[ni + 1].dataset.path);
+        }
+      }
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (idx === -1) return;
+      const path = rows[idx].dataset.path, node = fs.get(path);
+      if (node && node.type === "dir" && state.expandedDirs.has(path)) toggleDir(path);
+      else { const parent = dirName(path); if (parent) selectRow(parent); }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (idx === -1) return;
+      const path = rows[idx].dataset.path, node = fs.get(path);
+      if (node && node.type === "dir") toggleDir(path);
+      else openFile(path, { preview: false });
+    } else if (e.key === "F2") {
+      if (idx !== -1) { e.preventDefault(); beginRename(rows[idx].dataset.path); }
+    } else if (e.key === "Delete") {
+      if (idx !== -1) { e.preventDefault(); deleteEntryWithConfirm(rows[idx].dataset.path); }
+    }
+  });
 }
 
 /* ============================== LONG PRESS (touch context menu) ============================== */
@@ -555,12 +688,46 @@ document.addEventListener("click", function (e) {
 });
 document.addEventListener("scroll", hideContextMenu, true);
 
+let fileClipboard = null; // {path, mode:'cut'|'copy'}
+function isPathInsideOrEqual(candidateDir, ancestorPath) {
+  return candidateDir === ancestorPath || candidateDir.indexOf(ancestorPath + "/") === 0;
+}
+function clipCopyPath(path) { fileClipboard = { path: path, mode: "copy" }; toast("Copied — right-click a folder to Paste"); }
+function clipCutPath(path) { fileClipboard = { path: path, mode: "cut" }; toast("Cut — right-click a folder to Paste (move)"); }
+function clipPaste(targetDir) {
+  if (!fileClipboard) { toast("Nothing to paste", "error"); return; }
+  const path = fileClipboard.path, mode = fileClipboard.mode;
+  const node = fs.get(path);
+  if (!node) { fileClipboard = null; toast("That item no longer exists", "error"); return; }
+  if (node.type === "dir" && isPathInsideOrEqual(targetDir, path)) {
+    toast("Can't paste a folder into itself or a subfolder of itself", "error");
+    return;
+  }
+  if (mode === "cut") {
+    const newPath = fsUniquePath(targetDir, baseName(path));
+    if (newPath === path) { fileClipboard = null; return; }
+    const changes = fsRename(path, newPath);
+    remapOpenTabsAfterRename(changes);
+    if (state.selectedPath === path) state.selectedPath = newPath;
+    fileClipboard = null;
+    state.expandedDirs.add(targetDir);
+    renderTree();
+    saveSessionDebounced();
+    toast("Moved");
+  } else {
+    state.expandedDirs.add(targetDir);
+    duplicateEntry(path, targetDir);
+    toast("Pasted a copy");
+  }
+}
 function openContextMenuForNode(node, x, y) {
   const isDir = node.type === "dir";
   const items = [];
   if (isDir) {
     items.push({ label: "New File", icon: "file-plus", action: function () { beginCreateEntry(node.path, "file"); } });
     items.push({ label: "New Folder", icon: "folder-plus", action: function () { beginCreateEntry(node.path, "dir"); } });
+    items.push({ label: "Upload Files Here", icon: "upload", action: function () { window.__cfSetUploadTargetDir(node.path); qs("#file-input-files").click(); } });
+    items.push({ label: "Upload Folder Here", icon: "folder-upload", action: function () { window.__cfSetUploadTargetDir(node.path); qs("#file-input-folder").click(); } });
     items.push("-");
   } else {
     items.push({ label: "Open to the Side", icon: "split", action: function () { openFile(node.path, { preview: false, pane: "secondary" }); } });
@@ -573,6 +740,9 @@ function openContextMenuForNode(node, x, y) {
   }
   items.push({ label: "Rename", icon: "edit", action: function () { beginRename(node.path); } });
   items.push({ label: "Duplicate", icon: "copy", action: function () { duplicateEntry(node.path); } });
+  items.push({ label: "Cut", icon: "corner-side", action: function () { clipCutPath(node.path); } });
+  items.push({ label: "Copy", icon: "copy", action: function () { clipCopyPath(node.path); } });
+  if (isDir && fileClipboard) items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(node.path); } });
   items.push("-");
   items.push({ label: "Copy Path", icon: "clipboard", action: function () { copyToClipboard("/" + (projectName || "project") + "/" + node.path); } });
   items.push({ label: "Copy Relative Path", icon: "clipboard", action: function () { copyToClipboard(node.path); } });
@@ -581,14 +751,23 @@ function openContextMenuForNode(node, x, y) {
   showContextMenu(items, x, y);
 }
 function openContextMenuForRoot(x, y) {
-  showContextMenu([
+  const items = [
     { label: "New File", icon: "file-plus", action: function () { beginCreateEntry("", "file"); } },
     { label: "New Folder", icon: "folder-plus", action: function () { beginCreateEntry("", "dir"); } },
-  ], x, y);
+    { label: "Upload Files Here", icon: "upload", action: function () { window.__cfSetUploadTargetDir(""); qs("#file-input-files").click(); } },
+    { label: "Upload Folder Here", icon: "folder-upload", action: function () { window.__cfSetUploadTargetDir(""); qs("#file-input-folder").click(); } },
+  ];
+  if (fileClipboard) { items.push("-"); items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(""); } }); }
+  showContextMenu(items, x, y);
 }
 
 /* ============================== CREATE / RENAME / DELETE / DUPLICATE ============================== */
 function beginCreateEntry(parentDir, type) {
+  ensureProjectContext().then(function () {
+    beginCreateEntryInner(parentDir, type);
+  });
+}
+function beginCreateEntryInner(parentDir, type) {
   state.expandedDirs.add(parentDir);
   renderTree();
   const wrap = parentDir ? qs('[data-wrap-path="' + cssEscape(parentDir) + '"]') : null;
@@ -700,15 +879,16 @@ function closePathEverywhere(path) {
     }
   });
 }
-function duplicateEntry(path) {
+function duplicateEntry(path, targetDir) {
   const node = fs.get(path);
   if (!node) return;
+  const destDir = targetDir !== undefined ? targetDir : dirName(path);
   if (node.type === "file") {
-    const newPath = fsUniquePath(dirName(path), baseName(path));
+    const newPath = fsUniquePath(destDir, baseName(path));
     fsSetFile(newPath, node.content, node.isBinary, node.dataUrl, node.size);
     idbPutNode(fs.get(newPath));
   } else {
-    const newRoot = fsUniquePath(dirName(path), baseName(path));
+    const newRoot = fsUniquePath(destDir, baseName(path));
     const prefix = path + "/";
     fsSetDir(newRoot);
     idbPutNode(fs.get(newRoot));
@@ -812,6 +992,7 @@ function setPaneOverlay(pane, mode) {
   const welcome = pane === "primary" ? document.getElementById("welcome-screen") : null;
   const bp = container.querySelector(".binary-preview:not(.split-empty-hint)");
   const browserEl = container.querySelector(".browser-preview");
+  const diffEl = container.querySelector(".diff-preview");
   let ep = container.querySelector(".split-empty-hint");
   if (mode === "empty" && !ep) {
     ep = ce("div", "binary-preview split-empty-hint");
@@ -823,6 +1004,7 @@ function setPaneOverlay(pane, mode) {
   if (bp) bp.classList.toggle("hidden", mode !== "binary");
   if (ep) ep.classList.toggle("hidden", mode !== "empty");
   if (browserEl) browserEl.classList.toggle("hidden", mode !== "browser");
+  if (diffEl) diffEl.classList.toggle("hidden", mode !== "diff");
 }
 function showBinaryPreview(pane, node) {
   const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
@@ -1108,9 +1290,11 @@ function switchSidebarView(view) {
   qsa(".ab-btn").forEach(function (b) { b.classList.toggle("active", b.dataset.view === view); });
   qsa(".view").forEach(function (v) { v.classList.toggle("active", v.id === "view-" + view); });
   qsa(".nav-btn").forEach(function (b) {
-    if (["explorer", "search", "settings"].indexOf(b.dataset.nav) !== -1) b.classList.toggle("active", b.dataset.nav === view);
+    if (["explorer", "search", "git", "projects", "settings"].indexOf(b.dataset.nav) !== -1) b.classList.toggle("active", b.dataset.nav === view);
   });
   if (view === "search") setTimeout(function () { const si = qs("#search-input"); if (si) si.focus(); }, state.isMobile ? 260 : 0);
+  if (view === "projects") renderProjectsList();
+  if (view === "git") renderGitPanel();
 }
 function toggleSidebarCollapse() {
   state.sidebarCollapsed = !state.sidebarCollapsed;
@@ -1200,7 +1384,7 @@ function getCommands() {
     { label: "Show Settings", hint: "", action: function () { showSidebarView("settings"); } },
     { label: "Toggle Word Wrap", hint: "", action: function () { qs("#set-wordwrap").click(); } },
     { label: "Toggle Minimap", hint: "", action: function () { qs("#set-minimap").click(); } },
-    { label: "Clear Project & Local Data…", hint: "", action: confirmClearAll },
+    { label: "Clear ALL Projects & Local Data…", hint: "", action: confirmClearAll },
   ];
 }
 function showSidebarView(view) {
@@ -1333,7 +1517,7 @@ function updateStorageInfo() {
   }
 }
 function confirmClearAll() {
-  if (!window.confirm("This deletes the entire project and all local data from this browser. This cannot be undone. Continue?")) return;
+  if (!window.confirm("This deletes EVERY project and all local data from this browser \u2014 not just the current one. This can't be undone. Continue?")) return;
   clearAllData().then(function () {
     toast("Cleared. Starting fresh.");
     setTimeout(function () { location.reload(); }, 500);
@@ -1341,8 +1525,9 @@ function confirmClearAll() {
 }
 function clearAllData() {
   models.forEach(function (e) { e.model.dispose(); });
-  models.clear(); dirtyPaths.clear(); fs.clear(); projectName = "";
-  return Promise.all([idbClearNodes(), idbClearMeta()]);
+  models.clear(); dirtyPaths.clear(); fs.clear(); projectName = ""; currentProjectId = null;
+  projectsIndex.clear();
+  return Promise.all([idbClearNodes(), idbClearMeta(), idbClearProjects(), idbClearProjectSnapshots()]);
 }
 function flushAllPersists() {
   persistTimers.forEach(function (timer) { clearTimeout(timer); });
@@ -1373,9 +1558,9 @@ function openZipFile(file) {
     const firstSeg = function (n) { return n.split("/")[0]; };
     const allSame = names.length > 0 && names.every(function (n) { return firstSeg(n) === firstSeg(names[0]); });
     const commonRoot = (allSame && firstSeg(names[0])) ? firstSeg(names[0]) : null;
+    const newName = uniqueProjectName(commonRoot || file.name.replace(/\.zip$/i, "") || "project");
 
-    const proceed = function () {
-      projectName = commonRoot || file.name.replace(/\.zip$/i, "") || "project";
+    return startNewProject(newName).then(function () {
       const tasks = [];
       entries.forEach(function (entry) {
         if (entry.dir) return;
@@ -1387,7 +1572,7 @@ function openZipFile(file) {
         const bin = isBinaryExt(ext);
         const t = entry.async(bin ? "base64" : "string").then(function (data) {
           if (bin) {
-            const dataUrl = isImageExt(ext) ? ("data:" + mimeFor(ext) + ";base64," + data) : null;
+            const dataUrl = "data:" + mimeFor(ext) + ";base64," + data;
             fsSetFile(path, "", true, dataUrl, Math.ceil(data.length * 0.75));
           } else {
             fsSetFile(path, data, false, null, data.length);
@@ -1398,23 +1583,16 @@ function openZipFile(file) {
       return Promise.all(tasks).then(function () {
         return persistWholeFsToIdb();
       }).then(function () {
-        return idbSetMeta("project", { name: projectName, createdAt: Date.now() });
-      }).then(function () {
         state.expandedDirs.clear();
         fsChildrenOf("").forEach(function (n) { if (n.type === "dir") state.expandedDirs.add(n.path); });
         renderTree();
         closeAll("primary"); closeAll("secondary");
-        toast("Opened " + projectName);
+        toast('Opened "' + projectName + '" as a new project');
         autoOpenWelcomeFile();
+        renderProjectsList();
         saveSessionDebounced();
       });
-    };
-
-    if (fs.size > 0) {
-      if (!window.confirm("Opening this ZIP will replace your current project (everything currently open will be cleared). Continue?")) return;
-      return clearAllData().then(proceed);
-    }
-    return proceed();
+    });
   }).catch(function (err) {
     console.error(err);
     toast("Could not open that ZIP file.", "error");
@@ -1467,7 +1645,7 @@ function importFileList(fileList, opts) {
     const bin = isBinaryExt(ext);
     const reader = bin ? readAsDataURL(file) : readAsText(file);
     return reader.then(function (data) {
-      if (bin) fsSetFile(relPath, "", true, isImageExt(ext) ? data : null, file.size);
+      if (bin) fsSetFile(relPath, "", true, data, file.size);
       else fsSetFile(relPath, data, false, null, file.size);
       idbPutNode(fs.get(relPath));
     }).catch(function (e) { console.error("read failed", relPath, e); });
@@ -1515,28 +1693,26 @@ function readEntriesRecursively(entries) {
   return Promise.all(entries.map(function (e) { return walk(e, ""); })).then(function () { return out; });
 }
 function importFileListFromEntryFiles(entryFiles) {
-  const freshProject = fs.size === 0;
-  if (freshProject && !projectName) {
-    const p0 = entryFiles[0].path;
-    projectName = p0.indexOf("/") !== -1 ? p0.split("/")[0] : "project";
-  } else if (!projectName) projectName = "project";
-  const tasks = entryFiles.map(function (ef) {
-    const relPath = freshProject ? stripFirstSegment(ef.path) : ef.path;
-    const ext = extOf(relPath);
-    const bin = isBinaryExt(ext);
-    const reader = bin ? readAsDataURL(ef.file) : readAsText(ef.file);
-    return reader.then(function (data) {
-      if (bin) fsSetFile(relPath, "", true, isImageExt(ext) ? data : null, ef.file.size);
-      else fsSetFile(relPath, data, false, null, ef.file.size);
-      idbPutNode(fs.get(relPath));
-    }).catch(function (err) { console.error(err); });
-  });
-  return Promise.all(tasks).then(function () {
-    return idbSetMeta("project", { name: projectName, createdAt: Date.now() });
-  }).then(function () {
-    renderTree();
-    toast("Added " + entryFiles.length + " file" + (entryFiles.length === 1 ? "" : "s"));
-    saveSessionDebounced();
+  const p0 = entryFiles[0].path;
+  const name = uniqueProjectName(p0.indexOf("/") !== -1 ? p0.split("/")[0] : "Dropped Files");
+  return startNewProject(name).then(function () {
+    const tasks = entryFiles.map(function (ef) {
+      const relPath = stripFirstSegment(ef.path);
+      const ext = extOf(relPath);
+      const bin = isBinaryExt(ext);
+      const reader = bin ? readAsDataURL(ef.file) : readAsText(ef.file);
+      return reader.then(function (data) {
+        if (bin) fsSetFile(relPath, "", true, data, ef.file.size);
+        else fsSetFile(relPath, data, false, null, ef.file.size);
+        idbPutNode(fs.get(relPath));
+      }).catch(function (err) { console.error(err); });
+    });
+    return Promise.all(tasks).then(function () {
+      renderTree();
+      toast('Opened "' + projectName + '" as a new project');
+      renderProjectsList();
+      saveSessionDebounced();
+    });
   });
 }
 function handleDroppedItems(dt) {
@@ -1553,7 +1729,7 @@ function handleDroppedItems(dt) {
   }
   const files = Array.from(dt.files || []);
   if (files.length === 1 && /\.zip$/i.test(files[0].name)) { openZipFile(files[0]); return; }
-  if (files.length) importFileList(files);
+  if (files.length) openFilesAsNewProject(files);
 }
 
 /* ============================== LIVE SERVER / INTEGRATED BROWSER ============================== */
@@ -1656,6 +1832,670 @@ function withActiveHtmlFile(fn) {
   fn(active.path);
 }
 
+/* ============================== PROJECT WORKSPACE MANAGEMENT ============================== */
+// Multiple projects can exist at once, like VS Code workspaces. Only one is "active" at a time —
+// its files live in the 'nodes'/'meta' stores (same ones the rest of the app already uses).
+// Switching projects snapshots the outgoing project into 'project_snapshots' first, so nothing
+// is ever lost, then loads the target project's snapshot back into the active stores.
+let currentProjectId = null;
+const projectsIndex = new Map(); // id -> {id, name, createdAt, updatedAt, fileCount, sizeBytes}
+
+function generateProjectId() { return "proj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8); }
+function computeProjectStats() {
+  let fileCount = 0, sizeBytes = 0;
+  fs.forEach(function (n) { if (n.type === "file") { fileCount++; sizeBytes += (n.size || 0); } });
+  return { fileCount: fileCount, sizeBytes: sizeBytes };
+}
+function relativeTime(ts) {
+  if (!ts) return "";
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + "d ago";
+  return new Date(ts).toLocaleDateString();
+}
+function currentSessionSnapshotObj() {
+  return {
+    sidebarView: state.sidebarView,
+    splitActive: state.splitActive,
+    primary: { tabs: state.primary.tabs, active: state.primary.active, previewIndex: state.primary.previewIndex },
+    secondary: { tabs: state.secondary.tabs, active: state.secondary.active, previewIndex: state.secondary.previewIndex },
+    expandedDirs: Array.from(state.expandedDirs),
+  };
+}
+function saveActiveProjectSnapshotIfAny() {
+  if (!currentProjectId) return Promise.resolve();
+  flushAllPersists();
+  const id = currentProjectId;
+  const nodesArr = Array.from(fs.values());
+  const stats = computeProjectStats();
+  const existing = projectsIndex.get(id) || { id: id, name: projectName, createdAt: Date.now() };
+  const metaEntry = { id: id, name: projectName || existing.name, createdAt: existing.createdAt, updatedAt: Date.now(), fileCount: stats.fileCount, sizeBytes: stats.sizeBytes };
+  projectsIndex.set(id, metaEntry);
+  return Promise.all([
+    idbPutProjectSnapshot(id, { nodes: nodesArr, session: currentSessionSnapshotObj() }),
+    idbPutProjectMeta(metaEntry),
+  ]);
+}
+function resetActiveWorkspaceInMemory() {
+  models.forEach(function (e) { e.model.dispose(); });
+  models.clear(); dirtyPaths.clear(); fs.clear();
+  state.primary = { tabs: [], active: -1, previewIndex: -1 };
+  state.secondary = { tabs: [], active: -1, previewIndex: -1 };
+  state.expandedDirs = new Set();
+  state.selectedPath = null;
+  closeBrowserPreview("primary");
+  closeBrowserPreview("secondary");
+  ["primary", "secondary"].forEach(function (pane) {
+    const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
+    const container = document.getElementById(cid);
+    const dv = container ? container.querySelector(".diff-preview") : null;
+    if (dv) dv.remove();
+  });
+  if (editors.diff) {
+    const dm = editors.diff.getModel();
+    if (dm) { dm.original.dispose(); dm.modified.dispose(); }
+    editors.diff.dispose(); editors.diff = null; editors.diffPane = null;
+  }
+  gitState.linked = null;
+  gitState.selectedDiffPath = null;
+}
+function loadProjectIntoActiveWorkspace(id) {
+  let snapRef = null;
+  return idbGetProjectSnapshot(id).then(function (snap) {
+    if (!snap) throw new Error("That project's data couldn't be found.");
+    snapRef = snap;
+    (snap.nodes || []).forEach(function (n) { fs.set(n.path, n); });
+    return idbClearNodes().then(function () { return idbPutNodesBulk(snap.nodes || []); });
+  }).then(function () {
+    const meta = projectsIndex.get(id) || { name: "project", createdAt: Date.now() };
+    projectName = meta.name;
+    currentProjectId = id;
+    return Promise.all([
+      idbSetMeta("project", { name: projectName, createdAt: meta.createdAt }),
+      idbSetMeta("currentProjectId", id),
+      idbSetMeta("session", snapRef.session || null),
+      idbGetMeta("git:" + id),
+    ]);
+  }).then(function (results) {
+    state.expandedDirs = new Set((snapRef.session && snapRef.session.expandedDirs) || []);
+    gitState.linked = results[3] || null;
+    return snapRef;
+  });
+}
+function switchToProject(id) {
+  if (id === currentProjectId) { toast("Already viewing " + (projectsIndex.get(id) || {}).name); return Promise.resolve(); }
+  return saveActiveProjectSnapshotIfAny().then(function () {
+    resetActiveWorkspaceInMemory();
+    return loadProjectIntoActiveWorkspace(id);
+  }).then(function (snap) {
+    renderTree();
+    if (snap.session) restoreSession(snap.session); else setPaneOverlay("primary", "welcome");
+    switchSidebarView("explorer");
+    renderProjectsList();
+    renderGitPanel();
+    toast('Switched to "' + projectName + '"');
+  }).catch(function (err) {
+    console.error(err);
+    toast("Couldn't switch projects: " + err.message, "error");
+  });
+}
+function startNewProject(name) {
+  return saveActiveProjectSnapshotIfAny().then(function () {
+    resetActiveWorkspaceInMemory();
+    const id = generateProjectId();
+    currentProjectId = id;
+    projectName = name || "Untitled Project";
+    const now = Date.now();
+    const metaEntry = { id: id, name: projectName, createdAt: now, updatedAt: now, fileCount: 0, sizeBytes: 0 };
+    projectsIndex.set(id, metaEntry);
+    return Promise.all([
+      idbClearNodes(),
+      idbSetMeta("project", { name: projectName, createdAt: now }),
+      idbSetMeta("currentProjectId", id),
+      idbSetMeta("session", null),
+      idbPutProjectMeta(metaEntry),
+    ]);
+  }).then(function () {
+    state.expandedDirs = new Set();
+    renderTree();
+    setPaneOverlay("primary", "welcome");
+    renderProjectsList();
+  });
+}
+function uniqueProjectName(wanted) {
+  const taken = new Set(Array.from(projectsIndex.values()).map(function (p) { return p.name; }));
+  if (!taken.has(wanted)) return wanted;
+  let i = 2;
+  while (taken.has(wanted + " " + i)) i++;
+  return wanted + " " + i;
+}
+function ensureProjectContext() {
+  if (currentProjectId) return Promise.resolve();
+  return startNewProject(uniqueProjectName("Untitled Project"));
+}
+function beginRenameProject(id) {
+  const meta = projectsIndex.get(id);
+  if (!meta) return;
+  const name = window.prompt("Rename project", meta.name);
+  if (!name || !name.trim() || name.trim() === meta.name) return;
+  meta.name = name.trim();
+  meta.updatedAt = Date.now();
+  idbPutProjectMeta(meta).then(function () {
+    if (id === currentProjectId) {
+      projectName = meta.name;
+      idbSetMeta("project", { name: projectName, createdAt: meta.createdAt });
+      renderTree();
+    }
+    renderProjectsList();
+    toast("Renamed to " + meta.name);
+  });
+}
+function deleteProjectWithConfirm(id) {
+  const meta = projectsIndex.get(id);
+  if (!meta) return;
+  if (!window.confirm('Delete project "' + meta.name + '" and all its files? This can\'t be undone.')) return;
+  const wasCurrent = id === currentProjectId;
+  projectsIndex.delete(id);
+  Promise.all([idbDeleteProjectMeta(id), idbDeleteProjectSnapshot(id), idbSetMeta("git:" + id, null)]).then(function () {
+    if (wasCurrent) {
+      currentProjectId = null;
+      resetActiveWorkspaceInMemory();
+      projectName = "";
+      return Promise.all([idbClearNodes(), idbSetMeta("project", null), idbSetMeta("currentProjectId", null), idbSetMeta("session", null)]).then(function () {
+        renderTree();
+        setPaneOverlay("primary", "welcome");
+      });
+    }
+  }).then(function () {
+    renderProjectsList();
+    toast("Project deleted");
+  });
+}
+function openFilesAsNewProject(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return Promise.resolve();
+  const rel = files[0].webkitRelativePath;
+  const name = uniqueProjectName(rel ? rel.split("/")[0] : (files.length === 1 ? files[0].name.replace(/\.[^./]+$/, "") : "Uploaded Files"));
+  return startNewProject(name).then(function () {
+    return importFileList(files);
+  }).then(function () {
+    switchSidebarView("explorer");
+    renderProjectsList();
+    toast('Opened "' + projectName + '" as a new project');
+  });
+}
+function renderProjectsList() {
+  const container = qs("#projects-list");
+  if (!container) return;
+  container.innerHTML = "";
+  if (currentProjectId) {
+    const stats = computeProjectStats();
+    const existing = projectsIndex.get(currentProjectId);
+    if (existing) { existing.fileCount = stats.fileCount; existing.sizeBytes = stats.sizeBytes; existing.name = projectName; }
+  }
+  const list = Array.from(projectsIndex.values()).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+  if (!list.length) {
+    container.appendChild(ce("div", "empty-hint", "No projects yet. Use Upload / Folder / ZIP above (or drag a folder onto the window) to open your first one."));
+    return;
+  }
+  list.forEach(function (p) {
+    const isCurrent = p.id === currentProjectId;
+    const row = ce("div", "project-row" + (isCurrent ? " current" : ""));
+    row.innerHTML =
+      '<div class="proj-row-main">' +
+      '<div class="proj-row-name">' + escapeHtml(p.name) + (isCurrent ? ' <span class="proj-badge">current</span>' : "") + "</div>" +
+      '<div class="proj-row-meta">' + (p.fileCount || 0) + " files \u00b7 " + formatBytes(p.sizeBytes || 0) + " \u00b7 " + relativeTime(p.updatedAt || p.createdAt) + "</div>" +
+      "</div>" +
+      '<div class="proj-row-actions">' +
+      (isCurrent ? "" : '<button class="proj-btn" data-act="open" title="Open">' + iconSvg("folder-open", "icon-sm") + "</button>") +
+      '<button class="proj-btn" data-act="rename" title="Rename">' + iconSvg("edit", "icon-sm") + "</button>" +
+      '<button class="proj-btn" data-act="delete" title="Delete">' + iconSvg("trash", "icon-sm") + "</button>" +
+      "</div>";
+    const openBtn = row.querySelector('[data-act="open"]');
+    if (openBtn) openBtn.addEventListener("click", function () { switchToProject(p.id); });
+    row.querySelector('[data-act="rename"]').addEventListener("click", function () { beginRenameProject(p.id); });
+    row.querySelector('[data-act="delete"]').addEventListener("click", function () { deleteProjectWithConfirm(p.id); });
+    row.addEventListener("dblclick", function () { if (!isCurrent) switchToProject(p.id); });
+    container.appendChild(row);
+  });
+}
+
+/* ============================== GITHUB SOURCE CONTROL ============================== */
+// Optional, opt-in, and entirely direct: if you paste a Personal Access Token, it's stored
+// only in this browser's IndexedDB and is sent only straight to api.github.com when you
+// explicitly use a Git action here — never anywhere else, never automatically.
+const gitState = { linked: null, token: "", selectedDiffPath: null };
+const GITHUB_API = "https://api.github.com";
+
+function githubHeaders(extra) {
+  const h = Object.assign({ "Accept": "application/vnd.github+json" }, extra || {});
+  if (gitState.token) h["Authorization"] = "token " + gitState.token;
+  return h;
+}
+function ghHelpUrl(owner, repo) { return "https://github.com/" + owner + "/" + repo; }
+
+function b64DecodeUnicode(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+function fetchBlobsWithConcurrency(base, entries, baseline) {
+  const CONCURRENCY = 6;
+  let idx = 0;
+  function worker() {
+    if (idx >= entries.length) return Promise.resolve();
+    const entry = entries[idx++];
+    return fetch(base + "/git/blobs/" + entry.sha, { headers: githubHeaders() }).then(function (res) {
+      if (!res.ok) throw new Error("Failed to fetch " + entry.path);
+      return res.json();
+    }).then(function (blobData) {
+      const content64 = (blobData.content || "").replace(/\n/g, "");
+      const ext = extOf(entry.path);
+      if (isBinaryExt(ext)) baseline[entry.path] = { isBinary: true, dataUrl: "data:" + mimeFor(ext) + ";base64," + content64 };
+      else baseline[entry.path] = { isBinary: false, content: b64DecodeUnicode(content64) };
+      return worker();
+    });
+  }
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, entries.length); i++) workers.push(worker());
+  return Promise.all(workers);
+}
+function fetchRepoBaseline(owner, repo, branch) {
+  // Note: GitHub's zipball endpoint redirects to codeload.github.com with a CORS header that
+  // doesn't permit browser fetches from arbitrary origins, so we can't use it here. The plain
+  // Git Data REST API (used below) is CORS-enabled, so we fetch the tree and each file's blob
+  // directly — a bit more chatty for large repos, but it works reliably from the browser.
+  const base = GITHUB_API + "/repos/" + owner + "/" + repo;
+  let commitSha = null, treeSha = null;
+  return fetch(base + "/git/refs/heads/" + encodeURIComponent(branch), { headers: githubHeaders() })
+    .then(function (res) {
+      if (!res.ok) throw new Error(res.status === 404 ? "Branch or repository not found." : res.status === 401 ? "That token isn't valid." : "GitHub error (" + res.status + ")");
+      return res.json();
+    }).then(function (refData) {
+      commitSha = refData.object.sha;
+      return fetch(base + "/git/commits/" + commitSha, { headers: githubHeaders() });
+    }).then(function (res) {
+      if (!res.ok) throw new Error("Couldn't read the base commit");
+      return res.json();
+    }).then(function (commitData) {
+      treeSha = commitData.tree.sha;
+      return fetch(base + "/git/trees/" + treeSha + "?recursive=1", { headers: githubHeaders() });
+    }).then(function (res) {
+      if (!res.ok) throw new Error("Couldn't read the repository tree");
+      return res.json();
+    }).then(function (treeData) {
+      const blobs = (treeData.tree || []).filter(function (e) { return e.type === "blob"; });
+      if (treeData.truncated) toast("This repository is large \u2014 some files may be missing.", "error");
+      const baseline = {};
+      return fetchBlobsWithConcurrency(base, blobs, baseline).then(function () {
+        return { baseCommitSha: commitSha, baseline: baseline };
+      });
+    });
+}
+function importFromGitHub(owner, repo, branch) {
+  toast("Importing " + owner + "/" + repo + "\u2026");
+  return fetchRepoBaseline(owner, repo, branch).then(function (result) {
+    const name = uniqueProjectName(repo);
+    return startNewProject(name).then(function () {
+      Object.keys(result.baseline).forEach(function (path) {
+        const b = result.baseline[path];
+        if (b.isBinary) fsSetFile(path, "", true, b.dataUrl, Math.ceil(((b.dataUrl || "").length) * 0.75));
+        else fsSetFile(path, b.content, false, null, b.content.length);
+      });
+      return persistWholeFsToIdb();
+    }).then(function () {
+      gitState.linked = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: result.baseline };
+      return idbSetMeta("git:" + currentProjectId, gitState.linked);
+    }).then(function () {
+      state.expandedDirs.clear();
+      fsChildrenOf("").forEach(function (n) { if (n.type === "dir") state.expandedDirs.add(n.path); });
+      renderTree();
+      renderProjectsList();
+      switchSidebarView("git");
+      renderGitPanel();
+      autoOpenWelcomeFile();
+      toast('Imported "' + projectName + '" from GitHub');
+    });
+  }).catch(function (err) {
+    console.error(err);
+    toast("Import failed: " + err.message, "error");
+  });
+}
+function linkCurrentProjectToGitHub(owner, repo, branch) {
+  if (!currentProjectId) { toast("Open or start a project first", "error"); return Promise.resolve(); }
+  toast("Linking to " + owner + "/" + repo + "\u2026");
+  return fetchRepoBaseline(owner, repo, branch).then(function (result) {
+    gitState.linked = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: result.baseline };
+    return idbSetMeta("git:" + currentProjectId, gitState.linked);
+  }).then(function () {
+    renderGitPanel();
+    toast("Linked to " + owner + "/" + repo);
+  }).catch(function (err) {
+    console.error(err);
+    toast("Couldn't link: " + err.message, "error");
+  });
+}
+function unlinkCurrentProject() {
+  if (!currentProjectId) return;
+  gitState.linked = null;
+  gitState.selectedDiffPath = null;
+  idbSetMeta("git:" + currentProjectId, null);
+  renderGitPanel();
+  toast("Unlinked from GitHub");
+}
+function computeGitChanges() {
+  const baseline = (gitState.linked && gitState.linked.baseline) || {};
+  const changes = [];
+  const seen = {};
+  fs.forEach(function (node, path) {
+    if (node.type !== "file") return;
+    seen[path] = true;
+    const base = baseline[path];
+    if (!base) { changes.push({ path: path, status: "added" }); return; }
+    if (node.isBinary || base.isBinary) {
+      if ((node.dataUrl || "") !== (base.dataUrl || "")) changes.push({ path: path, status: "modified" });
+      return;
+    }
+    if ((node.content || "") !== (base.content || "")) changes.push({ path: path, status: "modified" });
+  });
+  Object.keys(baseline).forEach(function (path) {
+    if (!seen[path]) changes.push({ path: path, status: "deleted" });
+  });
+  changes.sort(function (a, b) { return a.path.localeCompare(b.path); });
+  return changes;
+}
+function commitAndPush(message) {
+  const link = gitState.linked;
+  if (!link) return Promise.reject(new Error("Not linked to a repository"));
+  if (!gitState.token) return Promise.reject(new Error("Add a GitHub token above first"));
+  const changes = computeGitChanges();
+  if (!changes.length) return Promise.reject(new Error("No changes to commit"));
+  flushAllPersists();
+  const base = GITHUB_API + "/repos/" + link.owner + "/" + link.repo;
+  const headers = githubHeaders({ "Content-Type": "application/json" });
+  let latestCommitSha, baseTreeSha, newCommitSha;
+
+  return fetch(base + "/git/refs/heads/" + encodeURIComponent(link.branch), { headers: githubHeaders() })
+    .then(function (res) { if (!res.ok) throw new Error("Couldn't read branch (" + res.status + ")"); return res.json(); })
+    .then(function (refData) {
+      latestCommitSha = refData.object.sha;
+      if (link.baseCommitSha && latestCommitSha !== link.baseCommitSha) {
+        throw new Error("The remote branch has new commits since you last synced. Re-link or re-import to refresh, then reapply your changes.");
+      }
+      return fetch(base + "/git/commits/" + latestCommitSha, { headers: githubHeaders() });
+    }).then(function (res) { if (!res.ok) throw new Error("Couldn't read base commit"); return res.json(); })
+    .then(function (commitData) {
+      baseTreeSha = commitData.tree.sha;
+      let chain = Promise.resolve([]);
+      changes.forEach(function (c) {
+        chain = chain.then(function (entries) {
+          if (c.status === "deleted") { entries.push({ path: c.path, mode: "100644", type: "blob", sha: null }); return entries; }
+          const node = fs.get(c.path);
+          const body = node.isBinary
+            ? JSON.stringify({ content: (node.dataUrl || "").split(",")[1] || "", encoding: "base64" })
+            : JSON.stringify({ content: node.content || "", encoding: "utf-8" });
+          return fetch(base + "/git/blobs", { method: "POST", headers: headers, body: body }).then(function (res) {
+            if (!res.ok) throw new Error("Failed uploading " + c.path);
+            return res.json();
+          }).then(function (blobData) {
+            entries.push({ path: c.path, mode: "100644", type: "blob", sha: blobData.sha });
+            return entries;
+          });
+        });
+      });
+      return chain;
+    }).then(function (treeEntries) {
+      return fetch(base + "/git/trees", { method: "POST", headers: headers, body: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }) });
+    }).then(function (res) { if (!res.ok) throw new Error("Failed creating tree"); return res.json(); })
+    .then(function (treeData) {
+      return fetch(base + "/git/commits", { method: "POST", headers: headers, body: JSON.stringify({ message: message, tree: treeData.sha, parents: [latestCommitSha] }) });
+    }).then(function (res) { if (!res.ok) throw new Error("Failed creating commit"); return res.json(); })
+    .then(function (commitData) {
+      newCommitSha = commitData.sha;
+      return fetch(base + "/git/refs/heads/" + encodeURIComponent(link.branch), { method: "PATCH", headers: headers, body: JSON.stringify({ sha: newCommitSha }) });
+    }).then(function (res) {
+      if (!res.ok) throw new Error("Failed pushing (updating branch ref)");
+      changes.forEach(function (c) {
+        if (c.status === "deleted") { delete link.baseline[c.path]; return; }
+        const node = fs.get(c.path);
+        link.baseline[c.path] = node.isBinary ? { isBinary: true, dataUrl: node.dataUrl } : { isBinary: false, content: node.content };
+      });
+      link.baseCommitSha = newCommitSha;
+      return idbSetMeta("git:" + currentProjectId, link);
+    }).then(function () { return { sha: newCommitSha, count: changes.length }; });
+}
+function showDiffView(pane, path) {
+  ensureEditorCreated(pane);
+  const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
+  const container = document.getElementById(cid);
+  let dv = container.querySelector(".diff-preview");
+  if (!dv) {
+    dv = ce("div", "diff-preview");
+    dv.innerHTML = '<div class="bpv-toolbar"><span class="bpv-icon">' + iconSvg("git-commit", "icon-sm") + '</span><span class="bpv-path"></span><span class="bpv-spacer"></span><button class="bpv-btn" data-act="close" title="Close diff">' + iconSvg("x", "icon-sm") + '</button></div><div class="diff-host"></div>';
+    container.appendChild(dv);
+    dv.querySelector('[data-act="close"]').addEventListener("click", function () { closeDiffView(pane); });
+  }
+  dv.dataset.path = path;
+  dv.querySelector(".bpv-path").textContent = "Diff: " + path;
+  setPaneOverlay(pane, "diff");
+
+  const base = (gitState.linked && gitState.linked.baseline[path]) || { content: "", isBinary: false };
+  const node = fs.get(path);
+  const host = dv.querySelector(".diff-host");
+  if (base.isBinary || (node && node.isBinary)) {
+    host.innerHTML = "<div style=\"padding:20px;color:var(--text-dim);font-size:12.5px;\">Binary file \u2014 no text diff available.</div>";
+    return;
+  }
+  if (!editors.diff || editors.diffPane !== pane) {
+    if (editors.diff) editors.diff.dispose();
+    editors.diff = monaco.editor.createDiffEditor(host, Object.assign({ readOnly: true, renderSideBySide: !state.isMobile }, editorOptions()));
+    editors.diffPane = pane;
+  }
+  const originalModel = monaco.editor.createModel(base.content || "", detectLanguage(path));
+  const modifiedModel = monaco.editor.createModel((node && node.content) || "", detectLanguage(path));
+  const old = editors.diff.getModel();
+  editors.diff.setModel({ original: originalModel, modified: modifiedModel });
+  if (old) { old.original.dispose(); old.modified.dispose(); }
+  setTimeout(function () { try { editors.diff.layout(); } catch (e) {} }, 30);
+}
+function closeDiffView(pane) {
+  const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
+  const container = document.getElementById(cid);
+  const dv = container ? container.querySelector(".diff-preview") : null;
+  if (dv) dv.remove();
+  const ps = state[pane];
+  if (ps.active !== -1 && ps.tabs[ps.active]) activateEditorContent(pane, ps.tabs[ps.active].path);
+  else setPaneOverlay(pane, pane === "primary" ? "welcome" : "empty");
+}
+function initSimpleListKeyNav(containerEl, rowSelector, selectedClass, onEnter) {
+  if (!containerEl || containerEl.__keyNavInit) return;
+  containerEl.__keyNavInit = true;
+  containerEl.setAttribute("tabindex", "0");
+  containerEl.addEventListener("keydown", function (e) {
+    const rows = qsa(rowSelector, containerEl);
+    if (!rows.length) return;
+    let idx = rows.findIndex(function (r) { return r.classList.contains(selectedClass); });
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      rows.forEach(function (r) { r.classList.remove(selectedClass); });
+      idx = idx === -1 ? 0 : Math.min(rows.length - 1, idx + 1);
+      rows[idx].classList.add(selectedClass);
+      rows[idx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      rows.forEach(function (r) { r.classList.remove(selectedClass); });
+      idx = idx === -1 ? 0 : Math.max(0, idx - 1);
+      rows[idx].classList.add(selectedClass);
+      rows[idx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (idx !== -1) onEnter(rows[idx]);
+    }
+  });
+}
+function renderGitPanel() {
+  const body = qs("#git-body");
+  if (!body) return;
+  const tokenRow =
+    '<div class="git-section-label">GitHub Token</div>' +
+    '<div class="git-field">' +
+    '<input id="git-token-input" type="password" placeholder="ghp_\u2026 (needs \u2018repo\u2019 scope)" value="' + escapeHtml(gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") + '" />' +
+    '</div>' +
+    '<div class="setting-desc">Stored only on this device, sent only to api.github.com, only when you use a Git action here. <a href="https://github.com/settings/tokens/new?scopes=repo&description=CodeForge" target="_blank" rel="noopener" style="color:var(--focus);">Create one on GitHub</a>.</div>';
+
+  if (!currentProjectId) {
+    body.innerHTML = tokenRow +
+      '<div class="settings-divider"></div>' +
+      '<div class="git-section-label">Import a repository</div>' +
+      gitImportFormHtml() +
+      '<div class="empty-hint" style="padding-left:0;">Open or start a project to link it and push changes.</div>';
+    wireGitTokenAndImport(body);
+    return;
+  }
+
+  if (!gitState.linked) {
+    body.innerHTML = tokenRow +
+      '<div class="settings-divider"></div>' +
+      '<div class="git-section-label">Import a repository</div>' +
+      gitImportFormHtml() +
+      '<div class="settings-divider"></div>' +
+      '<div class="git-section-label">Link "' + escapeHtml(projectName) + '" to a repository</div>' +
+      '<div class="setting-desc" style="margin-bottom:8px;">Connects this project to an existing GitHub repo so you can commit &amp; push. This compares against the repo\u2019s current content \u2014 pushing will make GitHub match what\u2019s here.</div>' +
+      gitLinkFormHtml() +
+      '<div id="git-diff-list"></div>';
+    wireGitTokenAndImport(body);
+    wireGitLinkForm(body);
+    return;
+  }
+
+  const link = gitState.linked;
+  const changes = computeGitChanges();
+  let html = tokenRow + '<div class="settings-divider"></div>';
+  html += '<div class="git-section-label">Linked repository</div>';
+  html += '<div class="setting-desc" style="margin-bottom:8px;"><a href="' + ghHelpUrl(link.owner, link.repo) + '" target="_blank" rel="noopener" style="color:var(--focus);">' + escapeHtml(link.owner + "/" + link.repo) + "</a> \u00b7 branch <b>" + escapeHtml(link.branch) + "</b></div>";
+  html += '<div class="git-btn-row" style="margin-bottom:10px;"><button class="git-btn secondary" id="btn-git-resync">Re-sync from GitHub</button><button class="git-btn secondary" id="btn-git-unlink">Unlink</button></div>';
+  html += '<div class="settings-divider"></div>';
+  html += '<div class="git-section-label">Changes (' + changes.length + ')</div>';
+  if (!changes.length) {
+    html += '<div class="empty-hint" style="padding-left:0;">Nothing to commit \u2014 you\u2019re in sync with GitHub.</div>';
+  } else {
+    html += '<div id="git-diff-list">';
+    changes.forEach(function (c) {
+      const badge = c.status === "added" ? "A" : c.status === "deleted" ? "D" : "M";
+      html += '<div class="git-changed-file' + (gitState.selectedDiffPath === c.path ? " selected" : "") + '" data-path="' + escapeHtml(c.path) + '" data-status="' + c.status + '">' +
+        '<span class="git-status-badge ' + badge + '">' + badge + "</span>" +
+        '<span class="git-file-path">' + escapeHtml(c.path) + "</span>" +
+        '<button class="proj-btn" data-act="discard" title="Discard change">' + iconSvg("x", "icon-sm") + "</button>" +
+        "</div>";
+    });
+    html += "</div>";
+    html += '<div class="git-commit-box" style="margin-top:10px;">' +
+      '<textarea id="git-commit-msg" placeholder="Commit message\u2026"></textarea>' +
+      '<div class="git-btn-row" style="margin-top:8px;"><button class="git-btn" id="btn-git-commit-push">' + iconSvg("cloud-upload", "icon-sm") + " Commit &amp; Push</button></div>" +
+      "</div>";
+  }
+  body.innerHTML = html;
+  wireGitTokenAndImport(body);
+
+  const resyncBtn = qs("#btn-git-resync");
+  if (resyncBtn) resyncBtn.addEventListener("click", function () { linkCurrentProjectToGitHub(link.owner, link.repo, link.branch); });
+  const unlinkBtn = qs("#btn-git-unlink");
+  if (unlinkBtn) unlinkBtn.addEventListener("click", function () { if (window.confirm("Unlink this project from GitHub? Your files won't be touched.")) unlinkCurrentProject(); });
+
+  qsa(".git-changed-file", body).forEach(function (row) {
+    row.addEventListener("click", function (e) {
+      if (e.target.closest('[data-act="discard"]')) {
+        const path = row.dataset.path;
+        const status = row.dataset.status;
+        const base = link.baseline[path];
+        if (status === "deleted") { toast("Restore isn't supported yet \u2014 re-add the file manually", "error"); return; }
+        if (status === "added") { deleteEntryWithConfirm(path); return; }
+        if (base) {
+          if (base.isBinary) { toast("Can't discard a binary file change automatically \u2014 replace it manually", "error"); return; }
+          const entry = getOrCreateModel(path, fs.get(path));
+          entry.model.setValue(base.content || "");
+          persistNow(path);
+          toast("Reverted to last synced version");
+        }
+        return;
+      }
+      gitState.selectedDiffPath = row.dataset.path;
+      qsa(".git-changed-file", body).forEach(function (r) { r.classList.remove("selected"); });
+      row.classList.add("selected");
+      showDiffView(state.focusedPane === "secondary" ? "secondary" : "primary", row.dataset.path);
+      if (state.isMobile) closeMobileSidebar();
+    });
+  });
+  const commitBtn = qs("#btn-git-commit-push");
+  if (commitBtn) {
+    commitBtn.addEventListener("click", function () {
+      const msg = (qs("#git-commit-msg").value || "").trim();
+      if (!msg) { toast("Write a commit message first", "error"); return; }
+      commitBtn.textContent = "Pushing\u2026";
+      commitAndPush(msg).then(function (result) {
+        toast("Pushed " + result.count + " change" + (result.count === 1 ? "" : "s") + " to " + link.branch);
+        gitState.selectedDiffPath = null;
+        renderGitPanel();
+      }).catch(function (err) {
+        console.error(err);
+        toast(err.message, "error");
+        renderGitPanel();
+      });
+    });
+  }
+  initSimpleListKeyNav(qs("#git-diff-list"), ".git-changed-file", "kbd-sel", function (row) { row.click(); });
+}
+function gitImportFormHtml() {
+  return '<div class="git-field"><input id="git-import-owner" placeholder="owner" autocomplete="off" /></div>' +
+    '<div class="git-field"><input id="git-import-repo" placeholder="repository" autocomplete="off" /></div>' +
+    '<div class="git-field"><input id="git-import-branch" placeholder="branch (default: main)" autocomplete="off" /></div>' +
+    '<div class="git-btn-row"><button class="git-btn" id="btn-git-import">' + iconSvg("cloud-upload", "icon-sm") + " Import as New Project</button></div>";
+}
+function gitLinkFormHtml() {
+  return '<div class="git-field"><input id="git-link-owner" placeholder="owner" autocomplete="off" /></div>' +
+    '<div class="git-field"><input id="git-link-repo" placeholder="repository" autocomplete="off" /></div>' +
+    '<div class="git-field"><input id="git-link-branch" placeholder="branch (default: main)" autocomplete="off" /></div>' +
+    '<div class="git-btn-row"><button class="git-btn" id="btn-git-link">' + iconSvg("git-branch", "icon-sm") + " Link Project</button></div>";
+}
+function wireGitTokenAndImport(scope) {
+  const tokenInput = qs("#git-token-input", scope);
+  if (tokenInput) {
+    tokenInput.addEventListener("focus", function () { if (gitState.token) tokenInput.value = ""; });
+    tokenInput.addEventListener("change", function () {
+      const v = tokenInput.value.trim();
+      if (v) { gitState.token = v; idbSetMeta("githubToken", v); toast("Token saved locally"); renderGitPanel(); }
+    });
+  }
+  const importBtn = qs("#btn-git-import", scope);
+  if (importBtn) {
+    importBtn.addEventListener("click", function () {
+      const owner = (qs("#git-import-owner", scope).value || "").trim();
+      const repo = (qs("#git-import-repo", scope).value || "").trim();
+      const branch = (qs("#git-import-branch", scope).value || "").trim() || "main";
+      if (!owner || !repo) { toast("Enter an owner and repository", "error"); return; }
+      importFromGitHub(owner, repo, branch);
+    });
+  }
+}
+function wireGitLinkForm(scope) {
+  const linkBtn = qs("#btn-git-link", scope);
+  if (linkBtn) {
+    linkBtn.addEventListener("click", function () {
+      const owner = (qs("#git-link-owner", scope).value || "").trim();
+      const repo = (qs("#git-link-repo", scope).value || "").trim();
+      const branch = (qs("#git-link-branch", scope).value || "").trim() || "main";
+      if (!owner || !repo) { toast("Enter an owner and repository", "error"); return; }
+      linkCurrentProjectToGitHub(owner, repo, branch);
+    });
+  }
+}
+
 /* ============================== SESSION PERSISTENCE ============================== */
 function saveSession() {
   const session = {
@@ -1745,24 +2585,44 @@ function wireStaticUI() {
   qs("#project-root-row").addEventListener("contextmenu", function (e) { e.preventDefault(); if (fs.size) openContextMenuForRoot(e.clientX, e.clientY); });
   attachLongPress(qs("#project-root-row"), function (x, y) { if (fs.size) openContextMenuForRoot(x, y); });
 
-  qs("#btn-upload-files").addEventListener("click", function () { qs("#file-input-files").click(); });
-  qs("#btn-upload-folder").addEventListener("click", function () { qs("#file-input-folder").click(); });
+  let pendingUploadTargetDir = null;
+  qs("#btn-upload-files").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-files").click(); });
+  qs("#btn-upload-folder").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-folder").click(); });
   qs("#btn-open-zip").addEventListener("click", function () { qs("#file-input-zip").click(); });
   qs("#btn-export-zip").addEventListener("click", exportProjectZip);
   qs("#btn-refresh-tree").addEventListener("click", function () { renderTree(); });
 
+  qs("#btn-proj-upload-files").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-files").click(); });
+  qs("#btn-proj-upload-folder").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-folder").click(); });
+  qs("#btn-proj-open-zip").addEventListener("click", function () { qs("#file-input-zip").click(); });
+  qs("#btn-git-refresh").addEventListener("click", function () { renderGitPanel(); toast("Refreshed"); });
+
   qs("#file-input-files").addEventListener("change", function (e) {
-    if (e.target.files.length) importFileList(e.target.files).then(function () { toast("Added " + e.target.files.length + " file(s)"); });
+    const files = e.target.files;
+    const targetDir = pendingUploadTargetDir;
+    pendingUploadTargetDir = null;
+    if (files.length) {
+      if (targetDir !== null) importFileList(files, { targetDir: targetDir }).then(function () { toast("Added " + files.length + " file(s)"); });
+      else openFilesAsNewProject(files);
+    }
     e.target.value = "";
   });
   qs("#file-input-folder").addEventListener("change", function (e) {
-    if (e.target.files.length) importFileList(e.target.files).then(function () { toast("Folder added"); });
+    const files = e.target.files;
+    const targetDir = pendingUploadTargetDir;
+    pendingUploadTargetDir = null;
+    if (files.length) {
+      if (targetDir !== null) importFileList(files, { targetDir: targetDir }).then(function () { toast("Folder added"); });
+      else openFilesAsNewProject(files);
+    }
     e.target.value = "";
   });
   qs("#file-input-zip").addEventListener("change", function (e) {
     if (e.target.files[0]) openZipFile(e.target.files[0]);
     e.target.value = "";
   });
+
+  window.__cfSetUploadTargetDir = function (dir) { pendingUploadTargetDir = dir; };
 
   qsa(".welcome-action").forEach(function (el) {
     el.addEventListener("click", function () {
@@ -1786,6 +2646,7 @@ function wireStaticUI() {
   qs("#palette-backdrop").addEventListener("click", function (e) { if (e.target.id === "palette-backdrop") closePalette(); });
 
   initSettingsPanel();
+  initExplorerKeyNav();
   initSidebarResizer();
   initDesktopSplitterDrag();
   initSplitHandleDrag();
@@ -1845,18 +2706,48 @@ function showBootError(err) {
   if (el) { el.textContent = (err && err.message) ? err.message : String(err); el.classList.add("show"); }
 }
 function boot() {
+  let session = null;
   idbOpen().then(function () {
-    return Promise.all([idbGetAllNodes(), idbGetMeta("project"), idbGetMeta("session"), idbGetMeta("settings")]);
+    return Promise.all([idbGetAllNodes(), idbGetMeta("project"), idbGetMeta("session"), idbGetMeta("settings"), idbListProjects(), idbGetMeta("currentProjectId")]);
   }).then(function (results) {
-    const nodes = results[0], meta = results[1], session = results[2], settings = results[3];
+    const nodes = results[0], meta = results[1], settings = results[3], projects = results[4], savedCurrentId = results[5];
+    session = results[2];
     nodes.forEach(function (n) { fs.set(n.path, n); });
     if (meta && meta.name) projectName = meta.name;
     if (settings) state.settings = Object.assign(state.settings, settings);
+    projects.forEach(function (p) { projectsIndex.set(p.id, p); });
+
+    let migrationPromise = Promise.resolve();
+    if (savedCurrentId && projectsIndex.has(savedCurrentId)) {
+      currentProjectId = savedCurrentId;
+    } else if (fs.size > 0) {
+      // Upgrading from a single-project version, or an otherwise-orphaned active workspace:
+      // register what's already loaded as a real project so it's safe to switch away from.
+      const id = generateProjectId();
+      const now = Date.now();
+      const stats = computeProjectStats();
+      const entry = { id: id, name: projectName || "My Project", createdAt: (meta && meta.createdAt) || now, updatedAt: now, fileCount: stats.fileCount, sizeBytes: stats.sizeBytes };
+      projectsIndex.set(id, entry);
+      currentProjectId = id;
+      migrationPromise = Promise.all([idbPutProjectMeta(entry), idbSetMeta("currentProjectId", id)]);
+    }
+
+    return migrationPromise.then(function () {
+      return currentProjectId ? idbGetMeta("git:" + currentProjectId) : null;
+    }).then(function (gitLink) {
+      gitState.linked = gitLink || null;
+      return idbGetMeta("githubToken");
+    }).then(function (token) {
+      gitState.token = token || "";
+    });
+  }).then(function () {
     wireStaticUI();
     createPrimaryEditor();
     initServiceWorker();
     monaco.editor.setTheme(state.settings.theme);
     renderTree();
+    renderProjectsList();
+    renderGitPanel();
     if (session) restoreSession(session);
     else setPaneOverlay("primary", "welcome");
     updateResponsiveMode();

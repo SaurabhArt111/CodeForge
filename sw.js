@@ -53,6 +53,34 @@ function injectLiveReload(html) {
   return html + LIVE_RELOAD_SNIPPET;
 }
 
+function serveNode(path) {
+  return idbGetNode(path).then(function (node) {
+    if (!node || node.type !== "file") {
+      return new Response(
+        "CodeForge Live Server: \u201c" + path + "\u201d was not found in this project.",
+        { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      );
+    }
+    const type = mimeFor(path);
+    let body;
+    if (node.isBinary) {
+      if (node.dataUrl) {
+        const b64 = node.dataUrl.split(",")[1] || "";
+        body = base64ToBytes(b64);
+      } else {
+        body = new Uint8Array(0);
+      }
+    } else if (/^text\/html/.test(type)) {
+      body = injectLiveReload(node.content || "");
+    } else {
+      body = node.content || "";
+    }
+    return new Response(body, { status: 200, headers: { "Content-Type": type, "Cache-Control": "no-cache" } });
+  }).catch(function (err) {
+    return new Response("CodeForge Live Server error: " + err.message, { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  });
+}
+
 self.addEventListener("install", function (event) {
   self.skipWaiting();
 });
@@ -63,36 +91,26 @@ self.addEventListener("activate", function (event) {
 self.addEventListener("fetch", function (event) {
   const url = new URL(event.request.url);
   const idx = url.pathname.indexOf(LIVE_PREFIX);
-  if (idx === -1) return; // not a live-preview request; let the browser handle it normally
 
-  const encodedPath = url.pathname.slice(idx + LIVE_PREFIX.length);
-  const path = decodeURIComponent(encodedPath).replace(/^\/+/, "");
+  if (idx !== -1) {
+    // Explicit /__live__/<path> request — the normal case for the page itself and any
+    // relatively-referenced resource (style.css, ./assets/img.png, ../shared/app.js, etc).
+    const encodedPath = url.pathname.slice(idx + LIVE_PREFIX.length);
+    const path = decodeURIComponent(encodedPath).replace(/^\/+/, "");
+    event.respondWith(serveNode(path));
+    return;
+  }
 
-  event.respondWith(
-    idbGetNode(path).then(function (node) {
-      if (!node || node.type !== "file") {
-        return new Response(
-          "CodeForge Live Server: \u201c" + path + "\u201d was not found in this project.",
-          { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
-        );
-      }
-      const type = mimeFor(path);
-      let body;
-      if (node.isBinary) {
-        if (node.dataUrl) {
-          const b64 = node.dataUrl.split(",")[1] || "";
-          body = base64ToBytes(b64);
-        } else {
-          body = new Uint8Array(0);
-        }
-      } else if (/^text\/html/.test(type)) {
-        body = injectLiveReload(node.content || "");
-      } else {
-        body = node.content || "";
-      }
-      return new Response(body, { status: 200, headers: { "Content-Type": type, "Cache-Control": "no-cache" } });
-    }).catch(function (err) {
-      return new Response("CodeForge Live Server error: " + err.message, { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } });
-    })
-  );
+  // Root-absolute reference (e.g. <link href="/style.css">, <img src="/images/logo.png">)
+  // from *within* a page we're already live-serving. There's no real per-project domain root
+  // to resolve these against, so we detect them by checking whether the request was triggered
+  // by a document we're already serving under /__live__/ (via the Referer), and if so, resolve
+  // the absolute path against the project root instead of this app's own root.
+  const referer = event.request.referrer || "";
+  if (referer.indexOf(LIVE_PREFIX) !== -1) {
+    const path = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+    event.respondWith(serveNode(path));
+    return;
+  }
+  // Anything else (the CodeForge app's own files) — let the browser handle it normally.
 });

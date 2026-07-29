@@ -1,4 +1,4 @@
-# CodeForge v5.0
+# CodeForge v6.0
 
 A fast, private, browser-based code editor. Upload a project (or a ZIP of one), edit it with
 a real code-editing engine, and export it back out — all on your own device. No account, no
@@ -36,44 +36,52 @@ origin — both options above satisfy that automatically.
 
 ## What it does
 
-- **Upload a ZIP and it opens as a project** — drag one onto the window, or use the ZIP button
-  in the Explorer toolbar. Folders and plain file uploads work too.
+- **Multiple projects, switchable like VS Code workspaces** — upload a file, folder, or ZIP
+  (or drag one onto the window) and it opens as a **new** project; nothing you already had
+  open is erased. A **Projects** panel lists everything you've opened, with one-click switching,
+  renaming, and deleting.
 - **Everything lives on your device** — files are kept in the browser's IndexedDB. Close the
-  tab, come back tomorrow, your project and open tabs are still there. Nothing is synced
+  tab, come back tomorrow, every project and its open tabs are still there. Nothing is synced
   anywhere; there's no account to log into.
+- **GitHub, right from the browser** — a **Source Control** panel lets you import a repo as a
+  new project, or link an existing CodeForge project to push to one. See a changed-files list,
+  open a full side-by-side diff (Monaco's own diff viewer), discard a single file's changes, and
+  **Commit & Push** with your own Personal Access Token — stored only on this device, sent only
+  to `api.github.com`, only when you use it.
+- **Open with Live Server** / **Open in Integrated Browser** — right-click any `.html` file (or
+  use the command palette). "Live Server" opens it in a new browser tab; "Integrated Browser"
+  opens it in a preview pane right inside CodeForge, split next to your editor. Both resolve
+  everything the page references — relative paths *and* root-absolute ones like `/style.css` or
+  `/images/logo.png` — straight out of your project's local storage via a small service worker,
+  and both **live-reload** automatically whenever you save.
 - **Mobile-first split view** — on a phone, the second editor pane is a hidden drawer: tap
   "Split" in the bottom nav, or just drag the grip handle in from the right edge, the way
   vscode.dev's mobile view works. Drag it back to dismiss it.
-- **Mobile bottom nav** — Files / Search / Split / Commands / Settings, replacing the desktop
-  activity bar when the screen is narrow. Full touch support throughout (drag handles,
-  long-press for context menus, edge-swipe to open the file drawer).
+- **Mobile bottom nav** — Files / Search / Git / Projects / Split / Commands / Settings,
+  replacing the desktop activity bar when the screen is narrow. Full touch support throughout
+  (drag handles, long-press for context menus, edge-swipe to open the file drawer).
 - **Real editing, not a toy** — tabs with preview mode, split editing, find/replace, multi-file
-  search, command palette (`Ctrl+Shift+P`), quick open (`Ctrl+P`), rename/delete/duplicate,
-  image preview for binary files, adjustable font size/tab size/word wrap/minimap/theme.
-- **Export back to a ZIP** any time, from the Explorer toolbar or the command palette.
-- **Colored file & folder icons** — a lightweight color-coded scheme (own icons/colors, not
-  a copy of any specific icon theme's artwork) so you can scan a tree by file type at a glance.
-  Common folders like `src`, `test`, `dist`, `assets`, `node_modules` get their own colors too.
-- **Copy Path / Copy Relative Path** — right-click any file or folder.
+  search, command palette (`Ctrl+Shift+P`), quick open (`Ctrl+P`), full keyboard navigation in
+  the explorer (arrow keys, Enter, F2, Delete), cut/copy/paste and per-folder uploads,
+  rename/delete/duplicate, image preview for binary files, adjustable font size/tab
+  size/word wrap/minimap/theme.
 - **Auto Save** — on by default (debounced ~600ms after you stop typing). Turn it off in
   Settings if you'd rather save explicitly with `Ctrl/Cmd + S`; CodeForge will warn you before
   closing the tab if you have unsaved changes.
-- **Open with Live Server** / **Open in Integrated Browser** — right-click any `.html` file (or
-  use the command palette). "Live Server" opens it in a new browser tab; "Integrated Browser"
-  opens it in a preview pane right inside CodeForge, split next to your editor. Both serve the
-  file — and any relative `<link>`/`<script>`/`<img>` it references — straight out of your
-  project's local storage via a small service worker, and both **live-reload** automatically
-  whenever you save. (Relative paths like `style.css` or `./assets/img.png` work great; a
-  root-absolute path like `/style.css` won't, since there's no real per-project domain root.)
-- **Horizontally-scrolling file tree** — long nested paths scroll instead of getting clipped.
+- **Colored file & folder icons** — a lightweight color-coded scheme (own icons/colors, not
+  a copy of any specific icon theme's artwork) so you can scan a tree by file type at a glance.
+- **Copy Path / Copy Relative Path**, horizontally-scrolling file tree for long nested paths,
+  and export any project back to a ZIP any time.
 
 ## What it deliberately doesn't do
 
 This is a real, working editor — not a rebuild of VS Code itself. To keep it something that
 actually runs (rather than a multi-hour native build with no working output), it leaves out
-the pieces that come from VS Code's *extension host*: no extension marketplace, no real git
-integration, no debugger, no integrated terminal shell. Everything else — the editor, the
-explorer, the tabs, the multi-language support, the mobile layout — is fully working.
+the pieces that come from VS Code's *extension host*: no extension marketplace, no debugger,
+no integrated terminal shell. GitHub commit/push/diff works (via GitHub's own REST API), but
+there's no full local git (no branching/merging/history graph/staging index) — CodeForge always
+compares your files against whatever was last synced from GitHub. Everything else — the editor,
+the explorer, the tabs, the multi-language support, the mobile layout — is fully working.
 
 ## Keyboard shortcuts
 
@@ -86,6 +94,23 @@ explorer, the tabs, the multi-language support, the mobile layout — is fully w
 | Find / Replace | `Ctrl/Cmd + F` / `Ctrl/Cmd + H` |
 | Toggle sidebar | `Ctrl/Cmd + B` |
 | Toggle split editor | `Ctrl/Cmd + \` |
+
+With a file selected in the Explorer: `↑`/`↓` move, `→`/`←` expand/collapse, `Enter` opens,
+`F2` renames, `Delete` deletes. The same `↑`/`↓`/`Enter` work in the Source Control changed-files list.
+
+## Using the GitHub integration
+
+1. Open the **Source Control** panel (the branch icon in the activity bar / bottom nav).
+2. Paste a [Personal Access Token](https://github.com/settings/tokens/new?scopes=repo) with
+   `repo` scope — needed for both reading and writing to repositories.
+3. Either **import** a repository (`owner`, `repo`, `branch`) to pull it in as a new project, or
+   **link** your current project to an existing repo to start pushing to it.
+4. Edit files as usual. The panel shows what's changed; click a file for a full diff.
+5. Write a commit message, hit **Commit & Push**. If the remote has moved since you last synced,
+   CodeForge tells you rather than overwriting anything — re-link or re-import to catch up.
+
+This talks directly to `api.github.com` using GitHub's REST/Git Data API — there's no server
+in between, and your token never goes anywhere except GitHub itself.
 
 ## Project structure
 
@@ -104,10 +129,13 @@ No build step. Edit `app.js`/`style.css` directly and refresh.
 ## Privacy
 
 Everything runs client-side. Project files are stored only in this browser's IndexedDB.
-The only network requests this app makes on its own are to load its own local files — it
-does not phone home, does not talk to Microsoft, and does not talk to Anthropic. If you
-host it somewhere, whoever hosts it can see that people downloaded these static files,
-same as any website — but the files people upload for editing never leave their browser.
+This app does not phone home and does not talk to Microsoft or Anthropic. The one exception,
+entirely opt-in, is GitHub: if you choose to use the Source Control panel, your browser talks
+directly to `api.github.com` using a token you provide — that's between you and GitHub, the
+same as using `git` on your own machine would be. Nothing else in CodeForge makes any outside
+network call. If you host this app somewhere, whoever hosts it can see that people downloaded
+these static files, same as any website — but the files people upload for editing never leave
+their browser (except the specific files you choose to push to GitHub).
 
 ## About the download size
 
