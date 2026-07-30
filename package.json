@@ -1,0 +1,16 @@
+{
+    "name": "codeforge",
+    "version": "6.0.0",
+    "private": true,
+    "description": "CodeForge — a fast, private, browser-based code editor. Pure static frontend (no backend, no build step). This file exists only to provide the conventional npm start/dev scripts for local preview; it has zero dependencies and nothing to install.",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js",
+        "serve": "node server.js"
+    },
+    "engines": {
+        "node": ">=14"
+    },
+    "dependencies": {},
+    "devDependencies": {}
+}

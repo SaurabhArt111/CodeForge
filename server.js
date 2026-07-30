@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 /**
- * CodeForge — tiny local static server.
+ * CodeForge — tiny LOCAL-DEVELOPMENT-ONLY static server. This is NOT a backend for the app.
+ * CodeForge is a pure static frontend (HTML/CSS/JS) — deploy the folder as-is to Netlify,
+ * Vercel, GitHub Pages, Cloudflare Pages, or any static host, and this file is never used.
+ *
+ * It exists purely so you can preview local changes before deploying: Monaco's editor workers
+ * and the service worker both require a real http(s) origin, which file:// can't provide.
  * No dependencies. Serves this folder on http://localhost:PORT
- * Needed because Monaco's editor workers require http(s), not file://.
  *
  * Usage:
  *   node server.js [port]
