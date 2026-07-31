@@ -1049,7 +1049,7 @@ input, textarea {
 }
 
 .welcome-recent-list {
-  background: rgba(255,255,255,.03);
+  background: rgba(255, 255, 255, .03);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
   padding: 8px;
@@ -1061,13 +1061,13 @@ input, textarea {
 .welcome-recent-item {
   padding: 10px 12px;
   border-radius: var(--radius);
-  background: rgba(255,255,255,.04);
+  background: rgba(255, 255, 255, .04);
   cursor: pointer;
   transition: background .15s;
 }
 
 .welcome-recent-item:hover {
-  background: rgba(255,255,255,.08);
+  background: rgba(255, 255, 255, .08);
 }
 
 .welcome-recent-item .recent-name {
@@ -1629,10 +1629,6 @@ kbd {
     display: flex;
   }
 
-  #titlebar .desktop-only {
-    display: none;
-  }
-
   #editor-region {
     position: relative;
     overflow: hidden;
@@ -1721,6 +1717,10 @@ kbd {
 
   .overlay-backdrop {
     padding-top: 4vh;
+  }
+
+  .welcome-grid {
+    grid-template-columns: 1fr;
   }
 }
 
