@@ -52,11 +52,12 @@
           <div class="view-header">
             <span>Explorer</span>
             <div class="view-actions">
-              <button id="btn-upload-files" title="Upload files" data-icon="upload"></button>
-              <button id="btn-upload-folder" title="Upload folder" data-icon="folder-upload"></button>
-              <button id="btn-open-zip" title="Open ZIP project" data-icon="archive"></button>
-              <button id="btn-export-zip" title="Export project as ZIP" data-icon="download"></button>
+              <button id="btn-new-file" title="New file" data-icon="file-plus"></button>
+              <button id="btn-new-folder" title="New folder" data-icon="folder-plus"></button>
+              <!-- <button id="btn-open-zip" title="Open ZIP project" data-icon="archive"></button>
+            <button id="btn-export-zip" title="Export project as ZIP" data-icon="download"></button> -->
               <button id="btn-refresh-tree" title="Refresh" data-icon="refresh"></button>
+              <button id="btn-collapse-folders" title="Collapse all folders" data-icon="chevron-down"></button>
             </div>
           </div>
           <div id="project-root-row" title="Right-click for actions">
@@ -151,7 +152,7 @@
           </div>
           <div class="privacy-note">
             <span></span>
-            <span>Your files are stored in this device, nothing is uploaded.</span>
+            <span>Your files are stored in this browser's local storage.</span>
           </div>
         </div>
       </div>
@@ -171,15 +172,22 @@
                 <h1><span class="icon icon-lg" data-icon="code"></span> CodeForge</h1>
                 <p class="tagline">v6.0 · A fast, private, browser-based code editor</p>
 
-                <h2>Start</h2>
-                <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span> New
-                  File <span style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span></div>
-                <div class="welcome-action" data-cmd="upload-files"><span class="icon" data-icon="upload"></span> Upload
-                  Files</div>
-                <div class="welcome-action" data-cmd="upload-folder"><span class="icon"
-                    data-icon="folder-upload"></span> Upload Folder</div>
-                <div class="welcome-action" data-cmd="open-zip"><span class="icon" data-icon="archive"></span> Open ZIP
-                  Project</div>
+                <div class="welcome-grid">
+                  <div class="welcome-column">
+                    <h2>Start</h2>
+                    <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span> New
+                      File <span style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
+                    </div>
+                    <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
+                      New Folder</div>
+                    <div class="welcome-action" data-cmd="open-zip"><span class="icon" data-icon="archive"></span> Open
+                      ZIP Project</div>
+                  </div>
+                  <div class="welcome-column welcome-recent">
+                    <h2>Recent</h2>
+                    <div id="welcome-recent-list" class="welcome-recent-list"></div>
+                  </div>
+                </div>
 
                 <h2>Editor</h2>
                 <div class="kbd-row"><span>New file</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>N</kbd></span></div>

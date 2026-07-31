@@ -48,24 +48,36 @@ const server = http.createServer(function (req, res) {
   try {
     let urlPath = decodeURIComponent(req.url.split("?")[0]);
     if (urlPath === "/") urlPath = "/index.html";
-    const filePath = path.normalize(path.join(ROOT, urlPath));
-    if (!filePath.startsWith(ROOT)) { send(res, 403, { "Content-Type": "text/plain" }, "Forbidden"); return; }
+    // Try the project root first (e.g. index.html), then fall back to public/ (where the
+    // Vite-style layout keeps app.js, style.css, sw.js, vendor/, etc.) — this way `node
+    // server.js` keeps working with zero installs regardless of which layout is present.
+    const rootPath = path.normalize(path.join(ROOT, urlPath));
+    const publicPath = path.normalize(path.join(ROOT, "public", urlPath));
+    if (!rootPath.startsWith(ROOT) || !publicPath.startsWith(path.join(ROOT, "public"))) {
+      send(res, 403, { "Content-Type": "text/plain" }, "Forbidden"); return;
+    }
 
-    fs.stat(filePath, function (err, stat) {
-      if (err || !stat.isFile()) { send(res, 404, { "Content-Type": "text/plain" }, "Not found: " + urlPath); return; }
-      const ext = path.extname(filePath).toLowerCase();
-      const type = MIME[ext] || "application/octet-stream";
-      res.writeHead(200, {
-        "Content-Type": type,
-        "Content-Length": stat.size,
-        "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+    fs.stat(rootPath, function (err, stat) {
+      if (!err && stat.isFile()) { serveFile(res, rootPath, stat); return; }
+      fs.stat(publicPath, function (err2, stat2) {
+        if (err2 || !stat2.isFile()) { send(res, 404, { "Content-Type": "text/plain" }, "Not found: " + urlPath); return; }
+        serveFile(res, publicPath, stat2);
       });
-      fs.createReadStream(filePath).pipe(res);
     });
   } catch (e) {
     send(res, 500, { "Content-Type": "text/plain" }, "Server error: " + e.message);
   }
 });
+function serveFile(res, filePath, stat) {
+  const ext = path.extname(filePath).toLowerCase();
+  const type = MIME[ext] || "application/octet-stream";
+  res.writeHead(200, {
+    "Content-Type": type,
+    "Content-Length": stat.size,
+    "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+  });
+  fs.createReadStream(filePath).pipe(res);
+}
 
 server.listen(PORT, function () {
   console.log("");

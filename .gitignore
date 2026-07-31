@@ -1,4 +1,4 @@
 node_modules/
-.env
 dist/
-Resources/
+.DS_Store
+*.log

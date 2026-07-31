@@ -505,6 +505,16 @@ function toggleDir(path) {
   else state.expandedDirs.add(path);
   renderTree();
 }
+function collapseAllExplorerFolders() {
+  if (!state.expandedDirs.size) {
+    toast("All folders are already collapsed");
+    return;
+  }
+  state.expandedDirs.clear();
+  renderTree();
+  saveSessionDebounced();
+  toast("Collapsed all folders");
+}
 function selectRow(path) {
   state.selectedPath = path;
   qsa(".tree-row.selected").forEach(function (r) { r.classList.remove("selected"); });
@@ -756,6 +766,7 @@ function openContextMenuForRoot(x, y) {
     { label: "New Folder", icon: "folder-plus", action: function () { beginCreateEntry("", "dir"); } },
     { label: "Upload Files Here", icon: "upload", action: function () { window.__cfSetUploadTargetDir(""); qs("#file-input-files").click(); } },
     { label: "Upload Folder Here", icon: "folder-upload", action: function () { window.__cfSetUploadTargetDir(""); qs("#file-input-folder").click(); } },
+    { label: "Collapse All Folders", icon: "chevron-down", action: function () { collapseAllExplorerFolders(); } },
   ];
   if (fileClipboard) { items.push("-"); items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(""); } }); }
   showContextMenu(items, x, y);
@@ -1369,6 +1380,7 @@ function getCommands() {
     { label: "Upload Files…", hint: "", action: function () { qs("#file-input-files").click(); } },
     { label: "Upload Folder…", hint: "", action: function () { qs("#file-input-folder").click(); } },
     { label: "Open ZIP Project…", hint: "", action: function () { qs("#file-input-zip").click(); } },
+    { label: "Collapse All Folders", hint: "", action: collapseAllExplorerFolders },
     { label: "Export Project as ZIP", hint: "", action: function () { exportProjectZip(); } },
     { label: "Save File", hint: "Ctrl+S", action: saveActive },
     { label: "Find in File", hint: "Ctrl+F", action: function () { triggerEditorAction("actions.find"); } },
@@ -2063,6 +2075,28 @@ function renderProjectsList() {
     row.addEventListener("dblclick", function () { if (!isCurrent) switchToProject(p.id); });
     container.appendChild(row);
   });
+  renderWelcomeRecentProjects();
+}
+
+function renderWelcomeRecentProjects() {
+  const list = qs("#welcome-recent-list");
+  if (!list) return;
+  list.innerHTML = "";
+  const entries = Array.from(projectsIndex.values())
+    .sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); })
+    .slice(0, 5);
+  if (!entries.length) {
+    list.appendChild(ce("div", "empty-hint", "No recent projects yet."));
+    return;
+  }
+  entries.forEach(function (p) {
+    const row = ce("div", "welcome-recent-item");
+    row.innerHTML =
+      '<div class="recent-name">' + escapeHtml(p.name) + '</div>' +
+      '<div class="recent-meta">' + (p.fileCount || 0) + ' files · ' + formatBytes(p.sizeBytes || 0) + '</div>';
+    row.addEventListener("click", function () { switchToProject(p.id); });
+    list.appendChild(row);
+  });
 }
 
 /* ============================== GITHUB SOURCE CONTROL ============================== */
@@ -2586,11 +2620,12 @@ function wireStaticUI() {
   attachLongPress(qs("#project-root-row"), function (x, y) { if (fs.size) openContextMenuForRoot(x, y); });
 
   let pendingUploadTargetDir = null;
-  qs("#btn-upload-files").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-files").click(); });
-  qs("#btn-upload-folder").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-folder").click(); });
-  qs("#btn-open-zip").addEventListener("click", function () { qs("#file-input-zip").click(); });
-  qs("#btn-export-zip").addEventListener("click", exportProjectZip);
+  qs("#btn-new-file").addEventListener("click", function () { beginCreateEntry("", "file"); });
+  qs("#btn-new-folder").addEventListener("click", function () { beginCreateEntry("", "dir"); });
+  // qs("#btn-open-zip").addEventListener("click", function () { qs("#file-input-zip").click(); });
+  // qs("#btn-export-zip").addEventListener("click", exportProjectZip);
   qs("#btn-refresh-tree").addEventListener("click", function () { renderTree(); });
+  qs("#btn-collapse-folders").addEventListener("click", collapseAllExplorerFolders);
 
   qs("#btn-proj-upload-files").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-files").click(); });
   qs("#btn-proj-upload-folder").addEventListener("click", function () { pendingUploadTargetDir = null; qs("#file-input-folder").click(); });
@@ -2628,8 +2663,7 @@ function wireStaticUI() {
     el.addEventListener("click", function () {
       const cmd = el.dataset.cmd;
       if (cmd === "new-file") beginCreateEntry("", "file");
-      else if (cmd === "upload-files") qs("#file-input-files").click();
-      else if (cmd === "upload-folder") qs("#file-input-folder").click();
+      else if (cmd === "new-folder") beginCreateEntry("", "dir");
       else if (cmd === "open-zip") qs("#file-input-zip").click();
     });
   });

@@ -33,6 +33,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html, body {
@@ -968,8 +969,8 @@ input, textarea {
 }
 
 .tab-close:hover {
-  background: var(--bg-hover);
-  color: #fff;
+  background: var(--bg-selected);
+  color: #ffffff;
 }
 
 .tab:hover {
@@ -1028,6 +1029,57 @@ input, textarea {
   color: var(--text-dim);
   margin: 0 0 30px;
   font-size: 13px;
+}
+
+.welcome-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.welcome-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.welcome-recent {
+  min-height: 180px;
+}
+
+.welcome-recent-list {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 146px;
+}
+
+.welcome-recent-item {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: rgba(255,255,255,.04);
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.welcome-recent-item:hover {
+  background: rgba(255,255,255,.08);
+}
+
+.welcome-recent-item .recent-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.welcome-recent-item .recent-meta {
+  font-size: 11px;
+  color: var(--text-mute);
 }
 
 .welcome h2 {

@@ -1,7 +1,7 @@
 {
-  "framework": null,
-  "buildCommand": false,
-  "outputDirectory": ".",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
   "headers": [
     {
       "source": "/vendor/(.*)",
