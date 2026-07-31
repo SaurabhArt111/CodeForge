@@ -2379,7 +2379,7 @@ function renderGitPanel() {
   const tokenRow =
     '<div class="git-section-label">GitHub Token</div>' +
     '<div class="git-field">' +
-    '<input id="git-token-input" type="password" placeholder="ghp_\u2026 (needs \u2018repo\u2019 scope)" value="' + escapeHtml(gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") + '" />' +
+    '<input id="git-token-input" type="password" autocomplete="off" placeholder="ghp_\u2026 (needs \u2018repo\u2019 scope)" value="' + escapeHtml(gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") + '" />' +
     '</div>' +
     '<div class="setting-desc">Stored only on this device, sent only to api.github.com, only when you use a Git action here. <a href="https://github.com/settings/tokens/new?scopes=repo&description=CodeForge" target="_blank" rel="noopener" style="color:var(--focus);">Create one on GitHub</a>.</div>';
 
