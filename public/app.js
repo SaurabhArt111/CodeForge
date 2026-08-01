@@ -172,6 +172,100 @@ function toast(msg, kind) {
     setTimeout(function () { el.remove(); }, 200);
   }, kind === "error" ? 4200 : 2200);
 }
+// A toast that stays visible (with a small spinner) for the duration of an async operation,
+// then morphs in place into a success/error toast — instead of a plain "X…" toast followed by
+// a second, separate toast once the work finishes.
+function toastProgress(msg) {
+  const c = qs("#toast-container");
+  const el = ce("div", "toast progress");
+  const spinner = ce("span", "toast-spinner");
+  const msgEl = ce("span", "toast-msg", escapeHtml(msg));
+  el.appendChild(spinner); el.appendChild(msgEl);
+  c.appendChild(el);
+  requestAnimationFrame(function () { el.classList.add("show"); });
+  let done = false;
+  function finish(kind, text) {
+    if (done) return;
+    done = true;
+    el.classList.remove("progress");
+    if (spinner.parentNode) spinner.remove();
+    if (kind === "error") el.classList.add("error");
+    if (text !== undefined && text !== null) msgEl.textContent = text;
+    setTimeout(function () {
+      el.classList.remove("show");
+      setTimeout(function () { el.remove(); }, 200);
+    }, kind === "error" ? 4200 : 2200);
+  }
+  return {
+    update: function (text) { msgEl.textContent = text; },
+    success: function (text) { finish("success", text); },
+    error: function (text) { finish("error", text); },
+    // Dismiss quietly (used when a subsequent toast/UI change already communicates the outcome).
+    close: function () { if (done) return; done = true; el.classList.remove("show"); setTimeout(function () { el.remove(); }, 200); },
+  };
+}
+
+/* ============================== BUSY OVERLAY (full-workspace operations) ============================== */
+// Shown for operations that swap out the whole workspace (opening a ZIP/folder/GitHub repo as a
+// new project, switching between projects) so there's an unmistakable "please wait" signal and
+// the user can't interact with a tree/tabs that are mid-replacement.
+let busyDepth = 0;
+function showBusy(label) {
+  busyDepth++;
+  const overlay = qs("#busy-overlay");
+  const labelEl = qs("#busy-label");
+  if (labelEl) labelEl.textContent = label || "Working\u2026";
+  if (overlay) overlay.classList.add("show");
+}
+function hideBusy() {
+  busyDepth = Math.max(0, busyDepth - 1);
+  if (busyDepth > 0) return;
+  const overlay = qs("#busy-overlay");
+  if (overlay) overlay.classList.remove("show");
+}
+
+/* ============================== INLINE BUTTON LOADING STATE ============================== */
+function setBtnLoading(btn, label) {
+  if (!btn || btn.dataset.cfLoading === "1") return function () {};
+  btn.dataset.cfLoading = "1";
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add("btn-loading");
+  btn.innerHTML = '<span class="btn-spinner"></span><span>' + escapeHtml(label) + "</span>";
+  let restored = false;
+  return function restore() {
+    if (restored) return;
+    restored = true;
+    btn.dataset.cfLoading = "0";
+    btn.disabled = false;
+    btn.classList.remove("btn-loading");
+    // Only put the old contents back if nothing else has since replaced this button's markup
+    // (renderGitPanel often rebuilds the whole panel on completion, which is fine either way).
+    if (btn.isConnected) btn.innerHTML = original;
+  };
+}
+
+/* ============================== GLOBAL ERROR SAFETY NET ============================== */
+// Best-effort catch-all so a bug or an unexpected rejection somewhere never fails silently —
+// every code path above this still handles its own errors with a specific, helpful message;
+// this only catches what slips through (e.g. a storage write that was fired-and-forgotten).
+let lastGlobalErrorToastAt = 0;
+function notifyUnexpectedError(err) {
+  const now = Date.now();
+  if (now - lastGlobalErrorToastAt < 4000) return; // avoid toast storms from repeated/cascading errors
+  lastGlobalErrorToastAt = now;
+  const msg = (err && err.message) ? err.message : String(err || "Unknown error");
+  try { toast("Something went wrong: " + msg, "error"); } catch (e) { /* toast container not ready yet */ }
+}
+window.addEventListener("error", function (e) {
+  console.error("CodeForge: unhandled error", e.error || e.message);
+  notifyUnexpectedError(e.error || e.message);
+});
+window.addEventListener("unhandledrejection", function (e) {
+  console.error("CodeForge: unhandled promise rejection", e.reason);
+  notifyUnexpectedError(e.reason);
+  e.preventDefault();
+});
 
 /* ============================== INDEXEDDB LAYER ============================== */
 const DB_NAME = "codeforge-db";
@@ -179,8 +273,17 @@ const DB_VERSION = 2;
 let _db = null;
 function idbOpen() {
   if (_db) return Promise.resolve(_db);
+  if (typeof indexedDB === "undefined") {
+    return Promise.reject(new Error("This browser doesn't support local storage (IndexedDB), which CodeForge needs to save your work. Try a different browser, or turn off private/incognito mode."));
+  }
   return new Promise(function (resolve, reject) {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let req;
+    try {
+      req = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch (err) {
+      reject(new Error("Couldn't open local storage: " + (err && err.message ? err.message : "it may be disabled in this browser (private/incognito mode often blocks it).")));
+      return;
+    }
     req.onupgradeneeded = function (e) {
       const db = e.target.result;
       if (!db.objectStoreNames.contains("nodes")) db.createObjectStore("nodes", { keyPath: "path" });
@@ -189,7 +292,13 @@ function idbOpen() {
       if (!db.objectStoreNames.contains("project_snapshots")) db.createObjectStore("project_snapshots", { keyPath: "id" });
     };
     req.onsuccess = function (e) { _db = e.target.result; resolve(_db); };
-    req.onerror = function (e) { reject(e.target.error); };
+    req.onerror = function (e) {
+      const err = e.target.error;
+      reject(new Error("Couldn't open local storage" + (err && err.message ? ": " + err.message : "") + "."));
+    };
+    req.onblocked = function () {
+      reject(new Error("Local storage is blocked by another open CodeForge tab \u2014 close other CodeForge tabs and reload."));
+    };
   });
 }
 function idbTx(storeName, mode) {
@@ -970,6 +1079,21 @@ function renderTabs(pane) {
     container.insertBefore(tab, fill);
   });
 }
+// Promotes the (at most one) unpinned preview tab showing `path`, in any pane, to a permanent
+// tab — same effect as double-clicking it. No-op if that path isn't the current preview tab.
+function pinPreviewTabForPath(path) {
+  let changed = false;
+  ["primary", "secondary"].forEach(function (pane) {
+    const ps = state[pane];
+    if (ps.previewIndex !== -1 && ps.tabs[ps.previewIndex] && ps.tabs[ps.previewIndex].path === path) {
+      ps.tabs[ps.previewIndex].pinned = true;
+      ps.previewIndex = -1;
+      renderTabs(pane);
+      changed = true;
+    }
+  });
+  if (changed) saveSessionDebounced();
+}
 function closeOthers(pane, keepIdx) {
   const ps = state[pane];
   const keepPath = ps.tabs[keepIdx].path;
@@ -1064,9 +1188,12 @@ function getOrCreateModel(path, node) {
   catch (e) { model = monaco.editor.createModel(node.content || "", lang); }
   const entry = { model: model, savedValue: node.content || "" };
   models.set(path, entry);
-  model.onDidChangeContent(function () {
+  model.onDidChangeContent(function (e) {
     const isDirty = model.getValue() !== entry.savedValue;
     if (isDirty) dirtyPaths.add(path); else dirtyPaths.delete(path);
+    // e.isFlush marks a full programmatic replace (model.setValue(), e.g. a git "discard change"
+    // revert) rather than an actual edit — only real edits should promote a preview tab.
+    if (!e.isFlush) pinPreviewTabForPath(path);
     renderTabs("primary"); renderTabs("secondary");
     if (state.settings.autoSave) schedulePersist(path);
   });
@@ -1160,10 +1287,13 @@ function editorOptions() {
     renderWhitespace: state.settings.whitespace ? "all" : "none",
     automaticLayout: true,
     fixedOverflowWidgets: true,
-    scrollBeyondLastLine: false,
+    // Adds comfortable blank scroll space below the last line (roughly one screenful, like
+    // VS Code's default) — purely extra scroll room, it never adds phantom lines to the gutter
+    // or affects the file's actual line count.
+    scrollBeyondLastLine: true,
     smoothScrolling: true,
     cursorBlinking: "smooth",
-    padding: { top: 8 },
+    padding: { top: 8, bottom: 8 },
   };
 }
 function createPrimaryEditor() {
@@ -1530,9 +1660,14 @@ function updateStorageInfo() {
 }
 function confirmClearAll() {
   if (!window.confirm("This deletes EVERY project and all local data from this browser \u2014 not just the current one. This can't be undone. Continue?")) return;
+  const progress = toastProgress("Clearing local data\u2026");
   clearAllData().then(function () {
-    toast("Cleared. Starting fresh.");
+    progress.success("Cleared. Starting fresh.");
     setTimeout(function () { location.reload(); }, 500);
+  }).catch(function (err) {
+    console.error(err);
+    progress.error("Couldn't fully clear local data" + (err && err.message ? ": " + err.message : "") + " \u2014 reloading.");
+    setTimeout(function () { location.reload(); }, 900);
   });
 }
 function clearAllData() {
@@ -1560,7 +1695,13 @@ function autoOpenWelcomeFile() {
   }
 }
 function openZipFile(file) {
-  toast("Opening " + file.name + "…");
+  if (!file) return Promise.resolve();
+  if (typeof JSZip === "undefined") {
+    toast("The ZIP engine failed to load — try reloading the page.", "error");
+    return Promise.resolve();
+  }
+  showBusy("Opening " + file.name + "\u2026");
+  const failedEntries = [];
   return file.arrayBuffer().then(function (buf) {
     return JSZip.loadAsync(buf);
   }).then(function (zip) {
@@ -1589,7 +1730,7 @@ function openZipFile(file) {
           } else {
             fsSetFile(path, data, false, null, data.length);
           }
-        }).catch(function (err) { console.error("zip entry failed", path, err); });
+        }).catch(function (err) { console.error("zip entry failed", path, err); failedEntries.push(path); });
         tasks.push(t);
       });
       return Promise.all(tasks).then(function () {
@@ -1599,7 +1740,11 @@ function openZipFile(file) {
         fsChildrenOf("").forEach(function (n) { if (n.type === "dir") state.expandedDirs.add(n.path); });
         renderTree();
         closeAll("primary"); closeAll("secondary");
-        toast('Opened "' + projectName + '" as a new project');
+        if (failedEntries.length) {
+          toast('Opened "' + projectName + '" — ' + failedEntries.length + " file(s) couldn't be read and were skipped", "error");
+        } else {
+          toast('Opened "' + projectName + '" as a new project');
+        }
         autoOpenWelcomeFile();
         renderProjectsList();
         saveSessionDebounced();
@@ -1607,11 +1752,15 @@ function openZipFile(file) {
     });
   }).catch(function (err) {
     console.error(err);
-    toast("Could not open that ZIP file.", "error");
-  });
+    toast("Could not open that ZIP file" + (err && err.message ? ": " + err.message : "") + ".", "error");
+  }).finally(hideBusy);
 }
 function exportProjectZip() {
   if (fs.size === 0) { toast("Nothing to export yet", "error"); return; }
+  if (typeof JSZip === "undefined") {
+    toast("The ZIP engine failed to load — try reloading the page.", "error");
+    return;
+  }
   flushAllPersists();
   const zip = new JSZip();
   const root = zip.folder(projectName || "project");
@@ -1624,14 +1773,17 @@ function exportProjectZip() {
       root.file(node.path, node.content || "");
     }
   });
-  toast("Preparing ZIP…");
+  const progress = toastProgress("Preparing ZIP\u2026");
   zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } }).then(function (blob) {
     const url = URL.createObjectURL(blob);
     const a = ce("a"); a.href = url; a.download = (projectName || "project") + ".zip";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-    toast("Exported " + (projectName || "project") + ".zip");
-  }).catch(function (err) { console.error(err); toast("Export failed", "error"); });
+    progress.success("Exported " + (projectName || "project") + ".zip");
+  }).catch(function (err) {
+    console.error(err);
+    progress.error("Export failed" + (err && err.message ? ": " + err.message : ""));
+  });
 }
 
 /* ============================== PLAIN FILE / FOLDER UPLOAD ============================== */
@@ -1642,12 +1794,13 @@ function importFileList(fileList, opts) {
   opts = opts || {};
   const targetDir = opts.targetDir || "";
   const files = Array.from(fileList || []);
-  if (!files.length) return Promise.resolve();
+  if (!files.length) return Promise.resolve({ addedCount: 0, failed: [] });
   const freshProject = fs.size === 0 && !targetDir;
   if (freshProject && !projectName) {
     const rel = files[0].webkitRelativePath;
     projectName = rel ? rel.split("/")[0] : "project";
   } else if (!projectName) { projectName = "project"; }
+  const failed = [];
   const tasks = files.map(function (file) {
     let relPath;
     if (file.webkitRelativePath) relPath = freshProject ? stripFirstSegment(file.webkitRelativePath) : file.webkitRelativePath;
@@ -1659,15 +1812,16 @@ function importFileList(fileList, opts) {
     return reader.then(function (data) {
       if (bin) fsSetFile(relPath, "", true, data, file.size);
       else fsSetFile(relPath, data, false, null, file.size);
-      idbPutNode(fs.get(relPath));
-    }).catch(function (e) { console.error("read failed", relPath, e); });
+      return idbPutNode(fs.get(relPath));
+    }).catch(function (e) { console.error("read failed", relPath, e); failed.push(relPath); });
   });
   return Promise.all(tasks).then(function () {
     return idbSetMeta("project", { name: projectName, createdAt: Date.now() });
-  }).then(function () {
+  }).catch(function (e) { console.error("couldn't save project metadata", e); }).then(function () {
     if (targetDir) state.expandedDirs.add(targetDir);
     renderTree();
     saveSessionDebounced();
+    return { addedCount: files.length - failed.length, failed: failed };
   });
 }
 
@@ -1707,6 +1861,8 @@ function readEntriesRecursively(entries) {
 function importFileListFromEntryFiles(entryFiles) {
   const p0 = entryFiles[0].path;
   const name = uniqueProjectName(p0.indexOf("/") !== -1 ? p0.split("/")[0] : "Dropped Files");
+  showBusy("Opening dropped files\u2026");
+  const failed = [];
   return startNewProject(name).then(function () {
     const tasks = entryFiles.map(function (ef) {
       const relPath = stripFirstSegment(ef.path);
@@ -1716,16 +1872,20 @@ function importFileListFromEntryFiles(entryFiles) {
       return reader.then(function (data) {
         if (bin) fsSetFile(relPath, "", true, data, ef.file.size);
         else fsSetFile(relPath, data, false, null, ef.file.size);
-        idbPutNode(fs.get(relPath));
-      }).catch(function (err) { console.error(err); });
+        return idbPutNode(fs.get(relPath));
+      }).catch(function (err) { console.error(err); failed.push(relPath); });
     });
     return Promise.all(tasks).then(function () {
       renderTree();
-      toast('Opened "' + projectName + '" as a new project');
+      if (failed.length) toast('Opened "' + projectName + '" \u2014 ' + failed.length + " file(s) couldn't be read and were skipped", "error");
+      else toast('Opened "' + projectName + '" as a new project');
       renderProjectsList();
       saveSessionDebounced();
     });
-  });
+  }).catch(function (err) {
+    console.error(err);
+    toast("Couldn't open those files as a project" + (err && err.message ? ": " + err.message : ""), "error");
+  }).finally(hideBusy);
 }
 function handleDroppedItems(dt) {
   const items = dt.items;
@@ -1736,7 +1896,13 @@ function handleDroppedItems(dt) {
       entries[0].file(function (file) { openZipFile(file); });
       return;
     }
-    readEntriesRecursively(entries).then(function (files) { if (files.length) importFileListFromEntryFiles(files); });
+    readEntriesRecursively(entries).then(function (files) {
+      if (files.length) importFileListFromEntryFiles(files);
+      else toast("No readable files found in what was dropped", "error");
+    }).catch(function (err) {
+      console.error(err);
+      toast("Couldn't read the dropped item(s)", "error");
+    });
     return;
   }
   const files = Array.from(dt.files || []);
@@ -1763,8 +1929,16 @@ function notifyLiveReload() {
 function ensureLiveServerReady() {
   if (!("serviceWorker" in navigator)) return Promise.resolve(false);
   if (swReady) return Promise.resolve(true);
-  toast("Preparing Live Server\u2026");
-  return navigator.serviceWorker.ready.then(function () { swReady = true; return true; }).catch(function () { return false; });
+  const progress = toastProgress("Preparing Live Server\u2026");
+  return navigator.serviceWorker.ready.then(function () {
+    swReady = true;
+    progress.close();
+    return true;
+  }).catch(function (err) {
+    console.error("CodeForge: service worker not ready", err);
+    progress.error("Live Server isn't available in this browser session");
+    return false;
+  });
 }
 function appBaseHref() { return location.pathname.replace(/[^/]*$/, ""); }
 function buildLiveUrl(path) {
@@ -1941,6 +2115,7 @@ function loadProjectIntoActiveWorkspace(id) {
 }
 function switchToProject(id) {
   if (id === currentProjectId) { toast("Already viewing " + (projectsIndex.get(id) || {}).name); return Promise.resolve(); }
+  showBusy("Switching project\u2026");
   return saveActiveProjectSnapshotIfAny().then(function () {
     resetActiveWorkspaceInMemory();
     return loadProjectIntoActiveWorkspace(id);
@@ -1953,8 +2128,8 @@ function switchToProject(id) {
     toast('Switched to "' + projectName + '"');
   }).catch(function (err) {
     console.error(err);
-    toast("Couldn't switch projects: " + err.message, "error");
-  });
+    toast("Couldn't switch projects: " + (err && err.message ? err.message : "unknown error"), "error");
+  }).finally(hideBusy);
 }
 function startNewProject(name) {
   return saveActiveProjectSnapshotIfAny().then(function () {
@@ -1995,16 +2170,22 @@ function beginRenameProject(id) {
   if (!meta) return;
   const name = window.prompt("Rename project", meta.name);
   if (!name || !name.trim() || name.trim() === meta.name) return;
+  const previousName = meta.name;
   meta.name = name.trim();
   meta.updatedAt = Date.now();
   idbPutProjectMeta(meta).then(function () {
     if (id === currentProjectId) {
       projectName = meta.name;
-      idbSetMeta("project", { name: projectName, createdAt: meta.createdAt });
-      renderTree();
+      return idbSetMeta("project", { name: projectName, createdAt: meta.createdAt }).catch(function (err) { console.error(err); }).then(function () { renderTree(); });
     }
+  }).then(function () {
     renderProjectsList();
     toast("Renamed to " + meta.name);
+  }).catch(function (err) {
+    console.error(err);
+    meta.name = previousName; // roll back so the UI doesn't claim a rename that didn't persist
+    renderProjectsList();
+    toast("Couldn't rename project" + (err && err.message ? ": " + err.message : ""), "error");
   });
 }
 function deleteProjectWithConfirm(id) {
@@ -2013,6 +2194,7 @@ function deleteProjectWithConfirm(id) {
   if (!window.confirm('Delete project "' + meta.name + '" and all its files? This can\'t be undone.')) return;
   const wasCurrent = id === currentProjectId;
   projectsIndex.delete(id);
+  renderProjectsList();
   Promise.all([idbDeleteProjectMeta(id), idbDeleteProjectSnapshot(id), idbSetMeta("git:" + id, null)]).then(function () {
     if (wasCurrent) {
       currentProjectId = null;
@@ -2026,6 +2208,11 @@ function deleteProjectWithConfirm(id) {
   }).then(function () {
     renderProjectsList();
     toast("Project deleted");
+  }).catch(function (err) {
+    console.error(err);
+    projectsIndex.set(id, meta); // roll back the optimistic removal so the list stays accurate
+    renderProjectsList();
+    toast("Couldn't delete project" + (err && err.message ? ": " + err.message : ""), "error");
   });
 }
 function openFilesAsNewProject(fileList) {
@@ -2033,13 +2220,21 @@ function openFilesAsNewProject(fileList) {
   if (!files.length) return Promise.resolve();
   const rel = files[0].webkitRelativePath;
   const name = uniqueProjectName(rel ? rel.split("/")[0] : (files.length === 1 ? files[0].name.replace(/\.[^./]+$/, "") : "Uploaded Files"));
+  showBusy("Opening " + files.length + " file" + (files.length === 1 ? "" : "s") + "\u2026");
   return startNewProject(name).then(function () {
     return importFileList(files);
-  }).then(function () {
+  }).then(function (result) {
     switchSidebarView("explorer");
     renderProjectsList();
-    toast('Opened "' + projectName + '" as a new project');
-  });
+    if (result && result.failed && result.failed.length) {
+      toast('Opened "' + projectName + '" \u2014 ' + result.failed.length + " file(s) couldn't be read and were skipped", "error");
+    } else {
+      toast('Opened "' + projectName + '" as a new project');
+    }
+  }).catch(function (err) {
+    console.error(err);
+    toast("Couldn't open that as a project" + (err && err.message ? ": " + err.message : ""), "error");
+  }).finally(hideBusy);
 }
 function renderProjectsList() {
   const container = qs("#projects-list");
@@ -2092,8 +2287,10 @@ function renderWelcomeRecentProjects() {
   entries.forEach(function (p) {
     const row = ce("div", "welcome-recent-item");
     row.innerHTML =
-      '<div class="recent-name">' + escapeHtml(p.name) + '</div>' +
-      '<div class="recent-meta">' + (p.fileCount || 0) + ' files · ' + formatBytes(p.sizeBytes || 0) + '</div>';
+      '<div class="recent-project">' +
+        '<div class="recent-name">' + escapeHtml(p.name) + '</div>' +
+        '<div class="recent-meta">' + (p.fileCount || 0) + ' files · ' + formatBytes(p.sizeBytes || 0) + '</div>'
+       + '</div>';
     row.addEventListener("click", function () { switchToProject(p.id); });
     list.appendChild(row);
   });
@@ -2112,6 +2309,20 @@ function githubHeaders(extra) {
   return h;
 }
 function ghHelpUrl(owner, repo) { return "https://github.com/" + owner + "/" + repo; }
+// Wraps fetch() with a timeout (fetch alone never times out) and turns raw network failures
+// into a message a person can actually act on, instead of a bare "Failed to fetch" TypeError.
+function fetchWithTimeout(url, opts, ms) {
+  opts = opts || {};
+  const hasController = typeof AbortController !== "undefined";
+  const controller = hasController ? new AbortController() : null;
+  if (controller) opts.signal = controller.signal;
+  const timer = setTimeout(function () { if (controller) controller.abort(); }, ms || 20000);
+  return fetch(url, opts).then(function (res) { clearTimeout(timer); return res; }).catch(function (err) {
+    clearTimeout(timer);
+    if (err && err.name === "AbortError") throw new Error("GitHub request timed out. Check your connection and try again.");
+    throw new Error("Couldn't reach GitHub \u2014 check your internet connection.");
+  });
+}
 
 function b64DecodeUnicode(b64) {
   const binary = atob(b64);
@@ -2125,7 +2336,7 @@ function fetchBlobsWithConcurrency(base, entries, baseline) {
   function worker() {
     if (idx >= entries.length) return Promise.resolve();
     const entry = entries[idx++];
-    return fetch(base + "/git/blobs/" + entry.sha, { headers: githubHeaders() }).then(function (res) {
+    return fetchWithTimeout(base + "/git/blobs/" + entry.sha, { headers: githubHeaders() }, 20000).then(function (res) {
       if (!res.ok) throw new Error("Failed to fetch " + entry.path);
       return res.json();
     }).then(function (blobData) {
@@ -2147,19 +2358,19 @@ function fetchRepoBaseline(owner, repo, branch) {
   // directly — a bit more chatty for large repos, but it works reliably from the browser.
   const base = GITHUB_API + "/repos/" + owner + "/" + repo;
   let commitSha = null, treeSha = null;
-  return fetch(base + "/git/refs/heads/" + encodeURIComponent(branch), { headers: githubHeaders() })
+  return fetchWithTimeout(base + "/git/refs/heads/" + encodeURIComponent(branch), { headers: githubHeaders() }, 20000)
     .then(function (res) {
       if (!res.ok) throw new Error(res.status === 404 ? "Branch or repository not found." : res.status === 401 ? "That token isn't valid." : "GitHub error (" + res.status + ")");
       return res.json();
     }).then(function (refData) {
       commitSha = refData.object.sha;
-      return fetch(base + "/git/commits/" + commitSha, { headers: githubHeaders() });
+      return fetchWithTimeout(base + "/git/commits/" + commitSha, { headers: githubHeaders() }, 20000);
     }).then(function (res) {
       if (!res.ok) throw new Error("Couldn't read the base commit");
       return res.json();
     }).then(function (commitData) {
       treeSha = commitData.tree.sha;
-      return fetch(base + "/git/trees/" + treeSha + "?recursive=1", { headers: githubHeaders() });
+      return fetchWithTimeout(base + "/git/trees/" + treeSha + "?recursive=1", { headers: githubHeaders() }, 20000);
     }).then(function (res) {
       if (!res.ok) throw new Error("Couldn't read the repository tree");
       return res.json();
@@ -2172,8 +2383,9 @@ function fetchRepoBaseline(owner, repo, branch) {
       });
     });
 }
-function importFromGitHub(owner, repo, branch) {
-  toast("Importing " + owner + "/" + repo + "\u2026");
+function importFromGitHub(owner, repo, branch, btn) {
+  const restoreBtn = btn ? setBtnLoading(btn, "Importing\u2026") : function () {};
+  showBusy("Importing " + owner + "/" + repo + "\u2026");
   return fetchRepoBaseline(owner, repo, branch).then(function (result) {
     const name = uniqueProjectName(repo);
     return startNewProject(name).then(function () {
@@ -2198,22 +2410,23 @@ function importFromGitHub(owner, repo, branch) {
     });
   }).catch(function (err) {
     console.error(err);
-    toast("Import failed: " + err.message, "error");
-  });
+    toast("Import failed: " + (err && err.message ? err.message : "unknown error"), "error");
+  }).finally(function () { restoreBtn(); hideBusy(); });
 }
-function linkCurrentProjectToGitHub(owner, repo, branch) {
+function linkCurrentProjectToGitHub(owner, repo, branch, btn) {
   if (!currentProjectId) { toast("Open or start a project first", "error"); return Promise.resolve(); }
-  toast("Linking to " + owner + "/" + repo + "\u2026");
+  const restoreBtn = btn ? setBtnLoading(btn, "Linking\u2026") : function () {};
+  const progress = toastProgress("Linking to " + owner + "/" + repo + "\u2026");
   return fetchRepoBaseline(owner, repo, branch).then(function (result) {
     gitState.linked = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: result.baseline };
     return idbSetMeta("git:" + currentProjectId, gitState.linked);
   }).then(function () {
     renderGitPanel();
-    toast("Linked to " + owner + "/" + repo);
+    progress.success("Linked to " + owner + "/" + repo);
   }).catch(function (err) {
     console.error(err);
-    toast("Couldn't link: " + err.message, "error");
-  });
+    progress.error("Couldn't link: " + (err && err.message ? err.message : "unknown error"));
+  }).finally(restoreBtn);
 }
 function unlinkCurrentProject() {
   if (!currentProjectId) return;
@@ -2255,14 +2468,14 @@ function commitAndPush(message) {
   const headers = githubHeaders({ "Content-Type": "application/json" });
   let latestCommitSha, baseTreeSha, newCommitSha;
 
-  return fetch(base + "/git/refs/heads/" + encodeURIComponent(link.branch), { headers: githubHeaders() })
+  return fetchWithTimeout(base + "/git/refs/heads/" + encodeURIComponent(link.branch), { headers: githubHeaders() }, 20000)
     .then(function (res) { if (!res.ok) throw new Error("Couldn't read branch (" + res.status + ")"); return res.json(); })
     .then(function (refData) {
       latestCommitSha = refData.object.sha;
       if (link.baseCommitSha && latestCommitSha !== link.baseCommitSha) {
         throw new Error("The remote branch has new commits since you last synced. Re-link or re-import to refresh, then reapply your changes.");
       }
-      return fetch(base + "/git/commits/" + latestCommitSha, { headers: githubHeaders() });
+      return fetchWithTimeout(base + "/git/commits/" + latestCommitSha, { headers: githubHeaders() }, 20000);
     }).then(function (res) { if (!res.ok) throw new Error("Couldn't read base commit"); return res.json(); })
     .then(function (commitData) {
       baseTreeSha = commitData.tree.sha;
@@ -2274,7 +2487,7 @@ function commitAndPush(message) {
           const body = node.isBinary
             ? JSON.stringify({ content: (node.dataUrl || "").split(",")[1] || "", encoding: "base64" })
             : JSON.stringify({ content: node.content || "", encoding: "utf-8" });
-          return fetch(base + "/git/blobs", { method: "POST", headers: headers, body: body }).then(function (res) {
+          return fetchWithTimeout(base + "/git/blobs", { method: "POST", headers: headers, body: body }, 30000).then(function (res) {
             if (!res.ok) throw new Error("Failed uploading " + c.path);
             return res.json();
           }).then(function (blobData) {
@@ -2285,14 +2498,14 @@ function commitAndPush(message) {
       });
       return chain;
     }).then(function (treeEntries) {
-      return fetch(base + "/git/trees", { method: "POST", headers: headers, body: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }) });
+      return fetchWithTimeout(base + "/git/trees", { method: "POST", headers: headers, body: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }) }, 25000);
     }).then(function (res) { if (!res.ok) throw new Error("Failed creating tree"); return res.json(); })
     .then(function (treeData) {
-      return fetch(base + "/git/commits", { method: "POST", headers: headers, body: JSON.stringify({ message: message, tree: treeData.sha, parents: [latestCommitSha] }) });
+      return fetchWithTimeout(base + "/git/commits", { method: "POST", headers: headers, body: JSON.stringify({ message: message, tree: treeData.sha, parents: [latestCommitSha] }) }, 20000);
     }).then(function (res) { if (!res.ok) throw new Error("Failed creating commit"); return res.json(); })
     .then(function (commitData) {
       newCommitSha = commitData.sha;
-      return fetch(base + "/git/refs/heads/" + encodeURIComponent(link.branch), { method: "PATCH", headers: headers, body: JSON.stringify({ sha: newCommitSha }) });
+      return fetchWithTimeout(base + "/git/refs/heads/" + encodeURIComponent(link.branch), { method: "PATCH", headers: headers, body: JSON.stringify({ sha: newCommitSha }) }, 20000);
     }).then(function (res) {
       if (!res.ok) throw new Error("Failed pushing (updating branch ref)");
       changes.forEach(function (c) {
@@ -2438,7 +2651,7 @@ function renderGitPanel() {
   wireGitTokenAndImport(body);
 
   const resyncBtn = qs("#btn-git-resync");
-  if (resyncBtn) resyncBtn.addEventListener("click", function () { linkCurrentProjectToGitHub(link.owner, link.repo, link.branch); });
+  if (resyncBtn) resyncBtn.addEventListener("click", function () { linkCurrentProjectToGitHub(link.owner, link.repo, link.branch, resyncBtn); });
   const unlinkBtn = qs("#btn-git-unlink");
   if (unlinkBtn) unlinkBtn.addEventListener("click", function () { if (window.confirm("Unlink this project from GitHub? Your files won't be touched.")) unlinkCurrentProject(); });
 
@@ -2452,10 +2665,15 @@ function renderGitPanel() {
         if (status === "added") { deleteEntryWithConfirm(path); return; }
         if (base) {
           if (base.isBinary) { toast("Can't discard a binary file change automatically \u2014 replace it manually", "error"); return; }
-          const entry = getOrCreateModel(path, fs.get(path));
-          entry.model.setValue(base.content || "");
-          persistNow(path);
-          toast("Reverted to last synced version");
+          try {
+            const entry = getOrCreateModel(path, fs.get(path));
+            entry.model.setValue(base.content || "");
+            persistNow(path);
+            toast("Reverted to last synced version");
+          } catch (err) {
+            console.error(err);
+            toast("Couldn't discard that change", "error");
+          }
         }
         return;
       }
@@ -2471,15 +2689,15 @@ function renderGitPanel() {
     commitBtn.addEventListener("click", function () {
       const msg = (qs("#git-commit-msg").value || "").trim();
       if (!msg) { toast("Write a commit message first", "error"); return; }
-      commitBtn.textContent = "Pushing\u2026";
+      const restoreBtn = setBtnLoading(commitBtn, "Pushing\u2026");
       commitAndPush(msg).then(function (result) {
         toast("Pushed " + result.count + " change" + (result.count === 1 ? "" : "s") + " to " + link.branch);
         gitState.selectedDiffPath = null;
         renderGitPanel();
       }).catch(function (err) {
         console.error(err);
-        toast(err.message, "error");
-        renderGitPanel();
+        toast((err && err.message) ? err.message : "Push failed", "error");
+        restoreBtn();
       });
     });
   }
@@ -2513,7 +2731,7 @@ function wireGitTokenAndImport(scope) {
       const repo = (qs("#git-import-repo", scope).value || "").trim();
       const branch = (qs("#git-import-branch", scope).value || "").trim() || "main";
       if (!owner || !repo) { toast("Enter an owner and repository", "error"); return; }
-      importFromGitHub(owner, repo, branch);
+      importFromGitHub(owner, repo, branch, importBtn);
     });
   }
 }
@@ -2525,7 +2743,7 @@ function wireGitLinkForm(scope) {
       const repo = (qs("#git-link-repo", scope).value || "").trim();
       const branch = (qs("#git-link-branch", scope).value || "").trim() || "main";
       if (!owner || !repo) { toast("Enter an owner and repository", "error"); return; }
-      linkCurrentProjectToGitHub(owner, repo, branch);
+      linkCurrentProjectToGitHub(owner, repo, branch, linkBtn);
     });
   }
 }
@@ -2637,7 +2855,13 @@ function wireStaticUI() {
     const targetDir = pendingUploadTargetDir;
     pendingUploadTargetDir = null;
     if (files.length) {
-      if (targetDir !== null) importFileList(files, { targetDir: targetDir }).then(function () { toast("Added " + files.length + " file(s)"); });
+      if (targetDir !== null) {
+        const progress = toastProgress("Adding " + files.length + " file(s)\u2026");
+        importFileList(files, { targetDir: targetDir }).then(function (result) {
+          if (result.failed.length) progress.error("Added " + result.addedCount + " file(s) \u2014 " + result.failed.length + " couldn't be read");
+          else progress.success("Added " + result.addedCount + " file(s)");
+        }).catch(function (err) { console.error(err); progress.error("Couldn't add those files: " + (err && err.message ? err.message : "unknown error")); });
+      }
       else openFilesAsNewProject(files);
     }
     e.target.value = "";
@@ -2647,7 +2871,13 @@ function wireStaticUI() {
     const targetDir = pendingUploadTargetDir;
     pendingUploadTargetDir = null;
     if (files.length) {
-      if (targetDir !== null) importFileList(files, { targetDir: targetDir }).then(function () { toast("Folder added"); });
+      if (targetDir !== null) {
+        const progress = toastProgress("Adding folder\u2026");
+        importFileList(files, { targetDir: targetDir }).then(function (result) {
+          if (result.failed.length) progress.error("Folder added \u2014 " + result.failed.length + " file(s) couldn't be read");
+          else progress.success("Folder added");
+        }).catch(function (err) { console.error(err); progress.error("Couldn't add that folder: " + (err && err.message ? err.message : "unknown error")); });
+      }
       else openFilesAsNewProject(files);
     }
     e.target.value = "";
@@ -2737,7 +2967,19 @@ function showBootError(err) {
   if (msgEl) msgEl.textContent = "Something went wrong starting CodeForge.";
   if (spinner) spinner.style.display = "none";
   const el = document.getElementById("boot-error");
-  if (el) { el.textContent = (err && err.message) ? err.message : String(err); el.classList.add("show"); }
+  if (el) {
+    el.textContent = (err && err.message) ? err.message : String(err);
+    el.classList.add("show");
+    if (!el.querySelector(".boot-reload-btn")) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "boot-reload-btn";
+      btn.textContent = "Reload";
+      btn.addEventListener("click", function () { location.reload(); });
+      el.appendChild(document.createElement("br"));
+      el.appendChild(btn);
+    }
+  }
 }
 function boot() {
   let session = null;

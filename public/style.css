@@ -1007,6 +1007,7 @@ input, textarea {
 .welcome-inner {
   max-width: 640px;
   width: 100%;
+  padding-bottom: 20px;
 }
 
 .welcome h1 {
@@ -1059,11 +1060,12 @@ input, textarea {
 }
 
 .welcome-recent-item {
-  padding: 10px 12px;
+  padding: 5px 6px;
   border-radius: var(--radius);
   background: rgba(255, 255, 255, .04);
   cursor: pointer;
   transition: background .15s;
+  overflow-y: scroll;
 }
 
 .welcome-recent-item:hover {
@@ -1080,6 +1082,17 @@ input, textarea {
 .welcome-recent-item .recent-meta {
   font-size: 11px;
   color: var(--text-mute);
+}
+
+.recent-project {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.recent-meta {
+  margin-left: auto;
 }
 
 .welcome h2 {
@@ -1534,6 +1547,85 @@ kbd {
   font-size: 14px;
 }
 
+/* Busy overlay — shown for operations that replace the whole workspace (project switch,
+   opening a ZIP/folder/GitHub repo as a new project) so the UI can't be interacted with
+   mid-operation and the user has a clear, lightweight signal that something is happening. */
+#busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(0, 0, 0, .38);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#busy-overlay.show {
+  display: flex;
+}
+
+.busy-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 22px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  min-width: 200px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
+}
+
+.busy-card .spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid var(--border-soft);
+  border-top-color: var(--focus);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+/* Progress toasts — a toast that stays up with a spinner while an operation runs, then morphs
+   in place into a success/error toast instead of stacking a second, separate toast bubble. */
+.toast.progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.toast-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, .28);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+/* Inline button loading state (Git actions, etc.) — disables the button and swaps its label
+   for a small spinner + status text so in-flight network operations are never silent. */
+.btn-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  display: inline-block;
+  border: 2px solid rgba(255, 255, 255, .35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  vertical-align: -2px;
+}
+
+.git-btn.btn-loading {
+  opacity: .8;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* Loading splash */
 #boot-splash {
   position: fixed;
@@ -1579,6 +1671,19 @@ kbd {
 
 #boot-error.show {
   display: block;
+}
+
+.boot-reload-btn {
+  margin-top: 14px;
+  padding: 7px 18px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+}
+
+.boot-reload-btn:hover {
+  background: var(--accent-hover);
 }
 
 /* ---------------- Responsive: mobile ---------------- */
