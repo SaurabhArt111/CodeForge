@@ -2894,6 +2894,8 @@ function wireStaticUI() {
       const cmd = el.dataset.cmd;
       if (cmd === "new-file") beginCreateEntry("", "file");
       else if (cmd === "new-folder") beginCreateEntry("", "dir");
+      else if (cmd === "upload-files") qs("#file-input-files").click();
+      else if (cmd === "upload-folder") qs("#file-input-folder").click();
       else if (cmd === "open-zip") qs("#file-input-zip").click();
     });
   });

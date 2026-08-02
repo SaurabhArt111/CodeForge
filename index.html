@@ -92,10 +92,10 @@
           <div class="view-header">
             <span>Projects</span>
             <div class="view-actions">
-              <button id="btn-proj-upload-files" title="Upload files as a new project" data-icon="upload"></button>
+              <button id="btn-proj-upload-files" title="Upload files as a new project" data-icon="upload">File</button>
               <button id="btn-proj-upload-folder" title="Upload folder as a new project"
-                data-icon="folder-upload"></button>
-              <button id="btn-proj-open-zip" title="Open ZIP as a new project" data-icon="archive"></button>
+                data-icon="folder-upload">Folder</button>
+              <button id="btn-proj-open-zip" title="Open ZIP as a new project" data-icon="archive">ZIP</button>
             </div>
           </div>
           <div id="projects-list"></div>
@@ -175,11 +175,23 @@
                 <div class="welcome-grid">
                   <div class="welcome-column">
                     <h2>Start</h2>
-                    <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span> New
-                      File <span style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
+                    <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span>
+                      New File <span
+                        style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
                     </div>
                     <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
                       New Folder</div>
+                    <div class="welcome-action" data-cmd="upload-files"><span class="icon"
+                        data-icon="archive"></span>
+                      Upload Files</div>
+                    <div class="welcome-action" data-cmd="upload-folder"><span class="icon" data-icon="upload"></span>
+                      Upload Folder</div>
+                    <!-- Hidden file inputs for Upload Files and Upload Folder actions -->
+                    <input id="upload-files-input" type="file" multiple style="display:none"
+                      onchange="(function(e){ /* handle files */ console.log('files selected', e.target.files); })(event)">
+                    <input id="upload-folder-input" type="file" webkitdirectory mozdirectory directory
+                      style="display:none"
+                      onchange="(function(e){ /* handle folder */ console.log('folder selected', e.target.files); })(event)">
                     <div class="welcome-action" data-cmd="open-zip"><span class="icon" data-icon="archive"></span> Open
                       ZIP Project</div>
                   </div>
