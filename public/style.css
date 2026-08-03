@@ -1,4 +1,4 @@
-/* CodeForge — browser IDE. Dark theme tokens match VS Code Dark+ for familiarity. */
+/* CodeForge */
 :root {
   --bg-editor: #1e1e1e;
   --bg-sidebar: #252526;
@@ -36,7 +36,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+html,
+body {
   height: 100%;
 }
 
@@ -62,7 +63,8 @@ button {
   padding: 0;
 }
 
-input, textarea {
+input,
+textarea {
   font-family: inherit;
   color: var(--text);
   background: var(--bg-editor);
@@ -181,7 +183,8 @@ input, textarea {
   border-right: 1px solid var(--border);
 }
 
-#activitybar .ab-top, #activitybar .ab-bottom {
+#activitybar .ab-top,
+#activitybar .ab-bottom {
   display: flex;
   flex-direction: column;
 }
@@ -506,7 +509,8 @@ input, textarea {
   line-height: 1.5;
 }
 
-.setting-row select, .setting-row input[type=number] {
+.setting-row select,
+.setting-row input[type=number] {
   width: 100%;
   padding: 5px 6px;
 }
@@ -860,7 +864,8 @@ input, textarea {
   flex-shrink: 0;
 }
 
-#sidebar-resizer:hover, #sidebar-resizer.dragging {
+#sidebar-resizer:hover,
+#sidebar-resizer.dragging {
   background: var(--focus);
 }
 
@@ -1285,7 +1290,8 @@ kbd {
   flex-shrink: 0;
 }
 
-.splitter-desktop:hover, .splitter-desktop.dragging {
+.splitter-desktop:hover,
+.splitter-desktop.dragging {
   background: var(--focus);
 }
 
@@ -1303,7 +1309,8 @@ kbd {
   flex-shrink: 0;
 }
 
-#statusbar .sb-left, #statusbar .sb-right {
+#statusbar .sb-left,
+#statusbar .sb-right {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1554,9 +1561,7 @@ kbd {
   font-size: 14px;
 }
 
-/* Busy overlay — shown for operations that replace the whole workspace (project switch,
-   opening a ZIP/folder/GitHub repo as a new project) so the UI can't be interacted with
-   mid-operation and the user has a clear, lightweight signal that something is happening. */
+/* Busy overlay */
 #busy-overlay {
   position: fixed;
   inset: 0;
