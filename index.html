@@ -92,10 +92,12 @@
           <div class="view-header">
             <span>Projects</span>
             <div class="view-actions">
-              <button id="btn-proj-upload-files" title="Upload files as a new project" data-icon="upload">File</button>
-              <button id="btn-proj-upload-folder" title="Upload folder as a new project"
-                data-icon="folder-upload">Folder</button>
-              <button id="btn-proj-open-zip" title="Open ZIP as a new project" data-icon="archive">ZIP</button>
+              <button id="btn-proj-upload-files" title="Upload files as a new project"><span
+                  data-icon="upload"></span><span class="btn-label">File</span></button>
+              <button id="btn-proj-upload-folder" title="Upload folder as a new project"><span
+                  data-icon="folder-upload"></span><span class="btn-label">Folder</span></button>
+              <button id="btn-proj-open-zip" title="Open ZIP as a new project"><span data-icon="archive"></span><span
+                  class="btn-label">ZIP</span></button>
             </div>
           </div>
           <div id="projects-list"></div>
@@ -181,19 +183,25 @@
                     </div>
                     <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
                       New Folder</div>
-                    <div class="welcome-action" data-cmd="upload-files"><span class="icon"
-                        data-icon="archive"></span>
-                      Upload Files</div>
-                    <div class="welcome-action" data-cmd="upload-folder"><span class="icon" data-icon="upload"></span>
-                      Upload Folder</div>
-                    <!-- Hidden file inputs for Upload Files and Upload Folder actions -->
-                    <input id="upload-files-input" type="file" multiple style="display:none"
-                      onchange="(function(e){ /* handle files */ console.log('files selected', e.target.files); })(event)">
-                    <input id="upload-folder-input" type="file" webkitdirectory mozdirectory directory
-                      style="display:none"
-                      onchange="(function(e){ /* handle folder */ console.log('folder selected', e.target.files); })(event)">
+                    <div class="welcome-action" data-cmd="upload-files" id="welcome-upload-files"><span class="icon"
+                        data-icon="upload"></span>
+                      <span class="welcome-action-label">Upload Files</span>
+                    </div>
+                    <div class="welcome-action" data-cmd="upload-folder" id="welcome-upload-folder"><span class="icon"
+                        data-icon="folder-upload"></span>
+                      <span class="welcome-action-label">Upload Folder</span>
+                    </div>
                     <div class="welcome-action" data-cmd="open-zip"><span class="icon" data-icon="archive"></span> Open
-                      ZIP Project</div>
+                      ZIP as New Project</div>
+                    <div class="welcome-action" data-cmd="new-project" id="welcome-new-project" style="display:none;">
+                      <span class="icon" data-icon="plus-circle"></span> Add Another Project
+                    </div>
+                    <div class="welcome-action" data-cmd="open-projects" id="welcome-open-projects"
+                      style="display:none;"><span class="icon" data-icon="folder-open"></span> Open Existing Project
+                    </div>
+                    <div class="welcome-action welcome-action-danger" data-cmd="close-project"
+                      id="welcome-close-project" style="display:none;"><span class="icon" data-icon="x"></span> Close
+                      This Project</div>
                   </div>
                   <div class="welcome-column welcome-recent">
                     <h2>Recent</h2>
@@ -210,11 +218,13 @@
                     <kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
                 <div class="kbd-row"><span>Save</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
 
+                <br>
                 <h2>View</h2>
                 <div class="kbd-row"><span>Toggle sidebar</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span>
                 </div>
                 <div class="kbd-row"><span>Split editor</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>\</kbd></span>
                 </div>
+                <br><br><br>
               </div>
             </div>
           </div>
