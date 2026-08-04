@@ -105,10 +105,14 @@ self.addEventListener("fetch", function (event) {
   // from *within* a page we're already live-serving. There's no real per-project domain root
   // to resolve these against, so we detect them by checking whether the request was triggered
   // by a document we're already serving under /__live__/ (via the Referer), and if so, resolve
-  // the absolute path against the project root instead of this app's own root.
+  // the absolute path against that same project's root instead of this app's own root.
   const referer = event.request.referrer || "";
-  if (referer.indexOf(LIVE_PREFIX) !== -1) {
-    const path = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+  const refIdx = referer.indexOf(LIVE_PREFIX);
+  if (refIdx !== -1) {
+    const refPath = decodeURIComponent(referer.slice(refIdx + LIVE_PREFIX.length)).replace(/^\/+/, "");
+    const projectId = refPath.split("/")[0];
+    const absPath = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+    const path = projectId ? projectId + "/" + absPath : absPath;
     event.respondWith(serveNode(path));
     return;
   }

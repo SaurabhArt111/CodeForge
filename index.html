@@ -60,10 +60,8 @@
               <button id="btn-collapse-folders" title="Collapse all folders" data-icon="chevron-down"></button>
             </div>
           </div>
-          <div id="project-root-row" title="Right-click for actions">
-            <span class="chev open" id="root-chev" data-icon="chevron-right"></span>
-            <span class="row-icon folder-icon" data-icon="folder-open"></span>
-            <span id="project-root-name">NO PROJECT OPEN</span>
+          <div id="project-root-row" title="Workspace: every project you have open">
+            <span id="project-root-name">WORKSPACE</span>
           </div>
           <div id="file-tree"></div>
         </div>
@@ -74,7 +72,7 @@
             <input id="search-input" type="text" placeholder="Search across files" autocomplete="off" />
           </div>
           <div id="search-results">
-            <div class="search-empty">Type to search file contents across your whole project.</div>
+            <div class="search-empty">Type to search file contents across every open project.</div>
           </div>
         </div>
 
@@ -91,6 +89,9 @@
         <div id="view-projects" class="view">
           <div class="view-header">
             <span>Projects</span>
+          </div>
+          <div class="view-subheader">
+            <span>Start a new project</span>
             <div class="view-actions">
               <button id="btn-proj-upload-files" title="Upload files as a new project"><span
                   data-icon="upload"></span><span class="btn-label">File</span></button>
@@ -172,11 +173,11 @@
             <div class="welcome" id="welcome-screen">
               <div class="welcome-inner">
                 <h1><span class="icon icon-lg" data-icon="code"></span> CodeForge</h1>
-                <p class="tagline">v6.0 · A fast, private, browser-based code editor</p>
+                <p class="tagline" id="welcome-tagline">v6.0 · A fast, private, browser-based code editor</p>
 
                 <div class="welcome-grid">
                   <div class="welcome-column">
-                    <h2>Start</h2>
+                    <h2 id="welcome-start-heading">Start</h2>
                     <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span>
                       New File <span
                         style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
@@ -217,7 +218,6 @@
                 <div class="kbd-row"><span>Find / Replace</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>F</kbd> /
                     <kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
                 <div class="kbd-row"><span>Save</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
-
                 <br>
                 <h2>View</h2>
                 <div class="kbd-row"><span>Toggle sidebar</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span>

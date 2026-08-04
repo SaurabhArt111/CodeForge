@@ -3,6 +3,19 @@
 (function () {
 "use strict";
 
+/* ============================== SYNTHETIC EVENT SAFETY SHIM ============================== */
+// Some browser extensions, virtual/on-screen keyboards, and automation tools dispatch keyboard
+// or mouse events that are plain `Event` objects rather than full `KeyboardEvent`/`MouseEvent`
+// instances. Monaco's input handling always calls e.getModifierState(...) on events it receives
+// (to read Ctrl/Alt/Shift/AltGraph state), which throws "t.getModifierState is not a function"
+// on those malformed events and crashes out as an unhandled error. A real KeyboardEvent or
+// MouseEvent already implements getModifierState on its own, more specific prototype, so this
+// fallback — added to the base Event prototype — only ever runs for the malformed events that
+// would otherwise crash the editor; it never shadows the real implementation.
+if (typeof Event !== "undefined" && Event.prototype && !Event.prototype.getModifierState) {
+  Event.prototype.getModifierState = function () { return false; };
+}
+
 /* ============================== ICONS ============================== */
 const ICON_PATHS = {
   "files": '<rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
@@ -40,6 +53,7 @@ const ICON_PATHS = {
   "git-commit": '<circle cx="12" cy="12" r="4"></circle><line x1="1.05" y1="12" x2="8" y2="12"></line><line x1="16" y1="12" x2="22.95" y2="12"></line>',
   "cloud-upload": '<path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"></path><polyline points="12 12 16 16 20 12"></polyline><line x1="16" y1="16" x2="16" y2="21"></line>',
   "key": '<circle cx="7" cy="15" r="4"></circle><line x1="10.5" y1="11.5" x2="21" y2="1"></line><line x1="17" y1="5" x2="20" y2="8"></line><line x1="14" y1="8" x2="17" y2="11"></line>',
+  "plus-circle": '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line>',
 };
 function iconSvg(name, extraClass) {
   const d = ICON_PATHS[name] || ICON_PATHS["file"];
@@ -125,6 +139,9 @@ function extOf(path) {
 }
 function baseName(path) { return path.split("/").pop(); }
 function dirName(path) { const i = path.lastIndexOf("/"); return i === -1 ? "" : path.slice(0, i); }
+function projectIdOf(path) { return path.split("/")[0]; }
+function relPathWithin(path) { const i = path.indexOf("/"); return i === -1 ? "" : path.slice(i + 1); }
+function projectMeta(id) { return projectsIndex.get(id) || { id: id, name: "Unknown project", createdAt: 0, updatedAt: 0, fileCount: 0, sizeBytes: 0 }; }
 function joinPath(dir, name) { return dir ? dir + "/" + name : name; }
 function formatBytes(n) {
   if (n < 1024) return n + " B";
@@ -453,8 +470,7 @@ function idbClearProjectSnapshots() {
 
 /* ============================== IN-MEMORY VFS ============================== */
 // fs: Map<path, {path, type:'file'|'dir', content, isBinary, dataUrl, size, mtime}>
-const fs = new Map();
-let projectName = "";
+const fs = new Map(); // path -> node. Path = "<projectId>/<relPath>" (or just "<projectId>" for a project's own root dir).
 
 function fsHasChildren(dirPath) {
   const prefix = dirPath ? dirPath + "/" : "";
@@ -562,6 +578,8 @@ const state = {
   focusedPane: "primary",
   expandedDirs: new Set(),
   selectedPath: null,
+  openProjects: [], // ordered array of project ids currently open in the workspace (multi-root, like a VS Code multi-root workspace)
+  activeProjectId: null, // which open project new files/uploads/pastes default into
   settings: { fontSize: 14, tabSize: 2, wordWrap: true, minimap: true, whitespace: false, theme: "vs-dark", autoSave: true },
   primary: { tabs: [], active: -1, previewIndex: -1 },
   secondary: { tabs: [], active: -1, previewIndex: -1 },
@@ -626,6 +644,7 @@ function collapseAllExplorerFolders() {
 }
 function selectRow(path) {
   state.selectedPath = path;
+  if (path) state.activeProjectId = projectIdOf(path);
   qsa(".tree-row.selected").forEach(function (r) { r.classList.remove("selected"); });
   const row = qs('.tree-row[data-path="' + cssEscape(path) + '"]');
   if (row) row.classList.add("selected");
@@ -637,25 +656,69 @@ function renderTree() {
   const container = qs("#file-tree");
   container.innerHTML = "";
   const rootNameEl = qs("#project-root-name");
-  if (fs.size === 0) {
-    rootNameEl.textContent = "NO PROJECT OPEN";
+  rootNameEl.textContent = "WORKSPACE";
+  if (state.openProjects.length === 0) {
     const hint = ce("div", "empty-hint");
-    hint.innerHTML = "No project open yet.<br><br>Use the toolbar above to upload files or a folder, or open a ZIP project. You can also just start with a new file.";
+    hint.innerHTML = "Your workspace is empty.<br><br>Use the toolbar above to upload files or a folder, open a ZIP as a project, or start with a new file. Open more than one project to work across them side by side.";
     container.appendChild(hint);
     return;
   }
-  rootNameEl.textContent = (projectName || "project").toUpperCase();
-  const rootChildren = fsChildrenOf("");
-  if (rootChildren.length === 0) {
-    container.appendChild(ce("div", "empty-hint", "This project is empty."));
-    return;
-  }
   const frag = document.createDocumentFragment();
-  rootChildren.forEach(function (node) { frag.appendChild(renderNode(node, 1)); });
+  state.openProjects.forEach(function (id) { frag.appendChild(renderProjectRootNode(id, 0)); });
   const inner = ce("div", "tree-inner");
   inner.appendChild(frag);
   container.appendChild(inner);
   if (state.selectedPath) selectRow(state.selectedPath);
+}
+function renderProjectRootNode(id, depth) {
+  const meta = projectMeta(id);
+  const wrap = ce("div");
+  wrap.dataset.wrapPath = id;
+  const row = ce("div", "tree-row project-root-row");
+  row.dataset.path = id;
+  row.dataset.projectRoot = "1";
+  row.style.paddingLeft = (depth * 14) + "px";
+  const expanded = state.expandedDirs.has(id);
+  const chev = ce("span", "chev" + (expanded ? " open" : ""), iconSvg("chevron-right"));
+  row.appendChild(chev);
+  const icon = ce("span", "row-icon folder-icon", iconSvgColored(expanded ? "folder-open" : "folder", "#dcb767"));
+  row.appendChild(icon);
+  const nameSpan = ce("span", "row-name project-root-name", escapeHtml(meta.name));
+  row.appendChild(nameSpan);
+  const badges = ce("span", "project-root-badges");
+  if (gitLinks[id]) { const b = ce("span", "proj-root-badge git", iconSvg("git-branch", "icon-xs")); b.title = "Linked to " + gitLinks[id].owner + "/" + gitLinks[id].repo; badges.appendChild(b); }
+  const changeCount = computeChangesForProject(id).length;
+  if (changeCount) { const b = ce("span", "proj-root-badge count", String(changeCount)); b.title = changeCount + " change" + (changeCount === 1 ? "" : "s"); badges.appendChild(b); }
+  row.appendChild(badges);
+  const closeBtn = ce("button", "row-inline-btn", iconSvg("x", "icon-sm"));
+  closeBtn.title = "Close project";
+  closeBtn.addEventListener("click", function (e) { e.stopPropagation(); closeProjectFromWorkspace(id); });
+  row.appendChild(closeBtn);
+  wrap.appendChild(row);
+
+  const childrenWrap = ce("div", "tree-children" + (expanded ? " open" : ""));
+  if (expanded) {
+    const kids = fsChildrenOf(id);
+    if (kids.length) kids.forEach(function (c) { childrenWrap.appendChild(renderNode(c, depth + 1)); });
+    else childrenWrap.appendChild(ce("div", "empty-hint project-empty-hint", "This project is empty."));
+  }
+  wrap.appendChild(childrenWrap);
+
+  row.addEventListener("click", function () {
+    selectRow(id);
+    qs("#file-tree").focus();
+    toggleDir(id);
+  });
+  row.addEventListener("contextmenu", function (e) {
+    e.preventDefault();
+    selectRow(id);
+    openContextMenuForProjectRoot(id, e.clientX, e.clientY);
+  });
+  attachLongPress(row, function (x, y) {
+    selectRow(id);
+    openContextMenuForProjectRoot(id, x, y);
+  });
+  return wrap;
 }
 function renderNode(node, depth) {
   const wrap = ce("div");
@@ -863,36 +926,62 @@ function openContextMenuForNode(node, x, y) {
   items.push({ label: "Copy", icon: "copy", action: function () { clipCopyPath(node.path); } });
   if (isDir && fileClipboard) items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(node.path); } });
   items.push("-");
-  items.push({ label: "Copy Path", icon: "clipboard", action: function () { copyToClipboard("/" + (projectName || "project") + "/" + node.path); } });
-  items.push({ label: "Copy Relative Path", icon: "clipboard", action: function () { copyToClipboard(node.path); } });
+  const pid = projectIdOf(node.path), pname = projectMeta(pid).name, rel = relPathWithin(node.path);
+  items.push({ label: "Copy Path", icon: "clipboard", action: function () { copyToClipboard("/" + pname + "/" + rel); } });
+  items.push({ label: "Copy Relative Path", icon: "clipboard", action: function () { copyToClipboard(rel); } });
   items.push("-");
   items.push({ label: "Delete", icon: "trash", danger: true, action: function () { deleteEntryWithConfirm(node.path); } });
+  showContextMenu(items, x, y);
+}
+function openContextMenuForProjectRoot(id, x, y) {
+  const meta = projectMeta(id);
+  const items = [
+    { label: "New File", icon: "file-plus", action: function () { beginCreateEntry(id, "file"); } },
+    { label: "New Folder", icon: "folder-plus", action: function () { beginCreateEntry(id, "dir"); } },
+    { label: "Upload Files Here", icon: "upload", action: function () { window.__cfSetUploadTargetDir(id); qs("#file-input-files").click(); } },
+    { label: "Upload Folder Here", icon: "folder-upload", action: function () { window.__cfSetUploadTargetDir(id); qs("#file-input-folder").click(); } },
+    "-",
+  ];
+  if (fileClipboard) items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(id); } });
+  items.push({ label: "Rename Project", icon: "edit", action: function () { beginRenameProject(id); } });
+  items.push({ label: "Export as ZIP", icon: "download", action: function () { exportProjectZip(id); } });
+  items.push("-");
+  items.push({ label: "Copy Path", icon: "clipboard", action: function () { copyToClipboard("/" + meta.name); } });
+  items.push("-");
+  items.push({ label: "Close Project", icon: "x", action: function () { closeProjectFromWorkspace(id); } });
+  items.push({ label: "Delete Project", icon: "trash", danger: true, action: function () { deleteProjectWithConfirm(id); } });
   showContextMenu(items, x, y);
 }
 function openContextMenuForRoot(x, y) {
   const items = [
     { label: "New File", icon: "file-plus", action: function () { beginCreateEntry("", "file"); } },
     { label: "New Folder", icon: "folder-plus", action: function () { beginCreateEntry("", "dir"); } },
-    { label: "Upload Files Here", icon: "upload", action: function () { window.__cfSetUploadTargetDir(""); qs("#file-input-files").click(); } },
-    { label: "Upload Folder Here", icon: "folder-upload", action: function () { window.__cfSetUploadTargetDir(""); qs("#file-input-folder").click(); } },
+    "-",
+    { label: "Add New Project\u2026", icon: "folder-plus", action: function () { promptNewBlankProject(); } },
+    { label: "Upload Files as New Project", icon: "upload", action: function () { window.__cfSetUploadTargetDir(null); qs("#file-input-files").click(); } },
+    { label: "Upload Folder as New Project", icon: "folder-upload", action: function () { window.__cfSetUploadTargetDir(null); qs("#file-input-folder").click(); } },
+    { label: "Open Existing Project\u2026", icon: "folder-open", action: function () { switchSidebarView("projects"); } },
+    "-",
     { label: "Collapse All Folders", icon: "chevron-down", action: function () { collapseAllExplorerFolders(); } },
   ];
-  if (fileClipboard) { items.push("-"); items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(""); } }); }
+  if (fileClipboard && state.openProjects.length) { items.push("-"); items.push({ label: "Paste", icon: "clipboard", action: function () { clipPaste(resolveTargetDir("")); } }); }
   showContextMenu(items, x, y);
 }
 
 /* ============================== CREATE / RENAME / DELETE / DUPLICATE ============================== */
 function beginCreateEntry(parentDir, type) {
   ensureProjectContext().then(function () {
-    beginCreateEntryInner(parentDir, type);
+    const resolved = resolveTargetDir(parentDir);
+    if (!resolved) { toast("Open or start a project first", "error"); return; }
+    beginCreateEntryInner(resolved, type);
   });
 }
 function beginCreateEntryInner(parentDir, type) {
   state.expandedDirs.add(parentDir);
   renderTree();
-  const wrap = parentDir ? qs('[data-wrap-path="' + cssEscape(parentDir) + '"]') : null;
+  const wrap = qs('[data-wrap-path="' + cssEscape(parentDir) + '"]');
   const childrenContainer = wrap ? wrap.querySelector(".tree-children") : qs("#file-tree");
-  const depth = parentDir ? parentDir.split("/").length + 1 : 1;
+  const depth = parentDir.split("/").length;
   const row = ce("div", "tree-row");
   row.style.paddingLeft = (depth * 14) + "px";
   row.style.position = "relative";
@@ -1053,6 +1142,7 @@ function renderTabs(pane) {
   ps.tabs.forEach(function (t, idx) {
     const tab = ce("div", "tab" + (idx === ps.active ? " active" : "") + (t.pinned ? "" : " preview") + (dirtyPaths.has(t.path) ? " dirty" : ""));
     tab.dataset.path = t.path;
+    tab.title = projectMeta(projectIdOf(t.path)).name + " \u2044 " + relPathWithin(t.path);
     const iconName = isImageExt(extOf(t.path)) ? "image" : "file";
     tab.innerHTML = iconSvgColored(iconName, fileColorFor(t.path), "icon-sm") + '<span class="tab-name">' + escapeHtml(baseName(t.path)) + '</span><span class="tab-dot"></span><span class="tab-close">' + iconSvg("x", "icon-sm") + "</span>";
     tab.addEventListener("click", function (e) {
@@ -1176,6 +1266,7 @@ function activateEditorContent(pane, path) {
     const entry = getOrCreateModel(path, node);
     editors[pane].setModel(entry.model);
     editors[pane].updateOptions(editorOptions());
+    applyDiffDecorationsToPane(pane);
     if (pane === state.focusedPane) updateStatusBarForModel(entry.model, path);
     setTimeout(function () { try { editors[pane].layout(); } catch (e) {} }, 30);
   }
@@ -1196,6 +1287,7 @@ function getOrCreateModel(path, node) {
     if (!e.isFlush) pinPreviewTabForPath(path);
     renderTabs("primary"); renderTabs("secondary");
     if (state.settings.autoSave) schedulePersist(path);
+    scheduleDiffRecompute(path);
   });
   return entry;
 }
@@ -1266,6 +1358,7 @@ function closeTab(pane, index) {
     ps.active = -1;
     setPaneOverlay(pane, pane === "primary" ? "welcome" : "empty");
     if (pane === state.focusedPane) updateStatusBarEmpty();
+    if (editors[pane]) editorDiffDecorationIds[pane] = editors[pane].deltaDecorations(editorDiffDecorationIds[pane] || [], []);
   } else if (wasActive) {
     ps.active = Math.min(index, ps.tabs.length - 1);
     activateEditorContent(pane, ps.tabs[ps.active].path);
@@ -1316,17 +1409,22 @@ function applyOptionsToAllEditors() {
   if (editors.secondary) editors.secondary.updateOptions(o);
 }
 function updatePositionStatus(pos) {
-  qs("#sb-position").textContent = "Ln " + pos.lineNumber + ", Col " + pos.column;
+  const posEl = qs("#sb-position");
+  if (posEl) posEl.textContent = "Ln " + pos.lineNumber + ", Col " + pos.column;
 }
 function updateStatusBarForModel(model) {
-  qs("#sb-lang").textContent = friendlyLangName(model.getLanguageId());
+  const langEl = qs("#sb-lang");
+  if (langEl) langEl.textContent = friendlyLangName(model.getLanguageId());
   const ed = editors[state.focusedPane];
   const pos = ed ? ed.getPosition() : null;
-  qs("#sb-position").textContent = pos ? "Ln " + pos.lineNumber + ", Col " + pos.column : "Ln 1, Col 1";
+  const posEl = qs("#sb-position");
+  if (posEl) posEl.textContent = pos ? "Ln " + pos.lineNumber + ", Col " + pos.column : "Ln 1, Col 1";
 }
 function updateStatusBarEmpty() {
-  qs("#sb-lang").textContent = "Plain Text";
-  qs("#sb-position").textContent = "";
+  const langEl = qs("#sb-lang");
+  if (langEl) langEl.textContent = "Plain Text";
+  const posEl = qs("#sb-position");
+  if (posEl) posEl.textContent = "";
 }
 
 /* ============================== SPLIT VIEW ============================== */
@@ -1425,7 +1523,6 @@ function initDesktopSplitterDrag() {
 }
 
 /* ============================== SIDEBAR ============================== */
-let rootExpanded = true;
 function switchSidebarView(view) {
   state.sidebarView = view;
   qsa(".ab-btn").forEach(function (b) { b.classList.toggle("active", b.dataset.view === view); });
@@ -1507,11 +1604,15 @@ function getCommands() {
   return [
     { label: "New File", hint: "Ctrl+N", action: function () { beginCreateEntry("", "file"); } },
     { label: "New Folder", hint: "", action: function () { beginCreateEntry("", "dir"); } },
-    { label: "Upload Files…", hint: "", action: function () { qs("#file-input-files").click(); } },
-    { label: "Upload Folder…", hint: "", action: function () { qs("#file-input-folder").click(); } },
-    { label: "Open ZIP Project…", hint: "", action: function () { qs("#file-input-zip").click(); } },
+    { label: "Add New Project\u2026", hint: "", action: promptNewBlankProject },
+    { label: "Open Existing Project\u2026", hint: "", action: function () { showSidebarView("projects"); } },
+    { label: "Close Active Project", hint: "", action: function () { if (state.activeProjectId) closeProjectFromWorkspace(state.activeProjectId); else toast("No project is open", "error"); } },
+    { label: "Close All Projects", hint: "", action: closeAllProjects },
+    { label: "Upload Files\u2026", hint: "", action: function () { window.__cfSetUploadTargetDir(state.openProjects.length ? resolveTargetDir("") : null); qs("#file-input-files").click(); } },
+    { label: "Upload Folder\u2026", hint: "", action: function () { window.__cfSetUploadTargetDir(state.openProjects.length ? resolveTargetDir("") : null); qs("#file-input-folder").click(); } },
+    { label: "Open ZIP as New Project…", hint: "", action: function () { qs("#file-input-zip").click(); } },
     { label: "Collapse All Folders", hint: "", action: collapseAllExplorerFolders },
-    { label: "Export Project as ZIP", hint: "", action: function () { exportProjectZip(); } },
+    { label: "Export Active Project as ZIP", hint: "", action: function () { exportProjectZip(resolveTargetDir("")); } },
     { label: "Save File", hint: "Ctrl+S", action: saveActive },
     { label: "Find in File", hint: "Ctrl+F", action: function () { triggerEditorAction("actions.find"); } },
     { label: "Replace in File", hint: "Ctrl+H", action: function () { triggerEditorAction("editor.action.startFindReplaceAction"); } },
@@ -1571,7 +1672,11 @@ function renderPaletteList(query) {
   if (paletteMode === "commands") {
     items = getCommands().map(function (c) { return { label: c.label, hint: c.hint, action: c.action, score: fuzzyScore(query, c.label) }; });
   } else {
-    items = allFilePaths().map(function (p) { return { label: baseName(p), hint: p, action: (function (path) { return function () { openFile(path, { preview: false }); }; })(p), score: fuzzyScore(query, p) }; });
+    items = allFilePaths().map(function (p) {
+      const rel = relPathWithin(p), dir = dirName(rel);
+      const hint = projectMeta(projectIdOf(p)).name + (dir ? " / " + dir : "");
+      return { label: baseName(p), hint: hint, path: p, action: (function (path) { return function () { openFile(path, { preview: false }); }; })(p), score: fuzzyScore(query, rel) };
+    });
   }
   items = items.filter(function (i) { return query === "" || i.score > 0; });
   items.sort(function (a, b) { return b.score - a.score; });
@@ -1581,7 +1686,7 @@ function renderPaletteList(query) {
   if (!items.length) { list.appendChild(ce("div", "palette-empty", paletteMode === "files" ? "No matching files" : "No matching commands")); return; }
   items.forEach(function (it, idx) {
     const row = ce("div", "palette-item" + (idx === paletteSelIndex ? " sel" : ""));
-    const iconHtml = paletteMode === "files" ? iconSvgColored(isImageExt(extOf(it.hint)) ? "image" : "file", fileColorFor(it.hint), "icon-sm") : "";
+    const iconHtml = paletteMode === "files" ? iconSvgColored(isImageExt(extOf(it.path)) ? "image" : "file", fileColorFor(it.path), "icon-sm") : "";
     row.innerHTML = (iconHtml ? '<span style="display:flex;align-items:center;gap:8px;">' + iconHtml + escapeHtml(it.label) + "</span>" : "<span>" + escapeHtml(it.label) + "</span>") + "<span class=\"p-hint\">" + escapeHtml(it.hint || "") + "</span>";
     row.addEventListener("click", function () { closePalette(); it.action(); });
     row.addEventListener("mouseenter", function () { paletteSelIndex = idx; updatePaletteSelection(); });
@@ -1604,7 +1709,7 @@ function runPaletteSelection() {
 function performSearch(query) {
   const results = qs("#search-results");
   results.innerHTML = "";
-  if (!query) { results.innerHTML = '<div class="search-empty">Type to search file contents across your whole project.</div>'; return; }
+  if (!query) { results.innerHTML = '<div class="search-empty">Type to search file contents across every open project.</div>'; return; }
   const q = query.toLowerCase();
   let totalHits = 0;
   const filePaths = allFilePaths().filter(function (p) { return !fs.get(p).isBinary; });
@@ -1621,7 +1726,7 @@ function performSearch(query) {
     if (!hits.length) return;
     totalHits += hits.length;
     const group = ce("div", "search-file-group");
-    group.appendChild(ce("div", "search-file-head", escapeHtml(p)));
+    group.appendChild(ce("div", "search-file-head", escapeHtml(projectMeta(projectIdOf(p)).name + " \u2044 " + relPathWithin(p))));
     hits.forEach(function (h) {
       const row = ce("div", "search-hit");
       const idx = h.text.toLowerCase().indexOf(q);
@@ -1672,7 +1777,10 @@ function confirmClearAll() {
 }
 function clearAllData() {
   models.forEach(function (e) { e.model.dispose(); });
-  models.clear(); dirtyPaths.clear(); fs.clear(); projectName = ""; currentProjectId = null;
+  models.clear(); dirtyPaths.clear(); fs.clear();
+  state.openProjects = []; state.activeProjectId = null;
+  Object.keys(gitLinks).forEach(function (k) { delete gitLinks[k]; });
+  Object.keys(localBaselines).forEach(function (k) { delete localBaselines[k]; });
   projectsIndex.clear();
   return Promise.all([idbClearNodes(), idbClearMeta(), idbClearProjects(), idbClearProjectSnapshots()]);
 }
@@ -1687,11 +1795,11 @@ function flushAllDirty() {
 }
 
 /* ============================== ZIP IMPORT / EXPORT ============================== */
-function persistWholeFsToIdb() { return idbPutNodesBulk(Array.from(fs.values())); }
-function autoOpenWelcomeFile() {
+function autoOpenWelcomeFile(projectId) {
   const candidates = ["README.md", "readme.md", "Readme.md", "README.txt", "index.html", "package.json"];
   for (let i = 0; i < candidates.length; i++) {
-    if (fs.has(candidates[i])) { openFile(candidates[i], { preview: true }); return; }
+    const p = projectId + "/" + candidates[i];
+    if (fs.has(p)) { openFile(p, { preview: true }); return; }
   }
 }
 function openZipFile(file) {
@@ -1713,7 +1821,7 @@ function openZipFile(file) {
     const commonRoot = (allSame && firstSeg(names[0])) ? firstSeg(names[0]) : null;
     const newName = uniqueProjectName(commonRoot || file.name.replace(/\.zip$/i, "") || "project");
 
-    return startNewProject(newName).then(function () {
+    return createNewProjectFromName(newName).then(function (id) {
       const tasks = [];
       entries.forEach(function (entry) {
         if (entry.dir) return;
@@ -1721,6 +1829,7 @@ function openZipFile(file) {
         if (commonRoot) path = path.slice(commonRoot.length + 1);
         path = path.replace(/^\/+/, "");
         if (!path) return;
+        path = id + "/" + path;
         const ext = extOf(path);
         const bin = isBinaryExt(ext);
         const t = entry.async(bin ? "base64" : "string").then(function (data) {
@@ -1734,18 +1843,22 @@ function openZipFile(file) {
         tasks.push(t);
       });
       return Promise.all(tasks).then(function () {
-        return persistWholeFsToIdb();
+        const prefix = id + "/";
+        const projectNodes = [];
+        fs.forEach(function (n, p) { if (p === id || p.indexOf(prefix) === 0) projectNodes.push(n); });
+        return idbPutNodesBulk(projectNodes);
       }).then(function () {
-        state.expandedDirs.clear();
-        fsChildrenOf("").forEach(function (n) { if (n.type === "dir") state.expandedDirs.add(n.path); });
+        return resetLocalBaselineForProject(id);
+      }).then(function () {
+        state.expandedDirs.add(id);
         renderTree();
-        closeAll("primary"); closeAll("secondary");
+        const pname = projectMeta(id).name;
         if (failedEntries.length) {
-          toast('Opened "' + projectName + '" — ' + failedEntries.length + " file(s) couldn't be read and were skipped", "error");
+          toast('Opened "' + pname + '" — ' + failedEntries.length + " file(s) couldn't be read and were skipped", "error");
         } else {
-          toast('Opened "' + projectName + '" as a new project');
+          toast('Opened "' + pname + '" as a new project');
         }
-        autoOpenWelcomeFile();
+        autoOpenWelcomeFile(id);
         renderProjectsList();
         saveSessionDebounced();
       });
@@ -1755,31 +1868,40 @@ function openZipFile(file) {
     toast("Could not open that ZIP file" + (err && err.message ? ": " + err.message : "") + ".", "error");
   }).finally(hideBusy);
 }
-function exportProjectZip() {
-  if (fs.size === 0) { toast("Nothing to export yet", "error"); return; }
+function exportProjectZip(id) {
+  id = id || resolveTargetDir("");
+  if (!id) { toast("Open a project first", "error"); return; }
+  const meta = projectMeta(id);
+  const prefix = id + "/";
+  let hasFiles = false;
+  fs.forEach(function (n, p) { if (p.indexOf(prefix) === 0) hasFiles = true; });
+  if (!hasFiles) { toast('"' + meta.name + '" is empty \u2014 nothing to export', "error"); return; }
   if (typeof JSZip === "undefined") {
     toast("The ZIP engine failed to load — try reloading the page.", "error");
     return;
   }
   flushAllPersists();
   const zip = new JSZip();
-  const root = zip.folder(projectName || "project");
-  fs.forEach(function (node) {
-    if (node.type === "dir") { root.folder(node.path); return; }
+  const root = zip.folder(meta.name || "project");
+  fs.forEach(function (node, p) {
+    if (p !== id && p.indexOf(prefix) !== 0) return;
+    const rel = relPathWithin(p);
+    if (!rel) return; // the project's own root entry itself
+    if (node.type === "dir") { root.folder(rel); return; }
     if (node.isBinary) {
-      if (node.dataUrl) { root.file(node.path, node.dataUrl.split(",")[1], { base64: true }); }
-      else { root.file(node.path, ""); }
+      if (node.dataUrl) { root.file(rel, node.dataUrl.split(",")[1], { base64: true }); }
+      else { root.file(rel, ""); }
     } else {
-      root.file(node.path, node.content || "");
+      root.file(rel, node.content || "");
     }
   });
   const progress = toastProgress("Preparing ZIP\u2026");
   zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } }).then(function (blob) {
     const url = URL.createObjectURL(blob);
-    const a = ce("a"); a.href = url; a.download = (projectName || "project") + ".zip";
+    const a = ce("a"); a.href = url; a.download = (meta.name || "project") + ".zip";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-    progress.success("Exported " + (projectName || "project") + ".zip");
+    progress.success("Exported " + (meta.name || "project") + ".zip");
   }).catch(function (err) {
     console.error(err);
     progress.error("Export failed" + (err && err.message ? ": " + err.message : ""));
@@ -1790,22 +1912,22 @@ function exportProjectZip() {
 function readAsText(file) { return new Promise(function (res, rej) { const r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsText(file); }); }
 function readAsDataURL(file) { return new Promise(function (res, rej) { const r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(file); }); }
 function stripFirstSegment(relPath) { const parts = relPath.split("/"); return parts.length > 1 ? parts.slice(1).join("/") : relPath; }
+// Writes uploaded files into `opts.targetDir` (required — always a real, already-open directory
+// path, typically a project id). `opts.stripRootFolder` mirrors the old "fresh project" behavior:
+// true drops a dropped/selected folder's own name (it becomes the target itself, e.g. a brand-new
+// project), false keeps it (it becomes a new subfolder inside an existing location).
 function importFileList(fileList, opts) {
   opts = opts || {};
-  const targetDir = opts.targetDir || "";
+  const targetDir = opts.targetDir;
   const files = Array.from(fileList || []);
   if (!files.length) return Promise.resolve({ addedCount: 0, failed: [] });
-  const freshProject = fs.size === 0 && !targetDir;
-  if (freshProject && !projectName) {
-    const rel = files[0].webkitRelativePath;
-    projectName = rel ? rel.split("/")[0] : "project";
-  } else if (!projectName) { projectName = "project"; }
+  if (!targetDir) return Promise.resolve({ addedCount: 0, failed: files.map(function (f) { return f.name; }) });
   const failed = [];
   const tasks = files.map(function (file) {
     let relPath;
-    if (file.webkitRelativePath) relPath = freshProject ? stripFirstSegment(file.webkitRelativePath) : file.webkitRelativePath;
+    if (file.webkitRelativePath) relPath = opts.stripRootFolder ? stripFirstSegment(file.webkitRelativePath) : file.webkitRelativePath;
     else relPath = file.name;
-    if (targetDir) relPath = joinPath(targetDir, relPath);
+    relPath = joinPath(targetDir, relPath);
     const ext = extOf(relPath);
     const bin = isBinaryExt(ext);
     const reader = bin ? readAsDataURL(file) : readAsText(file);
@@ -1816,9 +1938,7 @@ function importFileList(fileList, opts) {
     }).catch(function (e) { console.error("read failed", relPath, e); failed.push(relPath); });
   });
   return Promise.all(tasks).then(function () {
-    return idbSetMeta("project", { name: projectName, createdAt: Date.now() });
-  }).catch(function (e) { console.error("couldn't save project metadata", e); }).then(function () {
-    if (targetDir) state.expandedDirs.add(targetDir);
+    state.expandedDirs.add(targetDir);
     renderTree();
     saveSessionDebounced();
     return { addedCount: files.length - failed.length, failed: failed };
@@ -1858,30 +1978,59 @@ function readEntriesRecursively(entries) {
   }
   return Promise.all(entries.map(function (e) { return walk(e, ""); })).then(function () { return out; });
 }
-function importFileListFromEntryFiles(entryFiles) {
+// Writes a batch of {file, path} entries (from readEntriesRecursively) into the current fs.
+// `keepRootSegment` mirrors importFileList's own freshProject/targetDir distinction: dropping a
+// folder to START a new project drops the folder's own name (it becomes the project itself), but
+// dropping into an already-open project keeps it (it becomes a new folder inside that project).
+function writeEntryFiles(entryFiles, targetDir, keepRootSegment) {
+  const failed = [];
+  const tasks = entryFiles.map(function (ef) {
+    const relPath = joinPath(targetDir, keepRootSegment ? ef.path : stripFirstSegment(ef.path));
+    const ext = extOf(relPath);
+    const bin = isBinaryExt(ext);
+    const reader = bin ? readAsDataURL(ef.file) : readAsText(ef.file);
+    return reader.then(function (data) {
+      if (bin) fsSetFile(relPath, "", true, data, ef.file.size);
+      else fsSetFile(relPath, data, false, null, ef.file.size);
+      return idbPutNode(fs.get(relPath));
+    }).catch(function (err) { console.error(err); failed.push(relPath); });
+  });
+  return Promise.all(tasks).then(function () { return failed; });
+}
+function importFileListFromEntryFiles(entryFiles, opts) {
+  opts = opts || {};
+  if (opts.intoActiveProject) {
+    const targetDir = resolveTargetDir("");
+    const meta = projectMeta(targetDir);
+    showBusy("Adding dropped files\u2026");
+    return writeEntryFiles(entryFiles, targetDir, true).then(function (failed) {
+      state.expandedDirs.add(targetDir);
+      renderTree();
+      if (failed.length) toast(failed.length + " file(s) couldn't be read and were skipped", "error");
+      else toast("Added " + entryFiles.length + " file" + (entryFiles.length === 1 ? "" : "s") + ' to "' + meta.name + '"');
+      renderProjectsList();
+      saveSessionDebounced();
+    }).catch(function (err) {
+      console.error(err);
+      toast("Couldn't add those files" + (err && err.message ? ": " + err.message : ""), "error");
+    }).finally(hideBusy);
+  }
   const p0 = entryFiles[0].path;
   const name = uniqueProjectName(p0.indexOf("/") !== -1 ? p0.split("/")[0] : "Dropped Files");
   showBusy("Opening dropped files\u2026");
-  const failed = [];
-  return startNewProject(name).then(function () {
-    const tasks = entryFiles.map(function (ef) {
-      const relPath = stripFirstSegment(ef.path);
-      const ext = extOf(relPath);
-      const bin = isBinaryExt(ext);
-      const reader = bin ? readAsDataURL(ef.file) : readAsText(ef.file);
-      return reader.then(function (data) {
-        if (bin) fsSetFile(relPath, "", true, data, ef.file.size);
-        else fsSetFile(relPath, data, false, null, ef.file.size);
-        return idbPutNode(fs.get(relPath));
-      }).catch(function (err) { console.error(err); failed.push(relPath); });
-    });
-    return Promise.all(tasks).then(function () {
-      renderTree();
-      if (failed.length) toast('Opened "' + projectName + '" \u2014 ' + failed.length + " file(s) couldn't be read and were skipped", "error");
-      else toast('Opened "' + projectName + '" as a new project');
-      renderProjectsList();
-      saveSessionDebounced();
-    });
+  let newId = null;
+  return createNewProjectFromName(name).then(function (id) {
+    newId = id;
+    return writeEntryFiles(entryFiles, id, false);
+  }).then(function (failed) {
+    return resetLocalBaselineForProject(newId).then(function () { return failed; });
+  }).then(function (failed) {
+    renderTree();
+    const pname = projectMeta(newId).name;
+    if (failed.length) toast('Opened "' + pname + '" \u2014 ' + failed.length + " file(s) couldn't be read and were skipped", "error");
+    else toast('Opened "' + pname + '" as a new project');
+    renderProjectsList();
+    saveSessionDebounced();
   }).catch(function (err) {
     console.error(err);
     toast("Couldn't open those files as a project" + (err && err.message ? ": " + err.message : ""), "error");
@@ -1897,7 +2046,7 @@ function handleDroppedItems(dt) {
       return;
     }
     readEntriesRecursively(entries).then(function (files) {
-      if (files.length) importFileListFromEntryFiles(files);
+      if (files.length) importFileListFromEntryFiles(files, { intoActiveProject: state.openProjects.length > 0 });
       else toast("No readable files found in what was dropped", "error");
     }).catch(function (err) {
       console.error(err);
@@ -1907,7 +2056,18 @@ function handleDroppedItems(dt) {
   }
   const files = Array.from(dt.files || []);
   if (files.length === 1 && /\.zip$/i.test(files[0].name)) { openZipFile(files[0]); return; }
-  if (files.length) openFilesAsNewProject(files);
+  if (!files.length) return;
+  if (state.openProjects.length) {
+    const targetDir = resolveTargetDir("");
+    const meta = projectMeta(targetDir);
+    const progress = toastProgress("Adding " + files.length + " file(s)\u2026");
+    importFileList(files, { targetDir: targetDir, stripRootFolder: false }).then(function (result) {
+      if (result.failed.length) progress.error("Added " + result.addedCount + " file(s) \u2014 " + result.failed.length + " couldn't be read");
+      else progress.success("Added " + result.addedCount + ' file(s) to "' + meta.name + '"');
+    }).catch(function (err) { console.error(err); progress.error("Couldn't add those files: " + (err && err.message ? err.message : "unknown error")); });
+  } else {
+    openFilesAsNewProject(files);
+  }
 }
 
 /* ============================== LIVE SERVER / INTEGRATED BROWSER ============================== */
@@ -1998,7 +2158,7 @@ function showBrowserPreview(pane, path) {
     bp.querySelector('[data-act="close"]').addEventListener("click", function () { closeBrowserPreview(pane); });
   }
   bp.dataset.path = path;
-  bp.querySelector(".bpv-path").textContent = path;
+  bp.querySelector(".bpv-path").textContent = projectMeta(projectIdOf(path)).name + " \u2044 " + relPathWithin(path);
   bp.querySelector("iframe").src = buildLiveUrl(path);
   setPaneOverlay(pane, "browser");
 }
@@ -2019,17 +2179,18 @@ function withActiveHtmlFile(fn) {
 }
 
 /* ============================== PROJECT WORKSPACE MANAGEMENT ============================== */
-// Multiple projects can exist at once, like VS Code workspaces. Only one is "active" at a time —
-// its files live in the 'nodes'/'meta' stores (same ones the rest of the app already uses).
-// Switching projects snapshots the outgoing project into 'project_snapshots' first, so nothing
-// is ever lost, then loads the target project's snapshot back into the active stores.
-let currentProjectId = null;
+// The workspace can hold several projects open at once, side by side in one Explorer tree — like
+// a VS Code multi-root workspace. Every open project's files live together in the same 'nodes'
+// IndexedDB store (each path is namespaced "<projectId>/<relPath>", so nothing collides); a
+// project that's been closed keeps its files in 'project_snapshots' instead, out of the way until
+// it's reopened.
 const projectsIndex = new Map(); // id -> {id, name, createdAt, updatedAt, fileCount, sizeBytes}
 
 function generateProjectId() { return "proj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8); }
-function computeProjectStats() {
+function computeProjectStats(id) {
   let fileCount = 0, sizeBytes = 0;
-  fs.forEach(function (n) { if (n.type === "file") { fileCount++; sizeBytes += (n.size || 0); } });
+  const prefix = id + "/";
+  fs.forEach(function (n, p) { if (n.type === "file" && (p === id || p.indexOf(prefix) === 0)) { fileCount++; sizeBytes += (n.size || 0); } });
   return { fileCount: fileCount, sizeBytes: sizeBytes };
 }
 function relativeTime(ts) {
@@ -2044,115 +2205,16 @@ function relativeTime(ts) {
   if (d < 30) return d + "d ago";
   return new Date(ts).toLocaleDateString();
 }
-function currentSessionSnapshotObj() {
-  return {
-    sidebarView: state.sidebarView,
-    splitActive: state.splitActive,
-    primary: { tabs: state.primary.tabs, active: state.primary.active, previewIndex: state.primary.previewIndex },
-    secondary: { tabs: state.secondary.tabs, active: state.secondary.active, previewIndex: state.secondary.previewIndex },
-    expandedDirs: Array.from(state.expandedDirs),
-  };
+// A target dir only ever resolves inside an open project. "" means "pick a sensible default" -
+// the active project if one is open, otherwise whichever was opened most recently.
+function resolveTargetDir(dir) {
+  if (dir !== "") return dir;
+  if (state.activeProjectId && state.openProjects.indexOf(state.activeProjectId) !== -1) return state.activeProjectId;
+  return state.openProjects.length ? state.openProjects[state.openProjects.length - 1] : null;
 }
-function saveActiveProjectSnapshotIfAny() {
-  if (!currentProjectId) return Promise.resolve();
-  flushAllPersists();
-  const id = currentProjectId;
-  const nodesArr = Array.from(fs.values());
-  const stats = computeProjectStats();
-  const existing = projectsIndex.get(id) || { id: id, name: projectName, createdAt: Date.now() };
-  const metaEntry = { id: id, name: projectName || existing.name, createdAt: existing.createdAt, updatedAt: Date.now(), fileCount: stats.fileCount, sizeBytes: stats.sizeBytes };
-  projectsIndex.set(id, metaEntry);
-  return Promise.all([
-    idbPutProjectSnapshot(id, { nodes: nodesArr, session: currentSessionSnapshotObj() }),
-    idbPutProjectMeta(metaEntry),
-  ]);
-}
-function resetActiveWorkspaceInMemory() {
-  models.forEach(function (e) { e.model.dispose(); });
-  models.clear(); dirtyPaths.clear(); fs.clear();
-  state.primary = { tabs: [], active: -1, previewIndex: -1 };
-  state.secondary = { tabs: [], active: -1, previewIndex: -1 };
-  state.expandedDirs = new Set();
-  state.selectedPath = null;
-  closeBrowserPreview("primary");
-  closeBrowserPreview("secondary");
-  ["primary", "secondary"].forEach(function (pane) {
-    const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
-    const container = document.getElementById(cid);
-    const dv = container ? container.querySelector(".diff-preview") : null;
-    if (dv) dv.remove();
-  });
-  if (editors.diff) {
-    const dm = editors.diff.getModel();
-    if (dm) { dm.original.dispose(); dm.modified.dispose(); }
-    editors.diff.dispose(); editors.diff = null; editors.diffPane = null;
-  }
-  gitState.linked = null;
-  gitState.selectedDiffPath = null;
-}
-function loadProjectIntoActiveWorkspace(id) {
-  let snapRef = null;
-  return idbGetProjectSnapshot(id).then(function (snap) {
-    if (!snap) throw new Error("That project's data couldn't be found.");
-    snapRef = snap;
-    (snap.nodes || []).forEach(function (n) { fs.set(n.path, n); });
-    return idbClearNodes().then(function () { return idbPutNodesBulk(snap.nodes || []); });
-  }).then(function () {
-    const meta = projectsIndex.get(id) || { name: "project", createdAt: Date.now() };
-    projectName = meta.name;
-    currentProjectId = id;
-    return Promise.all([
-      idbSetMeta("project", { name: projectName, createdAt: meta.createdAt }),
-      idbSetMeta("currentProjectId", id),
-      idbSetMeta("session", snapRef.session || null),
-      idbGetMeta("git:" + id),
-    ]);
-  }).then(function (results) {
-    state.expandedDirs = new Set((snapRef.session && snapRef.session.expandedDirs) || []);
-    gitState.linked = results[3] || null;
-    return snapRef;
-  });
-}
-function switchToProject(id) {
-  if (id === currentProjectId) { toast("Already viewing " + (projectsIndex.get(id) || {}).name); return Promise.resolve(); }
-  showBusy("Switching project\u2026");
-  return saveActiveProjectSnapshotIfAny().then(function () {
-    resetActiveWorkspaceInMemory();
-    return loadProjectIntoActiveWorkspace(id);
-  }).then(function (snap) {
-    renderTree();
-    if (snap.session) restoreSession(snap.session); else setPaneOverlay("primary", "welcome");
-    switchSidebarView("explorer");
-    renderProjectsList();
-    renderGitPanel();
-    toast('Switched to "' + projectName + '"');
-  }).catch(function (err) {
-    console.error(err);
-    toast("Couldn't switch projects: " + (err && err.message ? err.message : "unknown error"), "error");
-  }).finally(hideBusy);
-}
-function startNewProject(name) {
-  return saveActiveProjectSnapshotIfAny().then(function () {
-    resetActiveWorkspaceInMemory();
-    const id = generateProjectId();
-    currentProjectId = id;
-    projectName = name || "Untitled Project";
-    const now = Date.now();
-    const metaEntry = { id: id, name: projectName, createdAt: now, updatedAt: now, fileCount: 0, sizeBytes: 0 };
-    projectsIndex.set(id, metaEntry);
-    return Promise.all([
-      idbClearNodes(),
-      idbSetMeta("project", { name: projectName, createdAt: now }),
-      idbSetMeta("currentProjectId", id),
-      idbSetMeta("session", null),
-      idbPutProjectMeta(metaEntry),
-    ]);
-  }).then(function () {
-    state.expandedDirs = new Set();
-    renderTree();
-    setPaneOverlay("primary", "welcome");
-    renderProjectsList();
-  });
+function ensureProjectContext() {
+  if (state.openProjects.length) return Promise.resolve(resolveTargetDir(""));
+  return createNewProjectFromName(uniqueProjectName("Untitled Project"));
 }
 function uniqueProjectName(wanted) {
   const taken = new Set(Array.from(projectsIndex.values()).map(function (p) { return p.name; }));
@@ -2161,9 +2223,125 @@ function uniqueProjectName(wanted) {
   while (taken.has(wanted + " " + i)) i++;
   return wanted + " " + i;
 }
-function ensureProjectContext() {
-  if (currentProjectId) return Promise.resolve();
-  return startNewProject(uniqueProjectName("Untitled Project"));
+function updateProjectMetaFromLiveFs(id) {
+  const stats = computeProjectStats(id);
+  const meta = Object.assign({}, projectMeta(id), { fileCount: stats.fileCount, sizeBytes: stats.sizeBytes, updatedAt: Date.now() });
+  projectsIndex.set(id, meta);
+  return idbPutProjectMeta(meta);
+}
+// Creates a brand-new, empty project and opens it in the workspace. Resolves with the new id.
+function createNewProjectFromName(name) {
+  const id = generateProjectId();
+  const now = Date.now();
+  const metaEntry = { id: id, name: name || "Untitled Project", createdAt: now, updatedAt: now, fileCount: 0, sizeBytes: 0 };
+  projectsIndex.set(id, metaEntry);
+  fsSetDir(id);
+  state.openProjects.push(id);
+  state.activeProjectId = id;
+  state.expandedDirs.add(id);
+  gitLinks[id] = null;
+  localBaselines[id] = {};
+  return Promise.all([idbPutNode(fs.get(id)), idbPutProjectMeta(metaEntry), saveLocalBaselineForProject(id)]).then(function () {
+    renderTree();
+    renderProjectsList();
+    saveSessionDebounced();
+    return id;
+  });
+}
+function promptNewBlankProject() {
+  const name = window.prompt("Name your new project", uniqueProjectName("Untitled Project"));
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  createNewProjectFromName(uniqueProjectName(trimmed)).then(function () { toast('Created "' + trimmed + '"'); });
+}
+// Pulls a closed project's files back out of 'project_snapshots' into the live 'nodes' store.
+function openProjectIntoWorkspace(id) {
+  return idbGetProjectSnapshot(id).then(function (snap) {
+    const nodes = (snap && snap.nodes) || [];
+    nodes.forEach(function (n) { fs.set(n.path, n); });
+    if (!fs.has(id)) { fsSetDir(id); nodes.push(fs.get(id)); } // guard: very old snapshot missing its own root entry
+    return idbPutNodesBulk(nodes);
+  }).then(function () { return idbDeleteProjectSnapshot(id); })
+    .then(function () { return loadBaselinesForProject(id); });
+}
+// Dumps a project's live files out of the 'nodes' store into a 'project_snapshots' blob and
+// removes them from the live store — the other side of openProjectIntoWorkspace.
+function closeProjectSnapshot(id) {
+  const prefix = id + "/";
+  const nodesArr = [];
+  const toDelete = [];
+  fs.forEach(function (n, p) { if (p === id || p.indexOf(prefix) === 0) { nodesArr.push(n); toDelete.push(p); } });
+  toDelete.forEach(function (p) { fs.delete(p); });
+  return idbPutProjectSnapshot(id, { nodes: nodesArr }).then(function () {
+    return Promise.all(toDelete.map(function (p) { return idbDeleteNode(p); }));
+  });
+}
+function addProjectToWorkspace(id) {
+  if (state.openProjects.indexOf(id) !== -1) {
+    state.activeProjectId = id;
+    state.expandedDirs.add(id);
+    renderTree();
+    if (state.isMobile) closeMobileSidebar();
+    return Promise.resolve();
+  }
+  const meta = projectMeta(id);
+  showBusy('Opening "' + meta.name + '"\u2026');
+  return openProjectIntoWorkspace(id).then(function () {
+    state.openProjects.push(id);
+    state.activeProjectId = id;
+    state.expandedDirs.add(id);
+    renderTree();
+    renderProjectsList();
+    renderGitPanel();
+    switchSidebarView("explorer");
+    refreshAllDiffDecorations();
+    saveSessionDebounced();
+    if (state.isMobile) closeMobileSidebar();
+    toast('Opened "' + meta.name + '"');
+  }).catch(function (err) {
+    console.error(err);
+    toast("Couldn't open that project" + (err && err.message ? ": " + err.message : ""), "error");
+  }).finally(hideBusy);
+}
+// The "Close Project" feature: removes one project from the open workspace (closing its tabs and
+// snapshotting its files) without touching the project's saved data, so it can be reopened later.
+// Closing the last open project returns to the empty-workspace welcome state.
+function closeProjectFromWorkspace(id) {
+  const idx = state.openProjects.indexOf(id);
+  if (idx === -1) return Promise.resolve();
+  flushAllPersists();
+  const prefix = id + "/";
+  ["primary", "secondary"].forEach(function (pane) {
+    const ps = state[pane];
+    let i;
+    while ((i = ps.tabs.findIndex(function (t) { return t.path.indexOf(prefix) === 0; })) !== -1) closeTab(pane, i);
+  });
+  return updateProjectMetaFromLiveFs(id).then(function () {
+    return closeProjectSnapshot(id);
+  }).then(function () {
+    const name = projectMeta(id).name;
+    state.openProjects.splice(idx, 1);
+    delete gitLinks[id];
+    delete localBaselines[id];
+    if (state.activeProjectId === id) state.activeProjectId = state.openProjects[state.openProjects.length - 1] || null;
+    if (state.selectedPath && (state.selectedPath === id || state.selectedPath.indexOf(prefix) === 0)) state.selectedPath = null;
+    state.expandedDirs.delete(id);
+    renderTree();
+    renderProjectsList();
+    renderGitPanel();
+    refreshAllDiffDecorations();
+    saveSessionDebounced();
+    toast('Closed "' + name + '"');
+  }).catch(function (err) {
+    console.error(err);
+    toast("Couldn't close that project" + (err && err.message ? ": " + err.message : ""), "error");
+  });
+}
+function closeAllProjects() {
+  if (!state.openProjects.length) return Promise.resolve();
+  const ids = state.openProjects.slice();
+  return ids.reduce(function (p, id) { return p.then(function () { return closeProjectFromWorkspace(id); }); }, Promise.resolve());
 }
 function beginRenameProject(id) {
   const meta = projectsIndex.get(id);
@@ -2174,11 +2352,7 @@ function beginRenameProject(id) {
   meta.name = name.trim();
   meta.updatedAt = Date.now();
   idbPutProjectMeta(meta).then(function () {
-    if (id === currentProjectId) {
-      projectName = meta.name;
-      return idbSetMeta("project", { name: projectName, createdAt: meta.createdAt }).catch(function (err) { console.error(err); }).then(function () { renderTree(); });
-    }
-  }).then(function () {
+    renderTree();
     renderProjectsList();
     toast("Renamed to " + meta.name);
   }).catch(function (err) {
@@ -2192,19 +2366,11 @@ function deleteProjectWithConfirm(id) {
   const meta = projectsIndex.get(id);
   if (!meta) return;
   if (!window.confirm('Delete project "' + meta.name + '" and all its files? This can\'t be undone.')) return;
-  const wasCurrent = id === currentProjectId;
+  const wasOpen = state.openProjects.indexOf(id) !== -1;
   projectsIndex.delete(id);
   renderProjectsList();
-  Promise.all([idbDeleteProjectMeta(id), idbDeleteProjectSnapshot(id), idbSetMeta("git:" + id, null)]).then(function () {
-    if (wasCurrent) {
-      currentProjectId = null;
-      resetActiveWorkspaceInMemory();
-      projectName = "";
-      return Promise.all([idbClearNodes(), idbSetMeta("project", null), idbSetMeta("currentProjectId", null), idbSetMeta("session", null)]).then(function () {
-        renderTree();
-        setPaneOverlay("primary", "welcome");
-      });
-    }
+  (wasOpen ? closeProjectFromWorkspace(id) : Promise.resolve()).then(function () {
+    return Promise.all([idbDeleteProjectMeta(id), idbDeleteProjectSnapshot(id), idbSetMeta("git:" + id, null), idbSetMeta("baseline:" + id, null)]);
   }).then(function () {
     renderProjectsList();
     toast("Project deleted");
@@ -2221,15 +2387,20 @@ function openFilesAsNewProject(fileList) {
   const rel = files[0].webkitRelativePath;
   const name = uniqueProjectName(rel ? rel.split("/")[0] : (files.length === 1 ? files[0].name.replace(/\.[^./]+$/, "") : "Uploaded Files"));
   showBusy("Opening " + files.length + " file" + (files.length === 1 ? "" : "s") + "\u2026");
-  return startNewProject(name).then(function () {
-    return importFileList(files);
+  let newId = null;
+  return createNewProjectFromName(name).then(function (id) {
+    newId = id;
+    return importFileList(files, { targetDir: id, stripRootFolder: true });
+  }).then(function (result) {
+    return resetLocalBaselineForProject(newId).then(function () { return result; });
   }).then(function (result) {
     switchSidebarView("explorer");
     renderProjectsList();
+    autoOpenWelcomeFile(newId);
     if (result && result.failed && result.failed.length) {
-      toast('Opened "' + projectName + '" \u2014 ' + result.failed.length + " file(s) couldn't be read and were skipped", "error");
+      toast('Opened "' + projectMeta(newId).name + '" \u2014 ' + result.failed.length + " file(s) couldn't be read and were skipped", "error");
     } else {
-      toast('Opened "' + projectName + '" as a new project');
+      toast('Opened "' + projectMeta(newId).name + '" as a new project');
     }
   }).catch(function (err) {
     console.error(err);
@@ -2240,39 +2411,39 @@ function renderProjectsList() {
   const container = qs("#projects-list");
   if (!container) return;
   container.innerHTML = "";
-  if (currentProjectId) {
-    const stats = computeProjectStats();
-    const existing = projectsIndex.get(currentProjectId);
-    if (existing) { existing.fileCount = stats.fileCount; existing.sizeBytes = stats.sizeBytes; existing.name = projectName; }
-  }
+  state.openProjects.forEach(function (id) { updateProjectMetaFromLiveFs(id); });
   const list = Array.from(projectsIndex.values()).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
   if (!list.length) {
-    container.appendChild(ce("div", "empty-hint", "No projects yet. Use Upload / Folder / ZIP above (or drag a folder onto the window) to open your first one."));
+    container.appendChild(ce("div", "empty-hint", "No projects yet. Use File / Folder / ZIP above (or drag a folder onto the window) to open your first one."));
     return;
   }
   list.forEach(function (p) {
-    const isCurrent = p.id === currentProjectId;
-    const row = ce("div", "project-row" + (isCurrent ? " current" : ""));
+    const isOpen = state.openProjects.indexOf(p.id) !== -1;
+    const row = ce("div", "project-row" + (isOpen ? " current" : ""));
     row.innerHTML =
       '<div class="proj-row-main">' +
-      '<div class="proj-row-name">' + escapeHtml(p.name) + (isCurrent ? ' <span class="proj-badge">current</span>' : "") + "</div>" +
+      '<div class="proj-row-name">' + escapeHtml(p.name) + (isOpen ? ' <span class="proj-badge">open</span>' : "") + "</div>" +
       '<div class="proj-row-meta">' + (p.fileCount || 0) + " files \u00b7 " + formatBytes(p.sizeBytes || 0) + " \u00b7 " + relativeTime(p.updatedAt || p.createdAt) + "</div>" +
       "</div>" +
       '<div class="proj-row-actions">' +
-      (isCurrent ? "" : '<button class="proj-btn" data-act="open" title="Open">' + iconSvg("folder-open", "icon-sm") + "</button>") +
+      (isOpen
+        ? '<button class="proj-btn" data-act="close" title="Close project">' + iconSvg("x", "icon-sm") + "</button>"
+        : '<button class="proj-btn" data-act="open" title="Open in workspace">' + iconSvg("folder-open", "icon-sm") + "</button>") +
       '<button class="proj-btn" data-act="rename" title="Rename">' + iconSvg("edit", "icon-sm") + "</button>" +
       '<button class="proj-btn" data-act="delete" title="Delete">' + iconSvg("trash", "icon-sm") + "</button>" +
       "</div>";
     const openBtn = row.querySelector('[data-act="open"]');
-    if (openBtn) openBtn.addEventListener("click", function () { switchToProject(p.id); });
+    if (openBtn) openBtn.addEventListener("click", function () { addProjectToWorkspace(p.id); });
+    const closeBtn = row.querySelector('[data-act="close"]');
+    if (closeBtn) closeBtn.addEventListener("click", function () { closeProjectFromWorkspace(p.id); });
     row.querySelector('[data-act="rename"]').addEventListener("click", function () { beginRenameProject(p.id); });
     row.querySelector('[data-act="delete"]').addEventListener("click", function () { deleteProjectWithConfirm(p.id); });
-    row.addEventListener("dblclick", function () { if (!isCurrent) switchToProject(p.id); });
+    row.addEventListener("dblclick", function () { if (!isOpen) addProjectToWorkspace(p.id); });
     container.appendChild(row);
   });
   renderWelcomeRecentProjects();
+  refreshWelcomeScreenState();
 }
-
 function renderWelcomeRecentProjects() {
   const list = qs("#welcome-recent-list");
   if (!list) return;
@@ -2285,15 +2456,289 @@ function renderWelcomeRecentProjects() {
     return;
   }
   entries.forEach(function (p) {
-    const row = ce("div", "welcome-recent-item");
+    const isOpen = state.openProjects.indexOf(p.id) !== -1;
+    const row = ce("div", "welcome-recent-item" + (isOpen ? " is-open" : ""));
     row.innerHTML =
       '<div class="recent-project">' +
-        '<div class="recent-name">' + escapeHtml(p.name) + '</div>' +
-        '<div class="recent-meta">' + (p.fileCount || 0) + ' files · ' + formatBytes(p.sizeBytes || 0) + '</div>'
-       + '</div>';
-    row.addEventListener("click", function () { switchToProject(p.id); });
+        '<div class="recent-name">' + escapeHtml(p.name) + (isOpen ? ' <span class="proj-badge">open</span>' : "") + "</div>" +
+        '<div class="recent-meta">' + (p.fileCount || 0) + " files \u00b7 " + formatBytes(p.sizeBytes || 0) + "</div>"
+       + "</div>";
+    row.addEventListener("click", function () { addProjectToWorkspace(p.id); });
     list.appendChild(row);
   });
+}
+// The welcome screen's copy and available actions shift depending on whether a project is
+// already open: "Upload Files" starts a new project from a clean slate, but once you're inside a
+// workspace it should obviously mean "add these to what I'm already working on".
+function refreshWelcomeScreenState() {
+  const hasOpen = state.openProjects.length > 0;
+  const activeMeta = state.activeProjectId ? projectMeta(state.activeProjectId) : null;
+  const titleEl = qs("#project-name");
+  if (titleEl) {
+    if (!hasOpen) titleEl.textContent = "CodeForge";
+    else {
+      const names = state.openProjects.map(function (id) { return projectMeta(id).name; });
+      titleEl.textContent = names.length <= 2 ? names.join(", ") : names[0] + " + " + (names.length - 1) + " more";
+    }
+  }
+  const tagline = qs("#welcome-tagline");
+  if (tagline) {
+    tagline.textContent = hasOpen
+      ? "Working in \u201c" + (activeMeta ? activeMeta.name : "your workspace") + "\u201d \u2014 " + state.openProjects.length + " project" + (state.openProjects.length === 1 ? "" : "s") + " open"
+      : "v6.0 \u00b7 A fast, private, browser-based code editor";
+  }
+  const startHeading = qs("#welcome-start-heading");
+  if (startHeading) startHeading.textContent = hasOpen ? "Add to Workspace" : "Start";
+  const ufLabel = qs("#welcome-upload-files .welcome-action-label");
+  if (ufLabel) ufLabel.textContent = hasOpen ? "Add Files to " + (activeMeta ? activeMeta.name : "Project") : "Upload Files";
+  const uFoLabel = qs("#welcome-upload-folder .welcome-action-label");
+  if (uFoLabel) uFoLabel.textContent = hasOpen ? "Add Folder to " + (activeMeta ? activeMeta.name : "Project") : "Upload Folder";
+  const newProj = qs("#welcome-new-project");
+  if (newProj) newProj.style.display = hasOpen ? "" : "none";
+  const openProj = qs("#welcome-open-projects");
+  if (openProj) openProj.style.display = hasOpen ? "" : "none";
+  const closeProj = qs("#welcome-close-project");
+  if (closeProj) closeProj.style.display = hasOpen ? "" : "none";
+}
+
+/* ============================== LOCAL CHANGE TRACKING (baseline) ============================== */
+// "Changes" and the live editor-gutter indicators need something to diff against. For a project
+// linked to GitHub that's the linked commit's blob content (gitLinks[id].baseline, below). For
+// every other project it's this local baseline: a snapshot of file contents taken once, the
+// moment a project's starting files were established (created/uploaded/imported as a whole).
+// Editing after that point — or adding more files later — is what shows up as a change, entirely
+// on-device and without any "commit" step. A path with NO entry here is simply new since the
+// baseline was captured, so it shows as "Added", exactly like an untracked file in git. Both maps
+// below are keyed by project id, and their own keys are the same global paths used everywhere else.
+const gitLinks = {}; // projectId -> {owner,repo,branch,baseCommitSha,baseline} | null
+const localBaselines = {}; // projectId -> {path -> {isBinary, content} | {isBinary, dataUrl}}
+
+function captureLocalBaselineSnapshotForProject(id) {
+  const snap = {};
+  const prefix = id + "/";
+  fs.forEach(function (node, path) {
+    if (node.type !== "file" || (path !== id && path.indexOf(prefix) !== 0)) return;
+    snap[path] = node.isBinary ? { isBinary: true, dataUrl: node.dataUrl || null } : { isBinary: false, content: node.content || "" };
+  });
+  return snap;
+}
+function saveLocalBaselineForProject(id) {
+  return idbSetMeta("baseline:" + id, localBaselines[id] || {});
+}
+function resetLocalBaselineForProject(id) {
+  localBaselines[id] = captureLocalBaselineSnapshotForProject(id);
+  return saveLocalBaselineForProject(id).then(function () { refreshAllDiffDecorations(); });
+}
+// A baseline map's keys might predate the multi-root workspace (unprefixed, project-relative) -
+// this makes them global (projectId-prefixed) either way, idempotently.
+function reprefixBaselineMap(map, id) {
+  const prefix = id + "/";
+  const out = {};
+  Object.keys(map || {}).forEach(function (k) { out[(k === id || k.indexOf(prefix) === 0) ? k : prefix + k] = map[k]; });
+  return out;
+}
+// Loads whichever baselines apply to project `id` (git link + local baseline) into the maps
+// above. If this project predates local change-tracking (no baseline ever stored) and isn't
+// GitHub-linked, seeds one from its current files so existing content doesn't show up as a wall
+// of "Added" changes the first time it's opened after this feature shipped.
+function loadBaselinesForProject(id) {
+  return Promise.all([idbGetMeta("git:" + id), idbGetMeta("baseline:" + id)]).then(function (results) {
+    let link = results[0] || null;
+    if (link && link.baseline) link = Object.assign({}, link, { baseline: reprefixBaselineMap(link.baseline, id) });
+    gitLinks[id] = link;
+    const raw = results[1];
+    if (raw && typeof raw === "object" && Object.keys(raw).length) { localBaselines[id] = reprefixBaselineMap(raw, id); return; }
+    if (gitLinks[id]) { localBaselines[id] = {}; return; } // unused while linked; don't bother snapshotting
+    localBaselines[id] = captureLocalBaselineSnapshotForProject(id);
+    return saveLocalBaselineForProject(id);
+  });
+}
+function activeBaselineSourceFor(id) {
+  return (gitLinks[id] && gitLinks[id].baseline) || localBaselines[id] || {};
+}
+function computeChangesForProject(id) {
+  const baseline = activeBaselineSourceFor(id);
+  const prefix = id + "/";
+  const changes = [];
+  const seen = {};
+  fs.forEach(function (node, path) {
+    if (node.type !== "file" || (path !== id && path.indexOf(prefix) !== 0)) return;
+    seen[path] = true;
+    const base = baseline[path];
+    if (!base) { changes.push({ path: path, status: "added" }); return; }
+    if (node.isBinary || base.isBinary) {
+      if ((node.dataUrl || "") !== (base.dataUrl || "")) changes.push({ path: path, status: "modified" });
+      return;
+    }
+    if ((node.content || "") !== (base.content || "")) changes.push({ path: path, status: "modified" });
+  });
+  Object.keys(baseline).forEach(function (path) {
+    if (!seen[path]) changes.push({ path: path, status: "deleted" });
+  });
+  changes.sort(function (a, b) { return a.path.localeCompare(b.path); });
+  return changes;
+}
+
+/* ============================== LIVE DIFF GUTTER DECORATIONS ============================== */
+// A compact Myers O(ND) line-diff, used to paint VS Code-style "dirty diff" bars in the editor
+// gutter (green = added, blue = modified, red wedge = lines removed at that point) in real time
+// as the file is edited, and to drive the Source Control "Changes" list above.
+function splitLines(text) { return (text || "").replace(/\r\n/g, "\n").split("\n"); }
+
+function myersEditScript(a, b, maxD) {
+  const N = a.length, M = b.length;
+  const MAX = N + M;
+  if (MAX === 0) return [];
+  const cap = typeof maxD === "number" ? Math.min(maxD, MAX) : MAX;
+  // Arrays are sized by the search cap, not by file length: at step d we only ever touch
+  // diagonals k in [-d,d] (and peek one past on each side), so bounding by `cap` keeps the
+  // per-step snapshot cost independent of how large the files are - only of how different they
+  // are. Without this, diffing a large file costs O(fileLength) per step even for a 1-line edit.
+  const offset = cap + 1;
+  const size = 2 * offset + 1;
+  const trace = [];
+  let v = new Array(size).fill(0);
+  let foundD = -1;
+
+  outer:
+  for (let d = 0; d <= cap; d++) {
+    trace.push(v.slice());
+    for (let k = -d; k <= d; k += 2) {
+      let x;
+      const down = (k === -d) || (k !== d && v[offset + k - 1] < v[offset + k + 1]);
+      if (down) x = v[offset + k + 1];
+      else x = v[offset + k - 1] + 1;
+      let y = x - k;
+      while (x < N && y < M && a[x] === b[y]) { x++; y++; }
+      v[offset + k] = x;
+      if (x >= N && y >= M) { foundD = d; break outer; }
+    }
+  }
+  if (foundD === -1) return null; // aborted: files are too different to diff cheaply right now
+
+  // Backtrack through the saved traces to recover the actual edit path.
+  let x = N, y = M;
+  const points = [{ x: x, y: y }];
+  for (let d = foundD; d > 0; d--) {
+    const vPrev = trace[d];
+    const k = x - y;
+    let prevK;
+    const down = (k === -d) || (k !== d && vPrev[offset + k - 1] < vPrev[offset + k + 1]);
+    if (down) prevK = k + 1; else prevK = k - 1;
+    const prevX = vPrev[offset + prevK];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) { points.push({ x: x - 1, y: y - 1 }); x--; y--; }
+    points.push({ x: prevX, y: prevY });
+    x = prevX; y = prevY;
+  }
+  points.reverse();
+
+  const pts = [];
+  for (let i = 0; i < points.length; i++) {
+    if (i === 0 || points[i].x !== points[i - 1].x || points[i].y !== points[i - 1].y) pts.push(points[i]);
+  }
+  const ops = [];
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[i - 1], p1 = pts[i];
+    const dx = p1.x - p0.x, dy = p1.y - p0.y;
+    if (dx === 1 && dy === 1) ops.push({ type: "equal", aLine: p0.x, bLine: p0.y });
+    else if (dx === 1 && dy === 0) ops.push({ type: "delete", aLine: p0.x, bLine: p0.y });
+    else if (dx === 0 && dy === 1) ops.push({ type: "insert", aLine: p0.x, bLine: p0.y });
+    else if (dx === dy && dx > 0) { for (let s = 0; s < dx; s++) ops.push({ type: "equal", aLine: p0.x + s, bLine: p0.y + s }); }
+  }
+  return ops;
+}
+function opsToHunks(ops) {
+  const hunks = [];
+  let i = 0;
+  while (i < ops.length) {
+    if (ops[i].type === "equal") { i++; continue; }
+    let j = i;
+    const oldStart = ops[i].aLine, newStart = ops[i].bLine;
+    let oldCount = 0, newCount = 0;
+    while (j < ops.length && ops[j].type !== "equal") {
+      if (ops[j].type === "delete") oldCount++; else newCount++;
+      j++;
+    }
+    hunks.push({ oldStart: oldStart, oldCount: oldCount, newStart: newStart, newCount: newCount });
+    i = j;
+  }
+  return hunks;
+}
+function diffToHunks(a, b, maxD) {
+  const ops = myersEditScript(a, b, maxD);
+  if (ops === null) return null;
+  return opsToHunks(ops);
+}
+
+function baselineEntryFor(path) { return activeBaselineSourceFor(projectIdOf(path))[path] || null; }
+// maxD bounds worst-case diff cost: large enough to cover realistic single edits (including a
+// sizeable paste), small enough that even a pathological "rewrite the whole file" bails out in
+// well under a frame's worth of time instead of hanging the tab.
+const DIFF_MAX_D = 400;
+const DIFF_MAX_TOTAL_LINES = 20000;
+function buildDiffDecorations(path) {
+  const node = fs.get(path);
+  if (!node || node.type !== "file" || node.isBinary) return [];
+  const base = baselineEntryFor(path);
+  if (base && base.isBinary) return [];
+  const oldText = base ? (base.content || "") : "";
+  const newText = node.content || "";
+  if (oldText === newText) return [];
+  const oldLines = splitLines(oldText);
+  const newLines = splitLines(newText);
+  if (oldLines.length + newLines.length > DIFF_MAX_TOTAL_LINES) return [];
+  const hunks = diffToHunks(oldLines, newLines, DIFF_MAX_D);
+  if (!hunks) return [];
+  const decos = [];
+  const totalNewLines = newLines.length;
+  function lineDeco(lineNumber, cls, rulerColor) {
+    decos.push({
+      range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+      options: {
+        isWholeLine: true,
+        linesDecorationsClassName: cls,
+        overviewRuler: { color: rulerColor, position: monaco.editor.OverviewRulerLane.Left },
+      },
+    });
+  }
+  hunks.forEach(function (h) {
+    if (h.oldCount === 0 && h.newCount > 0) {
+      for (let ln = h.newStart + 1; ln <= h.newStart + h.newCount; ln++) lineDeco(ln, "cf-diff-added", "rgba(137,209,133,.7)");
+    } else if (h.newCount === 0 && h.oldCount > 0) {
+      if (h.newStart >= totalNewLines) lineDeco(Math.max(1, totalNewLines), "cf-diff-deleted-below", "rgba(241,76,76,.7)");
+      else lineDeco(h.newStart + 1, "cf-diff-deleted-above", "rgba(241,76,76,.7)");
+    } else {
+      for (let ln = h.newStart + 1; ln <= h.newStart + h.newCount; ln++) lineDeco(ln, "cf-diff-modified", "rgba(0,127,212,.7)");
+    }
+  });
+  return decos;
+}
+const editorDiffDecorationIds = { primary: [], secondary: [] };
+function applyDiffDecorationsToPane(pane) {
+  const ed = editors[pane];
+  if (!ed) return;
+  const ps = state[pane];
+  const tab = ps.active !== -1 ? ps.tabs[ps.active] : null;
+  const decos = tab ? buildDiffDecorations(tab.path) : [];
+  editorDiffDecorationIds[pane] = ed.deltaDecorations(editorDiffDecorationIds[pane] || [], decos);
+}
+function refreshAllDiffDecorations() {
+  applyDiffDecorationsToPane("primary");
+  applyDiffDecorationsToPane("secondary");
+}
+const diffRecomputeTimers = new Map();
+function scheduleDiffRecompute(path) {
+  if (diffRecomputeTimers.has(path)) clearTimeout(diffRecomputeTimers.get(path));
+  diffRecomputeTimers.set(path, setTimeout(function () {
+    diffRecomputeTimers.delete(path);
+    ["primary", "secondary"].forEach(function (pane) {
+      const ps = state[pane];
+      const tab = ps.active !== -1 ? ps.tabs[ps.active] : null;
+      if (tab && tab.path === path) applyDiffDecorationsToPane(pane);
+    });
+    if (state.sidebarView === "git") renderGitPanel();
+  }, 300));
 }
 
 /* ============================== GITHUB SOURCE CONTROL ============================== */
@@ -2383,85 +2828,90 @@ function fetchRepoBaseline(owner, repo, branch) {
       });
     });
 }
+function prefixBaselineKeys(baseline, id) {
+  const out = {};
+  Object.keys(baseline).forEach(function (k) { out[id + "/" + k] = baseline[k]; });
+  return out;
+}
 function importFromGitHub(owner, repo, branch, btn) {
   const restoreBtn = btn ? setBtnLoading(btn, "Importing\u2026") : function () {};
   showBusy("Importing " + owner + "/" + repo + "\u2026");
   return fetchRepoBaseline(owner, repo, branch).then(function (result) {
     const name = uniqueProjectName(repo);
-    return startNewProject(name).then(function () {
-      Object.keys(result.baseline).forEach(function (path) {
-        const b = result.baseline[path];
+    let newId = null;
+    return createNewProjectFromName(name).then(function (id) {
+      newId = id;
+      Object.keys(result.baseline).forEach(function (relPath) {
+        const b = result.baseline[relPath];
+        const path = id + "/" + relPath;
         if (b.isBinary) fsSetFile(path, "", true, b.dataUrl, Math.ceil(((b.dataUrl || "").length) * 0.75));
         else fsSetFile(path, b.content, false, null, b.content.length);
       });
-      return persistWholeFsToIdb();
+      const prefix = id + "/";
+      const projectNodes = [];
+      fs.forEach(function (n, p) { if (p === id || p.indexOf(prefix) === 0) projectNodes.push(n); });
+      return idbPutNodesBulk(projectNodes);
     }).then(function () {
-      gitState.linked = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: result.baseline };
-      return idbSetMeta("git:" + currentProjectId, gitState.linked);
+      gitLinks[newId] = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: prefixBaselineKeys(result.baseline, newId) };
+      localBaselines[newId] = {}; // unused while linked to GitHub
+      return Promise.all([idbSetMeta("git:" + newId, gitLinks[newId]), saveLocalBaselineForProject(newId)]);
     }).then(function () {
-      state.expandedDirs.clear();
-      fsChildrenOf("").forEach(function (n) { if (n.type === "dir") state.expandedDirs.add(n.path); });
+      state.expandedDirs.add(newId);
       renderTree();
       renderProjectsList();
       switchSidebarView("git");
       renderGitPanel();
-      autoOpenWelcomeFile();
-      toast('Imported "' + projectName + '" from GitHub');
+      refreshAllDiffDecorations();
+      autoOpenWelcomeFile(newId);
+      toast('Imported "' + projectMeta(newId).name + '" from GitHub');
     });
   }).catch(function (err) {
     console.error(err);
     toast("Import failed: " + (err && err.message ? err.message : "unknown error"), "error");
   }).finally(function () { restoreBtn(); hideBusy(); });
 }
-function linkCurrentProjectToGitHub(owner, repo, branch, btn) {
-  if (!currentProjectId) { toast("Open or start a project first", "error"); return Promise.resolve(); }
+function linkCurrentProjectToGitHub(owner, repo, branch, btn, id) {
+  id = id || resolveTargetDir("");
+  if (!id) { toast("Open or start a project first", "error"); return Promise.resolve(); }
   const restoreBtn = btn ? setBtnLoading(btn, "Linking\u2026") : function () {};
   const progress = toastProgress("Linking to " + owner + "/" + repo + "\u2026");
   return fetchRepoBaseline(owner, repo, branch).then(function (result) {
-    gitState.linked = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: result.baseline };
-    return idbSetMeta("git:" + currentProjectId, gitState.linked);
+    gitLinks[id] = { owner: owner, repo: repo, branch: branch, baseCommitSha: result.baseCommitSha, baseline: prefixBaselineKeys(result.baseline, id) };
+    localBaselines[id] = {}; // unused while linked to GitHub
+    return Promise.all([idbSetMeta("git:" + id, gitLinks[id]), saveLocalBaselineForProject(id)]);
   }).then(function () {
     renderGitPanel();
+    refreshAllDiffDecorations();
     progress.success("Linked to " + owner + "/" + repo);
   }).catch(function (err) {
     console.error(err);
     progress.error("Couldn't link: " + (err && err.message ? err.message : "unknown error"));
   }).finally(restoreBtn);
 }
-function unlinkCurrentProject() {
-  if (!currentProjectId) return;
-  gitState.linked = null;
+function promptLinkProjectToGitHub(id) {
+  const owner = (window.prompt("GitHub owner (user or org)") || "").trim();
+  if (!owner) return;
+  const repo = (window.prompt("Repository name") || "").trim();
+  if (!repo) return;
+  const branch = (window.prompt("Branch", "main") || "main").trim() || "main";
+  linkCurrentProjectToGitHub(owner, repo, branch, null, id);
+}
+function unlinkProjectFromGitHub(id) {
+  if (!id) return;
+  gitLinks[id] = null;
   gitState.selectedDiffPath = null;
-  idbSetMeta("git:" + currentProjectId, null);
+  idbSetMeta("git:" + id, null);
+  // Local change-tracking takes over from here — start it clean from the current files rather
+  // than inheriting the (empty) unused local baseline, which would otherwise flag everything.
+  resetLocalBaselineForProject(id).then(function () { renderGitPanel(); });
   renderGitPanel();
   toast("Unlinked from GitHub");
 }
-function computeGitChanges() {
-  const baseline = (gitState.linked && gitState.linked.baseline) || {};
-  const changes = [];
-  const seen = {};
-  fs.forEach(function (node, path) {
-    if (node.type !== "file") return;
-    seen[path] = true;
-    const base = baseline[path];
-    if (!base) { changes.push({ path: path, status: "added" }); return; }
-    if (node.isBinary || base.isBinary) {
-      if ((node.dataUrl || "") !== (base.dataUrl || "")) changes.push({ path: path, status: "modified" });
-      return;
-    }
-    if ((node.content || "") !== (base.content || "")) changes.push({ path: path, status: "modified" });
-  });
-  Object.keys(baseline).forEach(function (path) {
-    if (!seen[path]) changes.push({ path: path, status: "deleted" });
-  });
-  changes.sort(function (a, b) { return a.path.localeCompare(b.path); });
-  return changes;
-}
-function commitAndPush(message) {
-  const link = gitState.linked;
+function commitAndPush(id, message) {
+  const link = gitLinks[id];
   if (!link) return Promise.reject(new Error("Not linked to a repository"));
-  if (!gitState.token) return Promise.reject(new Error("Add a GitHub token above first"));
-  const changes = computeGitChanges();
+  if (!gitState.token) return Promise.reject(new Error("Add a GitHub token below first"));
+  const changes = computeChangesForProject(id);
   if (!changes.length) return Promise.reject(new Error("No changes to commit"));
   flushAllPersists();
   const base = GITHUB_API + "/repos/" + link.owner + "/" + link.repo;
@@ -2481,17 +2931,18 @@ function commitAndPush(message) {
       baseTreeSha = commitData.tree.sha;
       let chain = Promise.resolve([]);
       changes.forEach(function (c) {
+        const repoPath = relPathWithin(c.path);
         chain = chain.then(function (entries) {
-          if (c.status === "deleted") { entries.push({ path: c.path, mode: "100644", type: "blob", sha: null }); return entries; }
+          if (c.status === "deleted") { entries.push({ path: repoPath, mode: "100644", type: "blob", sha: null }); return entries; }
           const node = fs.get(c.path);
           const body = node.isBinary
             ? JSON.stringify({ content: (node.dataUrl || "").split(",")[1] || "", encoding: "base64" })
             : JSON.stringify({ content: node.content || "", encoding: "utf-8" });
           return fetchWithTimeout(base + "/git/blobs", { method: "POST", headers: headers, body: body }, 30000).then(function (res) {
-            if (!res.ok) throw new Error("Failed uploading " + c.path);
+            if (!res.ok) throw new Error("Failed uploading " + repoPath);
             return res.json();
           }).then(function (blobData) {
-            entries.push({ path: c.path, mode: "100644", type: "blob", sha: blobData.sha });
+            entries.push({ path: repoPath, mode: "100644", type: "blob", sha: blobData.sha });
             return entries;
           });
         });
@@ -2514,8 +2965,8 @@ function commitAndPush(message) {
         link.baseline[c.path] = node.isBinary ? { isBinary: true, dataUrl: node.dataUrl } : { isBinary: false, content: node.content };
       });
       link.baseCommitSha = newCommitSha;
-      return idbSetMeta("git:" + currentProjectId, link);
-    }).then(function () { return { sha: newCommitSha, count: changes.length }; });
+      return idbSetMeta("git:" + id, link);
+    }).then(function () { refreshAllDiffDecorations(); return { sha: newCommitSha, count: changes.length }; });
 }
 function showDiffView(pane, path) {
   ensureEditorCreated(pane);
@@ -2529,10 +2980,10 @@ function showDiffView(pane, path) {
     dv.querySelector('[data-act="close"]').addEventListener("click", function () { closeDiffView(pane); });
   }
   dv.dataset.path = path;
-  dv.querySelector(".bpv-path").textContent = "Diff: " + path;
+  dv.querySelector(".bpv-path").textContent = "Diff: " + projectMeta(projectIdOf(path)).name + " / " + relPathWithin(path);
   setPaneOverlay(pane, "diff");
 
-  const base = (gitState.linked && gitState.linked.baseline[path]) || { content: "", isBinary: false };
+  const base = baselineEntryFor(path) || { content: "", isBinary: false };
   const node = fs.get(path);
   const host = dv.querySelector(".diff-host");
   if (base.isBinary || (node && node.isBinary)) {
@@ -2586,111 +3037,125 @@ function initSimpleListKeyNav(containerEl, rowSelector, selectedClass, onEnter) 
     }
   });
 }
-function renderGitPanel() {
-  const body = qs("#git-body");
-  if (!body) return;
-  const tokenRow =
-    '<div class="git-section-label">GitHub Token</div>' +
-    '<div class="git-field">' +
-    '<input id="git-token-input" type="password" autocomplete="off" placeholder="ghp_\u2026 (needs \u2018repo\u2019 scope)" value="' + escapeHtml(gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") + '" />' +
-    '</div>' +
-    '<div class="setting-desc">Stored only on this device, sent only to api.github.com, only when you use a Git action here. <a href="https://github.com/settings/tokens/new?scopes=repo&description=CodeForge" target="_blank" rel="noopener" style="color:var(--focus);">Create one on GitHub</a>.</div>';
-
-  if (!currentProjectId) {
-    body.innerHTML = tokenRow +
-      '<div class="settings-divider"></div>' +
-      '<div class="git-section-label">Import a repository</div>' +
-      gitImportFormHtml() +
-      '<div class="empty-hint" style="padding-left:0;">Open or start a project to link it and push changes.</div>';
-    wireGitTokenAndImport(body);
+// Discards a single change: reverts a modification back to its baseline content, deletes a
+// newly-added file, or restores a deleted one from its baseline. Works the same whether the
+// baseline is GitHub's (linked project) or the local one (everything else).
+function discardOneChange(path, status) {
+  const base = baselineEntryFor(path);
+  if (status === "deleted") {
+    if (!base) { toast("Nothing to restore", "error"); return; }
+    if (base.isBinary) fsSetFile(path, "", true, base.dataUrl, Math.ceil(((base.dataUrl || "").length) * 0.75));
+    else fsSetFile(path, base.content || "", false, null, (base.content || "").length);
+    idbPutNode(fs.get(path));
+    renderTree();
+    saveSessionDebounced();
+    toast("Restored " + baseName(path));
     return;
   }
-
-  if (!gitState.linked) {
-    body.innerHTML = tokenRow +
-      '<div class="settings-divider"></div>' +
-      '<div class="git-section-label">Import a repository</div>' +
-      gitImportFormHtml() +
-      '<div class="settings-divider"></div>' +
-      '<div class="git-section-label">Link "' + escapeHtml(projectName) + '" to a repository</div>' +
-      '<div class="setting-desc" style="margin-bottom:8px;">Connects this project to an existing GitHub repo so you can commit &amp; push. This compares against the repo\u2019s current content \u2014 pushing will make GitHub match what\u2019s here.</div>' +
-      gitLinkFormHtml() +
-      '<div id="git-diff-list"></div>';
-    wireGitTokenAndImport(body);
-    wireGitLinkForm(body);
-    return;
+  if (status === "added") { deleteEntryWithConfirm(path); return; }
+  if (base) {
+    if (base.isBinary) { toast("Can't discard a binary file change automatically \u2014 replace it manually", "error"); return; }
+    try {
+      const entry = getOrCreateModel(path, fs.get(path));
+      entry.model.setValue(base.content || "");
+      persistNow(path);
+      toast("Reverted " + baseName(path));
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't discard that change", "error");
+    }
   }
-
-  const link = gitState.linked;
-  const changes = computeGitChanges();
-  let html = tokenRow + '<div class="settings-divider"></div>';
-  html += '<div class="git-section-label">Linked repository</div>';
-  html += '<div class="setting-desc" style="margin-bottom:8px;"><a href="' + ghHelpUrl(link.owner, link.repo) + '" target="_blank" rel="noopener" style="color:var(--focus);">' + escapeHtml(link.owner + "/" + link.repo) + "</a> \u00b7 branch <b>" + escapeHtml(link.branch) + "</b></div>";
-  html += '<div class="git-btn-row" style="margin-bottom:10px;"><button class="git-btn secondary" id="btn-git-resync">Re-sync from GitHub</button><button class="git-btn secondary" id="btn-git-unlink">Unlink</button></div>';
-  html += '<div class="settings-divider"></div>';
-  html += '<div class="git-section-label">Changes (' + changes.length + ')</div>';
+}
+function renderChangesListHtml(changes, emptyMessage) {
+  let html = '<div class="git-section-label">Changes (' + changes.length + ')</div>';
   if (!changes.length) {
-    html += '<div class="empty-hint" style="padding-left:0;">Nothing to commit \u2014 you\u2019re in sync with GitHub.</div>';
+    html += '<div class="empty-hint" style="padding-left:0;">' + emptyMessage + '</div>';
   } else {
-    html += '<div id="git-diff-list">';
+    html += '<div class="git-changes-list-inner">';
     changes.forEach(function (c) {
       const badge = c.status === "added" ? "A" : c.status === "deleted" ? "D" : "M";
+      const actLabel = c.status === "deleted" ? "Restore file" : c.status === "added" ? "Delete file" : "Discard change";
+      const actIcon = c.status === "deleted" ? "refresh" : c.status === "added" ? "trash" : "x";
       html += '<div class="git-changed-file' + (gitState.selectedDiffPath === c.path ? " selected" : "") + '" data-path="' + escapeHtml(c.path) + '" data-status="' + c.status + '">' +
         '<span class="git-status-badge ' + badge + '">' + badge + "</span>" +
-        '<span class="git-file-path">' + escapeHtml(c.path) + "</span>" +
-        '<button class="proj-btn" data-act="discard" title="Discard change">' + iconSvg("x", "icon-sm") + "</button>" +
+        '<span class="git-file-path">' + escapeHtml(relPathWithin(c.path)) + "</span>" +
+        '<button class="proj-btn" data-act="discard" title="' + actLabel + '">' + iconSvg(actIcon, "icon-sm") + "</button>" +
         "</div>";
     });
     html += "</div>";
-    html += '<div class="git-commit-box" style="margin-top:10px;">' +
-      '<textarea id="git-commit-msg" placeholder="Commit message\u2026"></textarea>' +
-      '<div class="git-btn-row" style="margin-top:8px;"><button class="git-btn" id="btn-git-commit-push">' + iconSvg("cloud-upload", "icon-sm") + " Commit &amp; Push</button></div>" +
-      "</div>";
   }
-  body.innerHTML = html;
-  wireGitTokenAndImport(body);
-
-  const resyncBtn = qs("#btn-git-resync");
-  if (resyncBtn) resyncBtn.addEventListener("click", function () { linkCurrentProjectToGitHub(link.owner, link.repo, link.branch, resyncBtn); });
-  const unlinkBtn = qs("#btn-git-unlink");
-  if (unlinkBtn) unlinkBtn.addEventListener("click", function () { if (window.confirm("Unlink this project from GitHub? Your files won't be touched.")) unlinkCurrentProject(); });
-
-  qsa(".git-changed-file", body).forEach(function (row) {
+  return html;
+}
+function wireChangesList(scopeEl) {
+  qsa(".git-changed-file", scopeEl).forEach(function (row) {
     row.addEventListener("click", function (e) {
       if (e.target.closest('[data-act="discard"]')) {
-        const path = row.dataset.path;
-        const status = row.dataset.status;
-        const base = link.baseline[path];
-        if (status === "deleted") { toast("Restore isn't supported yet \u2014 re-add the file manually", "error"); return; }
-        if (status === "added") { deleteEntryWithConfirm(path); return; }
-        if (base) {
-          if (base.isBinary) { toast("Can't discard a binary file change automatically \u2014 replace it manually", "error"); return; }
-          try {
-            const entry = getOrCreateModel(path, fs.get(path));
-            entry.model.setValue(base.content || "");
-            persistNow(path);
-            toast("Reverted to last synced version");
-          } catch (err) {
-            console.error(err);
-            toast("Couldn't discard that change", "error");
-          }
-        }
+        discardOneChange(row.dataset.path, row.dataset.status);
+        refreshAllDiffDecorations();
+        renderGitPanel();
         return;
       }
+      if (row.dataset.status === "deleted") { toast("This file was deleted \u2014 nothing to preview. Restore it to bring it back."); return; }
       gitState.selectedDiffPath = row.dataset.path;
-      qsa(".git-changed-file", body).forEach(function (r) { r.classList.remove("selected"); });
+      qsa(".git-changed-file", scopeEl).forEach(function (r) { r.classList.remove("selected"); });
       row.classList.add("selected");
       showDiffView(state.focusedPane === "secondary" ? "secondary" : "primary", row.dataset.path);
       if (state.isMobile) closeMobileSidebar();
     });
   });
-  const commitBtn = qs("#btn-git-commit-push");
+  initSimpleListKeyNav(scopeEl.querySelector(".git-changes-list-inner"), ".git-changed-file", "kbd-sel", function (row) { row.click(); });
+}
+function gitTokenSectionHtml() {
+  return '<div class="git-section-label">GitHub Token</div>' +
+    '<div class="git-field">' +
+    '<input id="git-token-input" type="password" autocomplete="off" placeholder="ghp_\u2026 (needs \u2018repo\u2019 scope)" value="' + escapeHtml(gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") + '" />' +
+    '</div>' +
+    '<div class="setting-desc">Stored only on this device, sent only to api.github.com, only when you use a Git action here. <a href="https://github.com/settings/tokens/new?scopes=repo&description=CodeForge" target="_blank" rel="noopener" style="color:var(--focus);">Create one on GitHub</a>.</div>';
+}
+// Builds one project's Source Control section: its Changes list plus GitHub link/commit controls
+// for that project specifically. Built as real DOM (not string concat) so several sections — one
+// per open project — can coexist without id collisions between their forms/buttons.
+function buildProjectGitSection(id) {
+  const meta = projectMeta(id);
+  const link = gitLinks[id];
+  const changes = computeChangesForProject(id);
+  const section = ce("div", "git-project-section");
+  section.dataset.projectId = id;
+
+  const header = ce("div", "git-project-header");
+  header.innerHTML = '<span class="git-project-name">' + iconSvg("folder", "icon-sm") + " " + escapeHtml(meta.name) + "</span>" +
+    (link
+      ? '<a class="git-project-repo" href="' + ghHelpUrl(link.owner, link.repo) + '" target="_blank" rel="noopener">' + iconSvg("git-branch", "icon-xs") + " " + escapeHtml(link.owner + "/" + link.repo) + " \u00b7 " + escapeHtml(link.branch) + "</a>"
+      : '<button class="proj-btn git-link-btn" title="Link this project to a GitHub repository">' + iconSvg("git-branch", "icon-sm") + " Link to GitHub</button>");
+  section.appendChild(header);
+
+  const listWrap = ce("div");
+  listWrap.innerHTML = renderChangesListHtml(changes, link ? "Nothing to commit \u2014 in sync with GitHub." : "No changes yet \u2014 everything matches how each file started out.");
+  section.appendChild(listWrap);
+  wireChangesList(listWrap);
+
+  if (link && changes.length) {
+    const box = ce("div", "git-commit-box");
+    box.innerHTML = '<textarea class="git-commit-msg" placeholder="Commit message\u2026"></textarea>' +
+      '<div class="git-btn-row" style="margin-top:8px;"><button class="git-btn commit-push-btn">' + iconSvg("cloud-upload", "icon-sm") + ' Commit &amp; Push</button><button class="git-btn secondary unlink-btn">Unlink</button></div>';
+    section.appendChild(box);
+  } else if (link) {
+    const row = ce("div", "git-btn-row");
+    row.style.marginTop = "8px";
+    row.innerHTML = '<button class="git-btn secondary resync-btn">Re-sync from GitHub</button><button class="git-btn secondary unlink-btn">Unlink</button>';
+    section.appendChild(row);
+  }
+
+  const linkBtn = section.querySelector(".git-link-btn");
+  if (linkBtn) linkBtn.addEventListener("click", function () { promptLinkProjectToGitHub(id); });
+  const commitBtn = section.querySelector(".commit-push-btn");
   if (commitBtn) {
     commitBtn.addEventListener("click", function () {
-      const msg = (qs("#git-commit-msg").value || "").trim();
+      const msgEl = section.querySelector(".git-commit-msg");
+      const msg = (msgEl.value || "").trim();
       if (!msg) { toast("Write a commit message first", "error"); return; }
       const restoreBtn = setBtnLoading(commitBtn, "Pushing\u2026");
-      commitAndPush(msg).then(function (result) {
+      commitAndPush(id, msg).then(function (result) {
         toast("Pushed " + result.count + " change" + (result.count === 1 ? "" : "s") + " to " + link.branch);
         gitState.selectedDiffPath = null;
         renderGitPanel();
@@ -2701,19 +3166,44 @@ function renderGitPanel() {
       });
     });
   }
-  initSimpleListKeyNav(qs("#git-diff-list"), ".git-changed-file", "kbd-sel", function (row) { row.click(); });
+  const resyncBtn = section.querySelector(".resync-btn");
+  if (resyncBtn) resyncBtn.addEventListener("click", function () { linkCurrentProjectToGitHub(link.owner, link.repo, link.branch, resyncBtn, id); });
+  const unlinkBtn = section.querySelector(".unlink-btn");
+  if (unlinkBtn) unlinkBtn.addEventListener("click", function () { if (window.confirm('Unlink "' + meta.name + '" from GitHub? Your files won\'t be touched.')) unlinkProjectFromGitHub(id); });
+
+  return section;
+}
+function renderGitPanel() {
+  const body = qs("#git-body");
+  if (!body) return;
+  body.innerHTML = "";
+
+  if (!state.openProjects.length) {
+    const wrap = ce("div");
+    wrap.innerHTML = '<div class="empty-hint" style="padding-left:0;">Open or start a project to see live changes here, link it to GitHub, and push.</div>' +
+      '<div class="settings-divider"></div>' + gitTokenSectionHtml() +
+      '<div class="settings-divider"></div><div class="git-section-label">Import a Repository as a New Project</div>' + gitImportFormHtml();
+    body.appendChild(wrap);
+    wireGitTokenAndImport(wrap);
+    return;
+  }
+
+  state.openProjects.forEach(function (id) {
+    body.appendChild(buildProjectGitSection(id));
+    body.appendChild(ce("div", "settings-divider"));
+  });
+
+  const tail = ce("div");
+  tail.innerHTML = gitTokenSectionHtml() +
+    '<div class="settings-divider"></div><div class="git-section-label">Import Another Repository as a New Project</div>' + gitImportFormHtml();
+  body.appendChild(tail);
+  wireGitTokenAndImport(tail);
 }
 function gitImportFormHtml() {
   return '<div class="git-field"><input id="git-import-owner" placeholder="owner" autocomplete="off" /></div>' +
     '<div class="git-field"><input id="git-import-repo" placeholder="repository" autocomplete="off" /></div>' +
     '<div class="git-field"><input id="git-import-branch" placeholder="branch (default: main)" autocomplete="off" /></div>' +
     '<div class="git-btn-row"><button class="git-btn" id="btn-git-import">' + iconSvg("cloud-upload", "icon-sm") + " Import as New Project</button></div>";
-}
-function gitLinkFormHtml() {
-  return '<div class="git-field"><input id="git-link-owner" placeholder="owner" autocomplete="off" /></div>' +
-    '<div class="git-field"><input id="git-link-repo" placeholder="repository" autocomplete="off" /></div>' +
-    '<div class="git-field"><input id="git-link-branch" placeholder="branch (default: main)" autocomplete="off" /></div>' +
-    '<div class="git-btn-row"><button class="git-btn" id="btn-git-link">' + iconSvg("git-branch", "icon-sm") + " Link Project</button></div>";
 }
 function wireGitTokenAndImport(scope) {
   const tokenInput = qs("#git-token-input", scope);
@@ -2735,24 +3225,15 @@ function wireGitTokenAndImport(scope) {
     });
   }
 }
-function wireGitLinkForm(scope) {
-  const linkBtn = qs("#btn-git-link", scope);
-  if (linkBtn) {
-    linkBtn.addEventListener("click", function () {
-      const owner = (qs("#git-link-owner", scope).value || "").trim();
-      const repo = (qs("#git-link-repo", scope).value || "").trim();
-      const branch = (qs("#git-link-branch", scope).value || "").trim() || "main";
-      if (!owner || !repo) { toast("Enter an owner and repository", "error"); return; }
-      linkCurrentProjectToGitHub(owner, repo, branch, linkBtn);
-    });
-  }
-}
 
 /* ============================== SESSION PERSISTENCE ============================== */
 function saveSession() {
   const session = {
     sidebarView: state.sidebarView,
     splitActive: state.splitActive,
+    openProjects: state.openProjects,
+    activeProjectId: state.activeProjectId,
+    expandedDirs: Array.from(state.expandedDirs),
     primary: { tabs: state.primary.tabs, active: state.primary.active, previewIndex: state.primary.previewIndex },
     secondary: { tabs: state.secondary.tabs, active: state.secondary.active, previewIndex: state.secondary.previewIndex },
   };
@@ -2761,6 +3242,7 @@ function saveSession() {
 const saveSessionDebounced = debounce(saveSession, 400);
 function restoreSession(session) {
   try {
+    if (Array.isArray(session.expandedDirs)) state.expandedDirs = new Set(session.expandedDirs);
     if (session.primary && session.primary.tabs && session.primary.tabs.length) {
       state.primary.tabs = session.primary.tabs.filter(function (t) { return fs.has(t.path); });
       state.primary.previewIndex = typeof session.primary.previewIndex === "number" ? session.primary.previewIndex : -1;
@@ -2829,13 +3311,13 @@ function wireStaticUI() {
   qs("#btn-close-split").addEventListener("click", function () { if (state.isMobile) setMobileSplitOpen(false); else activateSplit(false); });
   qs("#btn-command-palette-tb").addEventListener("click", openCommandPalette);
 
-  qs("#project-root-row").addEventListener("click", function () {
-    rootExpanded = !rootExpanded;
-    qs("#root-chev").classList.toggle("open", rootExpanded);
-    qs("#file-tree").style.display = rootExpanded ? "" : "none";
+  qs("#project-root-row").addEventListener("contextmenu", function (e) { e.preventDefault(); openContextMenuForRoot(e.clientX, e.clientY); });
+  attachLongPress(qs("#project-root-row"), function (x, y) { openContextMenuForRoot(x, y); });
+  qs("#file-tree").addEventListener("contextmenu", function (e) {
+    if (e.target.closest(".tree-row")) return; // a row's own handler deals with this
+    e.preventDefault();
+    openContextMenuForRoot(e.clientX, e.clientY);
   });
-  qs("#project-root-row").addEventListener("contextmenu", function (e) { e.preventDefault(); if (fs.size) openContextMenuForRoot(e.clientX, e.clientY); });
-  attachLongPress(qs("#project-root-row"), function (x, y) { if (fs.size) openContextMenuForRoot(x, y); });
 
   let pendingUploadTargetDir = null;
   qs("#btn-new-file").addEventListener("click", function () { beginCreateEntry("", "file"); });
@@ -2857,7 +3339,7 @@ function wireStaticUI() {
     if (files.length) {
       if (targetDir !== null) {
         const progress = toastProgress("Adding " + files.length + " file(s)\u2026");
-        importFileList(files, { targetDir: targetDir }).then(function (result) {
+        importFileList(files, { targetDir: targetDir, stripRootFolder: false }).then(function (result) {
           if (result.failed.length) progress.error("Added " + result.addedCount + " file(s) \u2014 " + result.failed.length + " couldn't be read");
           else progress.success("Added " + result.addedCount + " file(s)");
         }).catch(function (err) { console.error(err); progress.error("Couldn't add those files: " + (err && err.message ? err.message : "unknown error")); });
@@ -2873,7 +3355,7 @@ function wireStaticUI() {
     if (files.length) {
       if (targetDir !== null) {
         const progress = toastProgress("Adding folder\u2026");
-        importFileList(files, { targetDir: targetDir }).then(function (result) {
+        importFileList(files, { targetDir: targetDir, stripRootFolder: false }).then(function (result) {
           if (result.failed.length) progress.error("Folder added \u2014 " + result.failed.length + " file(s) couldn't be read");
           else progress.success("Folder added");
         }).catch(function (err) { console.error(err); progress.error("Couldn't add that folder: " + (err && err.message ? err.message : "unknown error")); });
@@ -2894,9 +3376,12 @@ function wireStaticUI() {
       const cmd = el.dataset.cmd;
       if (cmd === "new-file") beginCreateEntry("", "file");
       else if (cmd === "new-folder") beginCreateEntry("", "dir");
-      else if (cmd === "upload-files") qs("#file-input-files").click();
-      else if (cmd === "upload-folder") qs("#file-input-folder").click();
+      else if (cmd === "upload-files") { pendingUploadTargetDir = state.openProjects.length ? resolveTargetDir("") : null; qs("#file-input-files").click(); }
+      else if (cmd === "upload-folder") { pendingUploadTargetDir = state.openProjects.length ? resolveTargetDir("") : null; qs("#file-input-folder").click(); }
       else if (cmd === "open-zip") qs("#file-input-zip").click();
+      else if (cmd === "new-project") promptNewBlankProject();
+      else if (cmd === "open-projects") switchSidebarView("projects");
+      else if (cmd === "close-project") closeProjectFromWorkspace(state.activeProjectId);
     });
   });
 
@@ -2988,36 +3473,70 @@ function boot() {
   idbOpen().then(function () {
     return Promise.all([idbGetAllNodes(), idbGetMeta("project"), idbGetMeta("session"), idbGetMeta("settings"), idbListProjects(), idbGetMeta("currentProjectId")]);
   }).then(function (results) {
-    const nodes = results[0], meta = results[1], settings = results[3], projects = results[4], savedCurrentId = results[5];
-    session = results[2];
-    nodes.forEach(function (n) { fs.set(n.path, n); });
-    if (meta && meta.name) projectName = meta.name;
+    const rawNodes = results[0], legacyProjectMeta = results[1], rawSession = results[2], settings = results[3], projects = results[4], savedCurrentId = results[5];
     if (settings) state.settings = Object.assign(state.settings, settings);
     projects.forEach(function (p) { projectsIndex.set(p.id, p); });
 
-    let migrationPromise = Promise.resolve();
-    if (savedCurrentId && projectsIndex.has(savedCurrentId)) {
-      currentProjectId = savedCurrentId;
-    } else if (fs.size > 0) {
-      // Upgrading from a single-project version, or an otherwise-orphaned active workspace:
-      // register what's already loaded as a real project so it's safe to switch away from.
-      const id = generateProjectId();
-      const now = Date.now();
-      const stats = computeProjectStats();
-      const entry = { id: id, name: projectName || "My Project", createdAt: (meta && meta.createdAt) || now, updatedAt: now, fileCount: stats.fileCount, sizeBytes: stats.sizeBytes };
-      projectsIndex.set(id, entry);
-      currentProjectId = id;
-      migrationPromise = Promise.all([idbPutProjectMeta(entry), idbSetMeta("currentProjectId", id)]);
+    if (rawSession && Array.isArray(rawSession.openProjects)) {
+      // Already on the multi-root workspace format: the 'nodes' store already holds every open
+      // project's files directly (namespaced by id), so there's nothing to migrate.
+      rawNodes.forEach(function (n) { fs.set(n.path, n); });
+      state.openProjects = rawSession.openProjects.filter(function (id) { return projectsIndex.has(id); });
+      state.activeProjectId = (rawSession.activeProjectId && state.openProjects.indexOf(rawSession.activeProjectId) !== -1) ? rawSession.activeProjectId : (state.openProjects[state.openProjects.length - 1] || null);
+      session = rawSession;
+      return Promise.all(state.openProjects.map(function (id) { return loadBaselinesForProject(id); }));
     }
 
-    return migrationPromise.then(function () {
-      return currentProjectId ? idbGetMeta("git:" + currentProjectId) : null;
-    }).then(function (gitLink) {
-      gitState.linked = gitLink || null;
-      return idbGetMeta("githubToken");
-    }).then(function (token) {
-      gitState.token = token || "";
-    });
+    // Pre-multi-root data (or a fresh install). Migrate whatever single project was active, if
+    // any, into the new format so nobody's open work disappears when this update lands.
+    let id = (savedCurrentId && projectsIndex.has(savedCurrentId)) ? savedCurrentId : null;
+    if (!id && rawNodes.length) {
+      id = generateProjectId();
+      const now = Date.now();
+      projectsIndex.set(id, { id: id, name: (legacyProjectMeta && legacyProjectMeta.name) || "My Project", createdAt: (legacyProjectMeta && legacyProjectMeta.createdAt) || now, updatedAt: now, fileCount: 0, sizeBytes: 0 });
+    }
+    if (!id) {
+      // Nothing to migrate - a genuinely fresh install.
+      state.openProjects = [];
+      state.activeProjectId = null;
+      session = null;
+      return Promise.resolve();
+    }
+    const prefix = id + "/";
+    const migratedNodes = rawNodes.map(function (n) { return Object.assign({}, n, { path: prefix + n.path }); });
+    migratedNodes.forEach(function (n) { fs.set(n.path, n); });
+    if (!fs.has(id)) { fsSetDir(id); migratedNodes.push(fs.get(id)); }
+    state.openProjects = [id];
+    state.activeProjectId = id;
+    const remapPane = function (pane) {
+      if (!pane) return { tabs: [], active: -1, previewIndex: -1 };
+      return { tabs: (pane.tabs || []).map(function (t) { return Object.assign({}, t, { path: prefix + t.path }); }), active: pane.active, previewIndex: pane.previewIndex };
+    };
+    session = {
+      sidebarView: (rawSession && rawSession.sidebarView) || "explorer",
+      splitActive: !!(rawSession && rawSession.splitActive),
+      openProjects: [id],
+      activeProjectId: id,
+      expandedDirs: ((rawSession && rawSession.expandedDirs) || []).map(function (p) { return p ? prefix + p : id; }).concat([id]),
+      primary: remapPane(rawSession && rawSession.primary),
+      secondary: remapPane(rawSession && rawSession.secondary),
+    };
+    const meta = projectsIndex.get(id);
+    const stats = computeProjectStats(id);
+    meta.fileCount = stats.fileCount; meta.sizeBytes = stats.sizeBytes; meta.updatedAt = Date.now();
+    return idbClearNodes().then(function () {
+      return Promise.all([
+        idbPutNodesBulk(migratedNodes),
+        idbPutProjectMeta(meta),
+        idbSetMeta("session", session),
+        idbSetMeta("currentProjectId", null),
+        idbSetMeta("project", null),
+      ]);
+    }).then(function () { return loadBaselinesForProject(id); });
+  }).then(function () {
+    return idbGetMeta("githubToken");
+  }).then(function (token) {
+    gitState.token = token || "";
   }).then(function () {
     wireStaticUI();
     createPrimaryEditor();

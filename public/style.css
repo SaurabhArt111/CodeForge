@@ -1,4 +1,4 @@
-/* CodeForge */
+/* CodeForge — browser IDE. Dark theme tokens match VS Code Dark+ for familiarity. */
 :root {
   --bg-editor: #1e1e1e;
   --bg-sidebar: #252526;
@@ -24,7 +24,7 @@
   --scrollbar: rgba(121, 121, 121, .4);
   --scrollbar-hover: rgba(121, 121, 121, .7);
   --radius: 4px;
-  --nav-h: 52px;
+  --nav-h: 62px;
   --status-h: 22px;
   --title-h: 35px;
   --tab-h: 35px;
@@ -36,8 +36,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html,
-body {
+html, body {
   height: 100%;
 }
 
@@ -63,8 +62,7 @@ button {
   padding: 0;
 }
 
-input,
-textarea {
+input, textarea {
   font-family: inherit;
   color: var(--text);
   background: var(--bg-editor);
@@ -183,8 +181,7 @@ textarea {
   border-right: 1px solid var(--border);
 }
 
-#activitybar .ab-top,
-#activitybar .ab-bottom {
+#activitybar .ab-top, #activitybar .ab-bottom {
   display: flex;
   flex-direction: column;
 }
@@ -289,25 +286,26 @@ textarea {
   color: var(--text);
 }
 
+.view-subheader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 18px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-soft);
+}
+
 #project-root-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px 2px 8px;
-  font-size: 12px;
+  padding: 8px 18px 4px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: .3px;
-  cursor: pointer;
-}
-
-#project-root-row:hover {
-  background: var(--bg-hover);
-}
-
-#project-root-row .icon {
   color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .6px;
 }
 
 #file-tree {
@@ -337,6 +335,73 @@ textarea {
   border: none;
   padding: 0;
   font-size: inherit;
+}
+
+.project-empty-hint {
+  padding: 4px 18px 6px 40px;
+  font-style: italic;
+}
+
+.tree-row.project-root-row {
+  font-weight: 600;
+}
+
+.tree-row.project-root-row .row-name.project-root-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-root-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.proj-root-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.proj-root-badge.git {
+  color: var(--ok);
+}
+
+.proj-root-badge.count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.row-inline-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  margin-right: -6px;
+}
+
+.tree-row.project-root-row:hover .row-inline-btn {
+  display: flex;
+}
+
+.row-inline-btn:hover {
+  background: var(--bg-active, var(--bg-hover));
+  color: var(--text);
 }
 
 .tree-row {
@@ -509,8 +574,7 @@ textarea {
   line-height: 1.5;
 }
 
-.setting-row select,
-.setting-row input[type=number] {
+.setting-row select, .setting-row input[type=number] {
   width: 100%;
   padding: 5px 6px;
 }
@@ -745,11 +809,64 @@ textarea {
   background: var(--bg-hover);
 }
 
-#git-diff-list {
+.git-project-section {
+  padding: 10px 18px 4px;
+}
+
+.git-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.git-project-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-project-name .icon {
+  color: #dcb767;
+  flex-shrink: 0;
+}
+
+.git-project-repo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--ok);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.git-project-repo:hover {
+  text-decoration: underline;
+}
+
+.git-project-header .git-link-btn {
+  width: auto;
+  height: 26px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+.git-changes-list-inner {
   margin-top: 4px;
 }
 
-#git-diff-list:focus {
+.git-changes-list-inner:focus {
   outline: none;
 }
 
@@ -864,8 +981,7 @@ textarea {
   flex-shrink: 0;
 }
 
-#sidebar-resizer:hover,
-#sidebar-resizer.dragging {
+#sidebar-resizer:hover, #sidebar-resizer.dragging {
   background: var(--focus);
 }
 
@@ -1006,6 +1122,51 @@ textarea {
   inset: 0;
 }
 
+/* Live diff gutter indicators (Source Control) - mirrors VS Code's own "dirty diff" decorator:
+   a colored bar in the margin next to the line numbers for added/modified lines, and a small
+   wedge marking the point where lines were removed. Colors match the git-status-badge palette
+   above (added/modified/deleted) for visual consistency across the app. */
+.cf-diff-added,
+.cf-diff-modified {
+  border-left: 3px solid transparent;
+  margin-left: 4px;
+}
+
+.cf-diff-added {
+  border-left-color: var(--ok);
+}
+
+.cf-diff-modified {
+  border-left-color: var(--focus);
+}
+
+.cf-diff-deleted-above,
+.cf-diff-deleted-below {
+  position: relative;
+  margin-left: 4px;
+}
+
+.cf-diff-deleted-above::before,
+.cf-diff-deleted-below::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--danger);
+  z-index: 5;
+}
+
+.cf-diff-deleted-above::before {
+  top: -4px;
+}
+
+.cf-diff-deleted-below::before {
+  bottom: -4px;
+}
+
 .welcome {
   position: absolute;
   inset: 0;
@@ -1014,12 +1175,12 @@ textarea {
   display: flex;
   justify-content: center;
   background: var(--bg-editor);
+  padding-bottom: 80px;
 }
 
 .welcome-inner {
   max-width: 640px;
   width: 100%;
-  padding-bottom: 20px;
 }
 
 .welcome h1 {
@@ -1133,6 +1294,18 @@ textarea {
 
 .welcome-action .icon {
   color: var(--focus);
+}
+
+.welcome-action-danger {
+  color: var(--danger);
+}
+
+.welcome-action-danger .icon {
+  color: var(--danger);
+}
+
+.welcome-recent-item.is-open {
+  opacity: .75;
 }
 
 .kbd-row {
@@ -1290,8 +1463,7 @@ kbd {
   flex-shrink: 0;
 }
 
-.splitter-desktop:hover,
-.splitter-desktop.dragging {
+.splitter-desktop:hover, .splitter-desktop.dragging {
   background: var(--focus);
 }
 
@@ -1309,8 +1481,7 @@ kbd {
   flex-shrink: 0;
 }
 
-#statusbar .sb-left,
-#statusbar .sb-right {
+#statusbar .sb-left, #statusbar .sb-right {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1339,7 +1510,7 @@ kbd {
   align-items: stretch;
   padding-bottom: env(safe-area-inset-bottom, 0);
   position: relative;
-  z-index: 65;
+  z-index: 9965;
 }
 
 .nav-btn {
@@ -1561,7 +1732,9 @@ kbd {
   font-size: 14px;
 }
 
-/* Busy overlay */
+/* Busy overlay — shown for operations that replace the whole workspace (project switch,
+   opening a ZIP/folder/GitHub repo as a new project) so the UI can't be interacted with
+   mid-operation and the user has a clear, lightweight signal that something is happening. */
 #busy-overlay {
   position: fixed;
   inset: 0;
