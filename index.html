@@ -26,6 +26,8 @@
     <div id="titlebar">
       <button id="btn-menu-mobile" class="tb-btn" title="Menu" data-icon="menu"></button>
       <span id="project-name">CodeForge</span>
+      <button id="btn-close-project" class="tb-btn tb-close-project hidden" title="Close Project"
+        data-icon="log-out"></button>
       <div id="titlebar-spacer"></div>
       <button id="btn-split-toggle" class="tb-btn desktop-only" title="Toggle Split Editor (Ctrl+\)"
         data-icon="split"></button>
@@ -60,8 +62,10 @@
               <button id="btn-collapse-folders" title="Collapse all folders" data-icon="chevron-down"></button>
             </div>
           </div>
-          <div id="project-root-row" title="Workspace: every project you have open">
-            <span id="project-root-name">WORKSPACE</span>
+          <div id="project-root-row" title="Right-click for actions">
+            <span class="chev open" id="root-chev" data-icon="chevron-right"></span>
+            <span class="row-icon folder-icon" data-icon="folder-open"></span>
+            <span id="project-root-name">NO PROJECT OPEN</span>
           </div>
           <div id="file-tree"></div>
         </div>
@@ -72,7 +76,7 @@
             <input id="search-input" type="text" placeholder="Search across files" autocomplete="off" />
           </div>
           <div id="search-results">
-            <div class="search-empty">Type to search file contents across every open project.</div>
+            <div class="search-empty">Type to search file contents across your whole project.</div>
           </div>
         </div>
 
@@ -89,16 +93,11 @@
         <div id="view-projects" class="view">
           <div class="view-header">
             <span>Projects</span>
-          </div>
-          <div class="view-subheader">
-            <span>Start a new project</span>
             <div class="view-actions">
-              <button id="btn-proj-upload-files" title="Upload files as a new project"><span
-                  data-icon="upload"></span><span class="btn-label">File</span></button>
-              <button id="btn-proj-upload-folder" title="Upload folder as a new project"><span
-                  data-icon="folder-upload"></span><span class="btn-label">Folder</span></button>
-              <button id="btn-proj-open-zip" title="Open ZIP as a new project"><span data-icon="archive"></span><span
-                  class="btn-label">ZIP</span></button>
+              <button id="btn-proj-new" title="New empty project" data-icon="plus"></button>
+              <button id="btn-proj-upload-files" title="Upload files" data-icon="upload"></button>
+              <button id="btn-proj-upload-folder" title="Upload folder" data-icon="folder-upload"></button>
+              <button id="btn-proj-open-zip" title="Open ZIP as a new project" data-icon="archive"></button>
             </div>
           </div>
           <div id="projects-list"></div>
@@ -147,6 +146,26 @@
             </select>
           </div>
           <div class="settings-divider"></div>
+          <div class="settings-section-title">Mobile Editing</div>
+          <div class="toggle-row">
+            <label>Show virtual key bar</label>
+            <div class="switch on" id="set-vkeys-enabled">
+              <div class="knob"></div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>Keys shown in the bar</label>
+            <div class="setting-desc">Choose which quick-tap keys appear above the keyboard while editing.</div>
+            <div id="vkey-toggle-grid" class="vkey-toggle-grid"></div>
+          </div>
+          <div class="setting-row">
+            <label>Custom shortcuts</label>
+            <div class="setting-desc">One-tap combinations like Ctrl+S or Alt+Shift+F.</div>
+            <div id="custom-shortcuts-list" class="custom-shortcuts-list"></div>
+            <button class="secondary-btn" id="btn-add-shortcut" style="margin-top:10px;">
+              <span class="icon icon-sm" data-icon="plus"></span> Add custom shortcut</button>
+          </div>
+          <div class="settings-divider"></div>
           <div class="setting-row">
             <label>Storage</label>
             <div class="setting-desc" id="storage-info">Calculating on-device storage use…</div>
@@ -172,58 +191,71 @@
             <div class="monaco-host hidden" id="monaco-host-primary"></div>
             <div class="welcome" id="welcome-screen">
               <div class="welcome-inner">
-                <h1><span class="icon icon-lg" data-icon="code"></span> CodeForge</h1>
-                <p class="tagline" id="welcome-tagline">v6.0 · A fast, private, browser-based code editor</p>
-
-                <div class="welcome-grid">
-                  <div class="welcome-column">
-                    <h2 id="welcome-start-heading">Start</h2>
-                    <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span>
-                      New File <span
-                        style="margin-left:auto;color:var(--text-mute);"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
-                    </div>
-                    <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
-                      New Folder</div>
-                    <div class="welcome-action" data-cmd="upload-files" id="welcome-upload-files"><span class="icon"
-                        data-icon="upload"></span>
-                      <span class="welcome-action-label">Upload Files</span>
-                    </div>
-                    <div class="welcome-action" data-cmd="upload-folder" id="welcome-upload-folder"><span class="icon"
-                        data-icon="folder-upload"></span>
-                      <span class="welcome-action-label">Upload Folder</span>
-                    </div>
-                    <div class="welcome-action" data-cmd="open-zip"><span class="icon" data-icon="archive"></span> Open
-                      ZIP as New Project</div>
-                    <div class="welcome-action" data-cmd="new-project" id="welcome-new-project" style="display:none;">
-                      <span class="icon" data-icon="plus-circle"></span> Add Another Project
-                    </div>
-                    <div class="welcome-action" data-cmd="open-projects" id="welcome-open-projects"
-                      style="display:none;"><span class="icon" data-icon="folder-open"></span> Open Existing Project
-                    </div>
-                    <div class="welcome-action welcome-action-danger" data-cmd="close-project"
-                      id="welcome-close-project" style="display:none;"><span class="icon" data-icon="x"></span> Close
-                      This Project</div>
-                  </div>
-                  <div class="welcome-column welcome-recent">
-                    <h2>Recent</h2>
-                    <div id="welcome-recent-list" class="welcome-recent-list"></div>
-                  </div>
+                <div class="welcome-hero">
+                  <span class="icon icon-lg" data-icon="code"></span>
+                  <h1>CodeForge</h1>
+                  <p class="tagline">A fast, private, browser-based code editor. Nothing you open ever leaves this
+                    device.</p>
                 </div>
 
-                <h2>Editor</h2>
-                <div class="kbd-row"><span>New file</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>N</kbd></span></div>
-                <div class="kbd-row"><span>Quick open</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>P</kbd></span></div>
-                <div class="kbd-row"><span>Command palette</span><span
-                    class="keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span></div>
-                <div class="kbd-row"><span>Find / Replace</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>F</kbd> /
-                    <kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
-                <div class="kbd-row"><span>Save</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
-                <br>
-                <h2>View</h2>
-                <div class="kbd-row"><span>Toggle sidebar</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span>
+                <div class="welcome-cards">
+                  <div class="welcome-card" data-cmd="upload-files" tabindex="0">
+                    <span class="icon" data-icon="archive"></span>
+                    <div class="wc-title">Upload Files</div>
+                    <div class="wc-desc">Add one or more files</div>
+                  </div>
+                  <div class="welcome-card" data-cmd="upload-folder" tabindex="0">
+                    <span class="icon" data-icon="folder-upload"></span>
+                    <div class="wc-title">Upload Folder</div>
+                    <div class="wc-desc">Open a whole folder</div>
+                  </div>
+                  <div class="welcome-card" data-cmd="open-zip" tabindex="0">
+                    <span class="icon" data-icon="archive"></span>
+                    <div class="wc-title">Open ZIP</div>
+                    <div class="wc-desc">Import a .zip project</div>
+                  </div>
+                  <div class="welcome-card" data-cmd="import-github" tabindex="0">
+                    <span class="icon" data-icon="git-branch"></span>
+                    <div class="wc-title">Clone from GitHub</div>
+                    <div class="wc-desc">Owner, repo &amp; branch</div>
+                  </div>
                 </div>
-                <div class="kbd-row"><span>Split editor</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>\</kbd></span>
+                <p class="welcome-dnd-hint">…or drag &amp; drop files or a folder anywhere on this window</p>
+
+                <div class="welcome-secondary-row">
+                  <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span>
+                    New File <span class="wa-kbd"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
+                  </div>
+                  <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
+                    New Folder</div>
+                  <div class="welcome-action" data-cmd="new-project"><span class="icon" data-icon="plus"></span>
+                    New Empty Project</div>
                 </div>
+
+                <div class="welcome-projects-section">
+                  <div class="wps-header">
+                    <h2>Your Projects</h2>
+                    <button class="wps-viewall" data-cmd="view-projects" type="button">View all</button>
+                  </div>
+                  <div id="welcome-recent-list" class="welcome-recent-list"></div>
+                </div>
+
+                <details class="welcome-shortcuts">
+                  <summary>Keyboard shortcuts</summary>
+                  <div class="kbd-row"><span>New file</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
+                  </div>
+                  <div class="kbd-row"><span>Quick open</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>P</kbd></span>
+                  </div>
+                  <div class="kbd-row"><span>Command palette</span><span
+                      class="keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span></div>
+                  <div class="kbd-row"><span>Find / Replace</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>F</kbd> /
+                      <kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
+                  <div class="kbd-row"><span>Save</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
+                  <div class="kbd-row"><span>Toggle sidebar</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span>
+                  </div>
+                  <div class="kbd-row"><span>Split editor</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>\</kbd></span>
+                  </div>
+                </details>
                 <br><br><br>
               </div>
             </div>
@@ -257,6 +289,12 @@
         <span class="sb-item" id="sb-privacy" title="No data leaves this device"><span class="icon icon-sm"
             data-icon="lock"></span> On-device</span>
       </div>
+    </div>
+
+    <div id="vkey-bar">
+      <button id="btn-vkey-collapse" class="vkey-collapse-btn" title="Hide keyboard bar"
+        data-icon="chevron-down"></button>
+      <div id="vkey-row" class="vkey-row"></div>
     </div>
 
     <div id="bottom-nav">
