@@ -1,4 +1,5 @@
 node_modules/
 dist/
+.codeforge-workspace/
 .DS_Store
 *.log

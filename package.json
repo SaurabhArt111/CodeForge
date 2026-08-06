@@ -1,8 +1,8 @@
 {
   "name": "codeforge",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "private": true,
-  "description": "CodeForge — a fast, private, browser-based code editor. Pure static frontend (no real backend, ever). Vite is used only as a dev server and static-copy build tool — there's nothing to bundle, since Monaco and the service worker both need stable, unhashed file paths.",
+  "description": "CodeForge — a fast, private, browser-based code editor. The editor, file explorer, and project management are a pure static frontend (deploy public/ or dist/ anywhere, no backend required). Running it locally (`npm run dev` or `npm run serve:simple`) additionally enables a real, local-only Terminal panel backed by an actual shell — see server/terminal-backend.js and README.md. Vite is used only as a dev server and static-copy build tool — there's nothing to bundle, since Monaco and the service worker both need stable, unhashed file paths.",
   "type": "commonjs",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,12 @@
   "engines": {
     "node": ">=14"
   },
-  "dependencies": {},
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.0.0"
+  },
   "devDependencies": {
     "vite": "^5.4.0"
   }

@@ -10,6 +10,8 @@ const ICON_PATHS = {
   "settings": '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>',
   "split": '<rect x="3" y="3" width="8" height="18" rx="1"></rect><rect x="13" y="3" width="8" height="18" rx="1"></rect>',
   "command": '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>',
+  "terminal": '<rect x="2" y="4" width="20" height="16" rx="2"></rect><polyline points="6 9 10 12 6 15"></polyline><line x1="12" y1="15" x2="18" y2="15"></line>',
+  "square": '<rect x="4" y="4" width="16" height="16" rx="2"></rect>',
   "menu": '<line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>',
   "upload": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
   "folder-upload": '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><polyline points="9.5 15.5 12 13 14.5 15.5"></polyline><line x1="12" y1="13" x2="12" y2="19"></line>',
@@ -2224,6 +2226,13 @@ function getCommands() {
     { label: "Quick Open File…", hint: "Ctrl+P", action: openQuickOpen },
     { label: "Toggle Sidebar", hint: "Ctrl+B", action: function () { if (state.isMobile) toggleMobileSidebar(); else toggleSidebarCollapse(); } },
     { label: "Toggle Split Editor", hint: "Ctrl+\\", action: function () { if (state.isMobile) onNavSplitTap(); else activateSplit(!state.splitActive); } },
+    { label: "Terminal: Toggle Panel", hint: "Ctrl+`", action: function () { if (window.CFTerminal) window.CFTerminal.toggle(); } },
+    { label: "Terminal: New Terminal", hint: "", action: function () { if (window.CFTerminal) window.CFTerminal.newSession(); } },
+    { label: "Terminal: Split Terminal", hint: "", action: function () { if (window.CFTerminal) window.CFTerminal.split(); } },
+    { label: "Terminal: Restart Active Terminal", hint: "", action: function () { if (window.CFTerminal) window.CFTerminal.restartActive(); } },
+    { label: "Terminal: Kill Active Terminal", hint: "", action: function () { if (window.CFTerminal) window.CFTerminal.killActive(); } },
+    { label: "Terminal: Sync Project to Disk", hint: "", action: function () { if (window.CFTerminal) window.CFTerminal.syncPush(); } },
+    { label: "Terminal: Pull Changes from Disk", hint: "", action: function () { if (window.CFTerminal) window.CFTerminal.syncPull(); } },
     { label: "Show Explorer", hint: "", action: function () { showSidebarView("explorer"); } },
     { label: "Show Search", hint: "", action: function () { showSidebarView("search"); } },
     { label: "Show Settings", hint: "", action: function () { showSidebarView("settings"); } },
@@ -2728,10 +2737,10 @@ function openIntegratedBrowser(path) {
     showBrowserPreview(targetPane, path);
   });
 }
-function showBrowserPreview(pane, path) {
+function ensureBrowserPreviewEl(pane) {
   const cid = pane === "primary" ? "editor-primary" : "editor-secondary";
   const container = document.getElementById(cid);
-  if (!container) return;
+  if (!container) return null;
   let bp = container.querySelector(".browser-preview");
   if (!bp) {
     bp = ce("div", "browser-preview");
@@ -2749,16 +2758,36 @@ function showBrowserPreview(pane, path) {
     bp.querySelector('[data-act="refresh"]').addEventListener("click", function () {
       flushAllPersists();
       const f = bp.querySelector("iframe");
-      if (bp.dataset.path) f.src = buildLiveUrl(bp.dataset.path);
+      if (bp.dataset.rawUrl) f.src = bp.dataset.rawUrl;
+      else if (bp.dataset.path) f.src = buildLiveUrl(bp.dataset.path);
     });
     bp.querySelector('[data-act="external"]').addEventListener("click", function () {
-      if (bp.dataset.path) window.open(buildLiveUrl(bp.dataset.path), "_blank");
+      if (bp.dataset.rawUrl) window.open(bp.dataset.rawUrl, "_blank");
+      else if (bp.dataset.path) window.open(buildLiveUrl(bp.dataset.path), "_blank");
     });
     bp.querySelector('[data-act="close"]').addEventListener("click", function () { closeBrowserPreview(pane); });
   }
+  return bp;
+}
+function showBrowserPreview(pane, path) {
+  const bp = ensureBrowserPreviewEl(pane);
+  if (!bp) return;
   bp.dataset.path = path;
+  bp.dataset.rawUrl = "";
   bp.querySelector(".bpv-path").textContent = path;
   bp.querySelector("iframe").src = buildLiveUrl(path);
+  setPaneOverlay(pane, "browser");
+}
+// Same preview surface as showBrowserPreview(), but pointed at an arbitrary absolute URL
+// instead of a virtual project file — used by the Terminal panel to preview a real local dev
+// server (Vite/Next/Express/etc.) it detected in a running command's output.
+function showBrowserPreviewUrl(pane, url, label) {
+  const bp = ensureBrowserPreviewEl(pane);
+  if (!bp) return;
+  bp.dataset.path = "";
+  bp.dataset.rawUrl = url;
+  bp.querySelector(".bpv-path").textContent = label || url;
+  bp.querySelector("iframe").src = url;
   setPaneOverlay(pane, "browser");
 }
 function closeBrowserPreview(pane) {
@@ -3933,6 +3962,7 @@ function wireStaticUI() {
       const nav = btn.dataset.nav;
       if (nav === "split") onNavSplitTap();
       else if (nav === "palette") openCommandPalette();
+      else if (nav === "terminal") { if (window.CFTerminal) window.CFTerminal.toggle(); }
       else onNavSidebarTap(nav);
     });
   });
@@ -3941,6 +3971,7 @@ function wireStaticUI() {
   qs("#btn-split-toggle").addEventListener("click", function () { activateSplit(!state.splitActive); });
   qs("#btn-close-split").addEventListener("click", function () { if (state.isMobile) setMobileSplitOpen(false); else activateSplit(false); });
   qs("#btn-command-palette-tb").addEventListener("click", openCommandPalette);
+  qs("#btn-terminal-toggle").addEventListener("click", function () { if (window.CFTerminal) window.CFTerminal.toggle(); });
 
   qs("#project-root-row").addEventListener("click", function () {
     rootExpanded = !rootExpanded;
@@ -4062,6 +4093,7 @@ function wireStaticUI() {
     else if (!e.shiftKey && k === "b" && !inInput) { e.preventDefault(); if (state.isMobile) toggleMobileSidebar(); else toggleSidebarCollapse(); }
     else if (!e.shiftKey && e.key === "\\" && !inInput) { e.preventDefault(); activateSplit(!state.splitActive); }
     else if (!e.shiftKey && k === "s" && !inInput) { e.preventDefault(); saveActive(); }
+    else if (e.key === "`") { e.preventDefault(); if (window.CFTerminal) { if (e.shiftKey) window.CFTerminal.newSession(); else window.CFTerminal.toggle(); } }
   });
   window.addEventListener("resize", debounce(updateResponsiveMode, 150));
   window.addEventListener("beforeunload", function (e) {
@@ -4171,6 +4203,77 @@ function boot() {
     showBootError(err);
   });
 }
+
+/* ============================== TERMINAL BRIDGE ==============================
+   public/terminal.js is a separate, optional module (the Terminal panel + xterm.js wiring).
+   It never reaches into this file's internals directly — this small, explicit object is the
+   entire surface it's allowed to use: reading/writing the current project's virtual
+   filesystem, reusing existing UI primitives (toasts, modals, the browser-preview pane), and
+   knowing which project is currently open. Keeping it here (rather than scattering `window.`
+   assignments throughout the file) means this bridge is easy to audit and easy to keep in sync
+   as the app evolves. */
+window.__cfBridge = {
+  getCurrentProject: function () { return currentProjectId ? { id: currentProjectId, name: projectName } : null; },
+  isMobile: function () { return state.isMobile; },
+  getFocusedPane: function () { return state.focusedPane || "primary"; },
+
+  listFiles: function () {
+    const out = [];
+    fs.forEach(function (node) {
+      out.push({ path: node.path, type: node.type, content: node.content || "", isBinary: !!node.isBinary, dataUrl: node.dataUrl || "" });
+    });
+    return out;
+  },
+  getFile: function (path) {
+    const n = fs.get(path);
+    if (!n) return null;
+    return { path: n.path, type: n.type, content: n.content || "", isBinary: !!n.isBinary, dataUrl: n.dataUrl || "" };
+  },
+  exists: function (path) { return fs.has(path); },
+  isDirty: function (path) { return dirtyPaths.has(path); },
+  writeFile: function (path, content) {
+    fsEnsureDirs(dirName(path));
+    fsSetFile(path, content, false, "", content.length);
+    idbPutNode(fs.get(path));
+    if (models.has(path) && !dirtyPaths.has(path)) {
+      const m = models.get(path);
+      m.model.setValue(content);
+      m.savedValue = content;
+    }
+    renderTree();
+  },
+  mkdir: function (path) { fsEnsureDirs(path); fsSetDir(path); idbPutNode(fs.get(path)); renderTree(); },
+  deletePath: function (path) { fsDeletePath(path); renderTree(); },
+  renamePath: function (oldPath, newPath) { const changed = fsRename(oldPath, newPath); renderTree(); return changed; },
+  writeBinaryFile: function (path, dataUrl, approxSize) {
+    fsEnsureDirs(dirName(path));
+    fsSetFile(path, "", true, dataUrl, approxSize || 0);
+    idbPutNode(fs.get(path));
+    renderTree();
+  },
+  refreshTree: function () { renderTree(); },
+
+  getGitChanges: function () { return currentProjectId ? computeGitChanges() : []; },
+  isGitLinked: function () { return !!(gitState && gitState.linked); },
+
+  toast: function (msg, kind) { toast(msg, kind); },
+  openModal: function (opts) { return openModal(opts); },
+  confirmModal: function (message, opts) { return confirmModal(message, opts); },
+  showBusy: function (label) { showBusy(label); },
+  hideBusy: function () { hideBusy(); },
+  escapeHtml: function (s) { return escapeHtml(s); },
+  formatBytes: function (n) { return formatBytes(n); },
+  iconSvg: function (name, extraClass) { return iconSvg(name, extraClass); },
+
+  showPreviewUrl: function (url, label) {
+    // Target "primary" unless a split view is genuinely visible right now — otherwise a stale
+    // state.focusedPane (from whatever was last focused before the Terminal panel took focus)
+    // could silently open the preview in a pane the person can't currently see.
+    const splitVisible = state.splitActive || (state.isMobile && state.mobileSplitOpen);
+    const pane = splitVisible ? (state.focusedPane || "primary") : "primary";
+    showBrowserPreviewUrl(pane, url, label);
+  },
+};
 
 /* ============================== MONACO LOADER GLUE ============================== */
 document.addEventListener("DOMContentLoaded", function () {

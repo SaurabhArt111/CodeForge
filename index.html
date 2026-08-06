@@ -11,6 +11,7 @@
   <link rel="icon"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23007acc'/%3E%3Cpath d='M9 8l-4 4 4 4M15 8l4 4-4 4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="vendor/xterm/xterm.css" />
 </head>
 
 <body>
@@ -31,6 +32,8 @@
       <div id="titlebar-spacer"></div>
       <button id="btn-split-toggle" class="tb-btn desktop-only" title="Toggle Split Editor (Ctrl+\)"
         data-icon="split"></button>
+      <button id="btn-terminal-toggle" class="tb-btn desktop-only" title="Toggle Terminal (Ctrl+`)"
+        data-icon="terminal"></button>
       <button id="btn-command-palette-tb" class="tb-btn desktop-only" title="Command Palette (Ctrl+Shift+P)"
         data-icon="command"></button>
     </div>
@@ -280,6 +283,30 @@
 
     </div>
 
+    <div id="terminal-resizer"></div>
+    <div id="terminal-panel" class="hidden">
+      <div id="terminal-header">
+        <button id="btn-terminal-mobile-back" class="term-mobile-back" data-icon="arrow-left"
+          title="Back to editor"></button>
+        <div id="terminal-tabs"></div>
+        <button id="btn-terminal-new" class="term-tool-btn" title="New Terminal" data-icon="plus"></button>
+        <div class="term-toolbar-spacer"></div>
+        <span id="terminal-mode-badge" class="term-mode-badge"></span>
+        <button id="btn-terminal-sync-push" class="term-tool-btn" title="Sync project to disk (push)"
+          data-icon="arrow-up"></button>
+        <button id="btn-terminal-sync-pull" class="term-tool-btn" title="Pull changes from disk"
+          data-icon="arrow-down"></button>
+        <button id="btn-terminal-restart" class="term-tool-btn" title="Restart active terminal"
+          data-icon="refresh"></button>
+        <button id="btn-terminal-kill" class="term-tool-btn" title="Kill active terminal"
+          data-icon="trash"></button>
+        <button id="btn-terminal-maximize" class="term-tool-btn desktop-only" title="Maximize panel"
+          data-icon="corner-side"></button>
+        <button id="btn-terminal-close" class="term-tool-btn" title="Close panel (Ctrl+`)" data-icon="x"></button>
+      </div>
+      <div id="terminal-body"></div>
+    </div>
+
     <div id="statusbar">
       <div class="sb-left">
         <span class="sb-item" id="sb-lang">Plain Text</span>
@@ -308,6 +335,8 @@
           class="nav-label">Projects</span></button>
       <button class="nav-btn" data-nav="split"><span class="icon" data-icon="split"></span><span
           class="nav-label">Split</span></button>
+      <button class="nav-btn" data-nav="terminal"><span class="icon" data-icon="terminal"></span><span
+          class="nav-label">Terminal</span></button>
       <!-- <button class="nav-btn" data-nav="palette"><span class="icon" data-icon="command"></span><span
           class="nav-label">Cmds</span></button> -->
       <button class="nav-btn" data-nav="settings"><span class="icon" data-icon="settings"></span><span
@@ -340,7 +369,24 @@
 
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/vs/loader.js"></script>
+  <script>
+    // xterm.js's UMD bundles auto-detect an AMD loader and, if they see one, register
+    // themselves as anonymous AMD modules instead of setting window.Terminal/FitAddon/etc.
+    // Monaco's loader.js (just above) leaves exactly such a global `define()` in place, so we
+    // hide it for these three script tags only, then restore it immediately after so Monaco's
+    // own require(["vs/editor/editor.main"]) call in app.js keeps working normally.
+    window.__cfAmdDefine = window.define;
+    window.define = undefined;
+  </script>
+  <script src="vendor/xterm/xterm.js"></script>
+  <script src="vendor/xterm/addon-fit.js"></script>
+  <script src="vendor/xterm/addon-web-links.js"></script>
+  <script src="vendor/xterm/addon-search.js"></script>
+  <script>
+    window.define = window.__cfAmdDefine;
+  </script>
   <script src="app.js"></script>
+  <script src="terminal.js"></script>
 </body>
 
 </html>
