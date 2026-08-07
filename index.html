@@ -186,130 +186,125 @@
       <div id="sidebar-backdrop"></div>
 
       <div id="editor-region">
-        <div class="editor-panel" id="editor-panel">
-
-          <div class="pane" id="pane-primary">
-            <div class="tabs" id="tabs-primary">
-              <div class="tab-fill"></div>
-            </div>
-            <div class="editor-container" id="editor-primary">
-              <div class="monaco-host hidden" id="monaco-host-primary"></div>
-              <div class="welcome" id="welcome-screen">
-                <div class="welcome-inner">
-                  <div class="welcome-hero">
-                    <span class="icon icon-lg" data-icon="code"></span>
-                    <h1>CodeForge</h1>
-                    <p class="tagline">A fast, private, browser-based code editor. Nothing you open ever leaves this
-                      device.</p>
-                  </div>
-
-                  <div class="welcome-cards">
-                    <div class="welcome-card" data-cmd="upload-files" tabindex="0">
-                      <span class="icon" data-icon="archive"></span>
-                      <div class="wc-title">Upload Files</div>
-                      <div class="wc-desc">Add one or more files</div>
-                    </div>
-                    <div class="welcome-card" data-cmd="upload-folder" tabindex="0">
-                      <span class="icon" data-icon="folder-upload"></span>
-                      <div class="wc-title">Upload Folder</div>
-                      <div class="wc-desc">Open a whole folder</div>
-                    </div>
-                    <div class="welcome-card" data-cmd="open-zip" tabindex="0">
-                      <span class="icon" data-icon="archive"></span>
-                      <div class="wc-title">Open ZIP</div>
-                      <div class="wc-desc">Import a .zip project</div>
-                    </div>
-                    <div class="welcome-card" data-cmd="import-github" tabindex="0">
-                      <span class="icon" data-icon="git-branch"></span>
-                      <div class="wc-title">Clone from GitHub</div>
-                      <div class="wc-desc">Owner, repo &amp; branch</div>
-                    </div>
-                  </div>
-                  <p class="welcome-dnd-hint">…or drag &amp; drop files or a folder anywhere on this window</p>
-
-                  <div class="welcome-secondary-row">
-                    <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span>
-                      New File <span class="wa-kbd"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
-                    </div>
-                    <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
-                      New Folder</div>
-                    <div class="welcome-action" data-cmd="new-project"><span class="icon" data-icon="plus"></span>
-                      New Empty Project</div>
-                  </div>
-
-                  <div class="welcome-projects-section">
-                    <div class="wps-header">
-                      <h2>Your Projects</h2>
-                      <button class="wps-viewall" data-cmd="view-projects" type="button">View all</button>
-                    </div>
-                    <div id="welcome-recent-list" class="welcome-recent-list"></div>
-                  </div>
-
-                  <details class="welcome-shortcuts">
-                    <summary>Keyboard shortcuts</summary>
-                    <div class="kbd-row"><span>New file</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
-                    </div>
-                    <div class="kbd-row"><span>Quick open</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>P</kbd></span>
-                    </div>
-                    <div class="kbd-row"><span>Command palette</span><span
-                        class="keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span></div>
-                    <div class="kbd-row"><span>Find / Replace</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>F</kbd> /
-                        <kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
-                    <div class="kbd-row"><span>Save</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
-                    <div class="kbd-row"><span>Toggle sidebar</span><span
-                        class="keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span>
-                    </div>
-                    <div class="kbd-row"><span>Split editor</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>\</kbd></span>
-                    </div>
-                  </details>
-                  <br><br><br>
+        <div class="pane" id="pane-primary">
+          <div class="tabs" id="tabs-primary">
+            <div class="tab-fill"></div>
+          </div>
+          <div class="editor-container" id="editor-primary">
+            <div class="monaco-host hidden" id="monaco-host-primary"></div>
+            <div class="welcome" id="welcome-screen">
+              <div class="welcome-inner">
+                <div class="welcome-hero">
+                  <span class="icon icon-lg" data-icon="code"></span>
+                  <h1>CodeForge</h1>
+                  <p class="tagline">A fast, private, browser-based code editor. Nothing you open ever leaves this
+                    device.</p>
                 </div>
+
+                <div class="welcome-cards">
+                  <div class="welcome-card" data-cmd="upload-files" tabindex="0">
+                    <span class="icon" data-icon="archive"></span>
+                    <div class="wc-title">Upload Files</div>
+                    <div class="wc-desc">Add one or more files</div>
+                  </div>
+                  <div class="welcome-card" data-cmd="upload-folder" tabindex="0">
+                    <span class="icon" data-icon="folder-upload"></span>
+                    <div class="wc-title">Upload Folder</div>
+                    <div class="wc-desc">Open a whole folder</div>
+                  </div>
+                  <div class="welcome-card" data-cmd="open-zip" tabindex="0">
+                    <span class="icon" data-icon="archive"></span>
+                    <div class="wc-title">Open ZIP</div>
+                    <div class="wc-desc">Import a .zip project</div>
+                  </div>
+                  <div class="welcome-card" data-cmd="import-github" tabindex="0">
+                    <span class="icon" data-icon="git-branch"></span>
+                    <div class="wc-title">Clone from GitHub</div>
+                    <div class="wc-desc">Owner, repo &amp; branch</div>
+                  </div>
+                </div>
+                <p class="welcome-dnd-hint">…or drag &amp; drop files or a folder anywhere on this window</p>
+
+                <div class="welcome-secondary-row">
+                  <div class="welcome-action" data-cmd="new-file"><span class="icon" data-icon="file-plus"></span>
+                    New File <span class="wa-kbd"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
+                  </div>
+                  <div class="welcome-action" data-cmd="new-folder"><span class="icon" data-icon="folder-plus"></span>
+                    New Folder</div>
+                  <div class="welcome-action" data-cmd="new-project"><span class="icon" data-icon="plus"></span>
+                    New Empty Project</div>
+                </div>
+
+                <div class="welcome-projects-section">
+                  <div class="wps-header">
+                    <h2>Your Projects</h2>
+                    <button class="wps-viewall" data-cmd="view-projects" type="button">View all</button>
+                  </div>
+                  <div id="welcome-recent-list" class="welcome-recent-list"></div>
+                </div>
+
+                <details class="welcome-shortcuts">
+                  <summary>Keyboard shortcuts</summary>
+                  <div class="kbd-row"><span>New file</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>N</kbd></span>
+                  </div>
+                  <div class="kbd-row"><span>Quick open</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>P</kbd></span>
+                  </div>
+                  <div class="kbd-row"><span>Command palette</span><span
+                      class="keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span></div>
+                  <div class="kbd-row"><span>Find / Replace</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>F</kbd> /
+                      <kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
+                  <div class="kbd-row"><span>Save</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
+                  <div class="kbd-row"><span>Toggle sidebar</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span>
+                  </div>
+                  <div class="kbd-row"><span>Split editor</span><span class="keys"><kbd>Ctrl</kbd>+<kbd>\</kbd></span>
+                  </div>
+                </details>
+                <br><br><br>
               </div>
             </div>
           </div>
-
-          <div id="split-handle">
-            <div class="grip"></div>
-          </div>
-          <div class="splitter-desktop hidden" id="splitter-desktop"></div>
-
-          <div class="pane hidden" id="pane-secondary">
-            <button id="btn-close-split" data-icon="x"></button>
-            <div class="tabs" id="tabs-secondary">
-              <div class="tab-fill"></div>
-            </div>
-            <div class="editor-container" id="editor-secondary">
-              <div class="monaco-host hidden" id="monaco-host-secondary"></div>
-            </div>
-          </div>
-
         </div>
 
-        <div id="terminal-resizer"></div>
-        <div id="terminal-panel" class="hidden">
-          <div id="terminal-header">
-            <button id="btn-terminal-mobile-back" class="term-mobile-back" data-icon="arrow-left"
-              title="Back to editor"></button>
-            <div id="terminal-tabs"></div>
-            <button id="btn-terminal-new" class="term-tool-btn" title="New Terminal" data-icon="plus"></button>
-            <div class="term-toolbar-spacer"></div>
-            <span id="terminal-mode-badge" class="term-mode-badge"></span>
-            <button id="btn-terminal-sync-push" class="term-tool-btn" title="Sync project to disk (push)"
-              data-icon="arrow-up"></button>
-            <button id="btn-terminal-sync-pull" class="term-tool-btn" title="Pull changes from disk"
-              data-icon="arrow-down"></button>
-            <button id="btn-terminal-restart" class="term-tool-btn" title="Restart active terminal"
-              data-icon="refresh"></button>
-            <button id="btn-terminal-kill" class="term-tool-btn" title="Kill active terminal"
-              data-icon="trash"></button>
-            <button id="btn-terminal-maximize" class="term-tool-btn desktop-only" title="Maximize panel"
-              data-icon="corner-side"></button>
-            <button id="btn-terminal-close" class="term-tool-btn" title="Close panel (Ctrl+`)" data-icon="x"></button>
+        <div id="split-handle">
+          <div class="grip"></div>
+        </div>
+        <div class="splitter-desktop hidden" id="splitter-desktop"></div>
+
+        <div class="pane hidden" id="pane-secondary">
+          <button id="btn-close-split" data-icon="x"></button>
+          <div class="tabs" id="tabs-secondary">
+            <div class="tab-fill"></div>
           </div>
-          <div id="terminal-body"></div>
+          <div class="editor-container" id="editor-secondary">
+            <div class="monaco-host hidden" id="monaco-host-secondary"></div>
+          </div>
         </div>
       </div>
 
+    </div>
+
+    <div id="terminal-resizer"></div>
+    <div id="terminal-panel" class="hidden">
+      <div id="terminal-header">
+        <button id="btn-terminal-mobile-back" class="term-mobile-back" data-icon="arrow-left"
+          title="Back to editor"></button>
+        <div id="terminal-tabs"></div>
+        <button id="btn-terminal-new" class="term-tool-btn" title="New Terminal" data-icon="plus"></button>
+        <div class="term-toolbar-spacer"></div>
+        <span id="terminal-mode-badge" class="term-mode-badge"></span>
+        <button id="btn-terminal-sync-push" class="term-tool-btn" title="Sync project to disk (push)"
+          data-icon="arrow-up"></button>
+        <button id="btn-terminal-sync-pull" class="term-tool-btn" title="Pull changes from disk"
+          data-icon="arrow-down"></button>
+        <button id="btn-terminal-restart" class="term-tool-btn" title="Restart active terminal"
+          data-icon="refresh"></button>
+        <button id="btn-terminal-kill" class="term-tool-btn" title="Kill active terminal"
+          data-icon="trash"></button>
+        <button id="btn-terminal-maximize" class="term-tool-btn desktop-only" title="Maximize panel"
+          data-icon="corner-side"></button>
+        <button id="btn-terminal-close" class="term-tool-btn" title="Close panel (Ctrl+`)" data-icon="x"></button>
+      </div>
+      <div id="terminal-body"></div>
     </div>
 
     <div id="statusbar">

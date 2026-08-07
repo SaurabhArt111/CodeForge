@@ -1,0 +1,12 @@
+# Netlify / Cloudflare Pages header config. Vercel's equivalent lives in vercel.json;
+# both set the same two headers so the Terminal panel's WebContainers fallback (a real,
+# in-browser Node.js runtime, used only when no local backend is reachable — see
+# README.md) can boot. Harmless if unused: these headers only matter to pages that opt
+# into cross-origin isolation via JS, which the Terminal panel only does on its fallback path.
+#
+# GitHub Pages has no equivalent custom-headers mechanism, so this can't be replicated
+# there — CodeForge deployed to GitHub Pages falls back to the plain simulated terminal
+# instead, which is expected and handled gracefully.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

@@ -222,8 +222,13 @@ function createTerminalBackend(options) {
       s.shellLabel = shellPath;
       s.proc = proc;
       s.status = "running";
-      proc.onData(function (data) { broadcastData(s, data); });
+      proc.onData(function (data) { if (s.proc === proc) broadcastData(s, data); });
       proc.onExit(function (e) {
+        // Guard against a race on restart: killSession() here is followed synchronously by a
+        // fresh spawnProcess() reassigning s.proc, but this OLD process's exit event still
+        // fires asynchronously afterward. Without this check it would incorrectly mark the
+        // brand-new process as exited.
+        if (s.proc !== proc) return;
         s.status = "exited";
         s.exitCode = e.exitCode;
         s.exitSignal = e.signal || null;
@@ -241,15 +246,17 @@ function createTerminalBackend(options) {
       s.shellLabel = shellPath + " (no PTY)";
       s.proc = proc;
       s.status = "running";
-      proc.stdout.on("data", function (d) { broadcastData(s, d.toString("utf8")); });
-      proc.stderr.on("data", function (d) { broadcastData(s, d.toString("utf8")); });
+      proc.stdout.on("data", function (d) { if (s.proc === proc) broadcastData(s, d.toString("utf8")); });
+      proc.stderr.on("data", function (d) { if (s.proc === proc) broadcastData(s, d.toString("utf8")); });
       proc.on("exit", function (code, signal) {
+        if (s.proc !== proc) return; // stale event from a process a restart has already replaced
         s.status = "exited";
         s.exitCode = code;
         s.exitSignal = signal || null;
         broadcastControl(s, { type: "exit", code: code, signal: signal || null });
       });
       proc.on("error", function (err) {
+        if (s.proc !== proc) return;
         broadcastData(s, "\r\n\x1b[31mFailed to start shell: " + err.message + "\x1b[0m\r\n");
       });
     }

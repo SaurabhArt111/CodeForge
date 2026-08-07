@@ -6,18 +6,34 @@
  * BRIDGE" section near the end of app.js). That keeps the boundary between "the editor" and
  * "the terminal" easy to audit.
  *
- * Three backend modes, auto-detected on load by pinging /api/terminal/health:
- *   - "pty"        real shell, real PTY (node-pty)      — full fidelity, incl. vim/htop/etc.
- *   - "shell"      real shell, no PTY (plain pipes)      — real commands, but no full-screen TUIs
- *   - "simulated"  no local backend reachable at all      — an in-browser fake shell operating on
- *                  CodeForge's virtual filesystem, used automatically on static deploys
- *                  (Vercel/Netlify/GitHub Pages) or when opening index.html without Node.
+ * Four backend modes, auto-detected on load by pinging /api/terminal/health:
+ *   - "pty"          real shell, real PTY (node-pty)  — full fidelity, incl. vim/htop/etc.
+ *   - "shell"        real shell, no PTY (plain pipes) — real commands, but no full-screen TUIs
+ *   - "webcontainer" no local backend, but a real in-browser Node.js runtime (WebContainers) —
+ *                    used when this page is cross-origin isolated and the browser supports it;
+ *                    real npm/node execution with zero server, but no git/Python. See README.md.
+ *   - "simulated"    neither of the above — an in-browser fake shell operating on CodeForge's
+ *                    virtual filesystem, so the panel is never just broken.
  *
  * Whichever mode is active, the panel, tabs, keybindings, and UI are identical — only what
  * happens when you press Enter differs.
  */
 "use strict";
 (function () {
+
+  // webcontainer-runtime.js must be loaded as a real ES module (it has import/export), but
+  // adding it as a static <script type="module"> tag in index.html would make Vite's *build*
+  // step (unlike its dev server) treat it as a bundle entry point and mis-resolve it, since
+  // it's really just a plain publicDir static asset like the rest of vendor/. Injecting it
+  // dynamically sidesteps that entirely — Vite's build-time HTML scanner only looks at
+  // statically-declared tags. detectCapabilities() below doesn't assume any particular timing
+  // for when this finishes loading; it listens for "cf:webcontainer-ready" either way.
+  (function loadWebContainerRuntime() {
+    const s = document.createElement("script");
+    s.type = "module";
+    s.src = "webcontainer-runtime.js";
+    document.head.appendChild(s);
+  })();
 
   /* ============================== tiny utils (this module is a separate scope from app.js) ============================== */
   function qs(sel, root) { return (root || document).querySelector(sel); }
@@ -126,8 +142,28 @@
       })
       .catch(function () {
         state.capabilities = null;
-        setMode("simulated");
+        // No real backend reachable at all (typically a static deploy). Offer real npm/node
+        // execution via an in-browser WebContainers runtime if this page loaded cross-origin
+        // isolated and the browser supports it; otherwise fall back to the plain simulation.
+        resolveFallbackMode();
       });
+  }
+
+  // window.__cfWebContainer is set by a dynamically-injected module script (see the top of this
+  // file), so it may or may not have finished loading yet by the time we get here — wait for
+  // its ready event rather than assuming either ordering, with a timeout in case it never loads.
+  function resolveFallbackMode() {
+    if (window.__cfWebContainer) { setMode(window.__cfWebContainer.isSupported() ? "webcontainer" : "simulated"); return; }
+    let settled = false;
+    function finish(mode) {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("cf:webcontainer-ready", onReady);
+      setMode(mode);
+    }
+    function onReady() { finish(window.__cfWebContainer && window.__cfWebContainer.isSupported() ? "webcontainer" : "simulated"); }
+    window.addEventListener("cf:webcontainer-ready", onReady);
+    setTimeout(function () { finish("simulated"); }, 4000);
   }
 
   function setMode(mode) {
@@ -137,7 +173,8 @@
       detecting: ["\u25CB", "Checking for a local terminal backend\u2026"],
       pty: ["\u25CF Live", "Real shell (full PTY) — " + ((state.capabilities && state.capabilities.defaultShell) || "")],
       shell: ["\u25D1 Live (no TTY)", "Real shell, but without a PTY — full-screen apps like vim/htop won't render. Install a C++ build toolchain and reinstall node_modules to enable it."],
-      simulated: ["\u25CB Simulated", "No local backend found — using CodeForge's built-in simulated shell. Run `npm run dev` or `node server.js` locally for a real terminal with git/npm/python/etc."],
+      webcontainer: ["\u25D1 In-browser Node", "No local backend found, but real npm/node execution is running entirely in this browser tab (WebContainers) — no server involved, works on mobile/tablet too. No git or Python; first boot needs network access and can take a few seconds."],
+      simulated: ["\u25CB Simulated", "No local backend and no in-browser runtime available — using CodeForge's built-in simulated shell. Run `npm run dev` or `node server.js` locally for a real terminal with git/npm/python/etc."],
     };
     const l = labels[mode] || labels.simulated;
     els.badge.textContent = l[0];
@@ -318,7 +355,9 @@
     const p = requireProject();
     if (!p) return null;
     const title = "Terminal " + (sessionsForProject(p.id).length + 1);
-    const session = state.mode === "simulated" ? createSimSession(p, title) : createRealSession(p, title);
+    const session = state.mode === "webcontainer" ? createWebContainerSession(p, title)
+      : state.mode === "simulated" ? createSimSession(p, title)
+      : createRealSession(p, title);
     state.sessions.push(session);
     els.pool.appendChild(session.host);
     const slot = focusIntoSlot === false ? 0 : (state.split ? state.activeSlot : 0);
@@ -333,6 +372,14 @@
     if (session.kind === "real" && session.backendId) {
       fetch("/api/terminal/sessions/" + encodeURIComponent(session.backendId), { method: "DELETE" }).catch(function () {});
       if (session.ws) try { session.ws.close(); } catch (e) {}
+    } else if (session.kind === "webcontainer") {
+      if (session.proc) try { session.proc.kill(); } catch (e) {}
+      // Only tear down the shared instance once nothing else for this project needs it —
+      // other tabs on the same project may still have a live jsh process in it.
+      const stillNeeded = sessionsForProject(session.projectId).some(function (s) { return s.kind === "webcontainer" && s !== session; });
+      if (!stillNeeded && window.__cfWebContainer && window.__cfWebContainer.getBootedProjectId() === session.projectId) {
+        window.__cfWebContainer.teardownCurrent();
+      }
     }
     session.term.dispose();
     session.host.remove();
@@ -350,6 +397,7 @@
   function restartSession(session) {
     if (!session) return;
     if (session.kind === "sim") { session.reset(); return; }
+    if (session.kind === "webcontainer") { restartWebContainerSession(session); return; }
     if (!session.backendId) return;
     fetch("/api/terminal/sessions/" + encodeURIComponent(session.backendId) + "/restart", { method: "POST" })
       .then(function (r) { return r.json(); })
@@ -598,6 +646,183 @@
     ws.addEventListener("error", function () {});
   }
 
+  /* ============================== WebContainers (in-browser Node runtime) sessions ============================== */
+  // Last-resort fallback, used only when no local backend is reachable at all AND this page is
+  // cross-origin isolated (see vercel.json / public/_headers — never enabled for server.js or
+  // `npm run dev`, since a real backend always wins when one's available). Gives real npm/node
+  // execution with zero server, including on mobile/tablet. See README.md for what it can't do
+  // (git, Python) and the licensing terms for using it beyond personal/OSS/prototype use.
+  function bootWebContainerForProject(project) {
+    const wc = window.__cfWebContainer;
+    if (!wc) return Promise.reject(new Error("The in-browser runtime didn't load."));
+    // Only the FIRST boot for a project does a full mount(); reusing an already-booted instance
+    // (e.g. opening a 2nd tab) must NOT re-mount — that would risk clobbering things real
+    // commands created in there since, like a freshly-installed node_modules.
+    const alreadyBootedForThisProject = wc.getBootedProjectId() === project.id;
+    return wc.bootForProject(project.id).catch(function (err) {
+      if (err && err.code === "ALREADY_BOOTED_DIFFERENT_PROJECT") {
+        return bridge().confirmModal(
+          "Only one in-browser Node runtime can run at a time. Switching here will stop whatever's currently running for the other project.",
+          { title: "Switch in-browser runtime?", confirmLabel: "Switch anyway" }
+        ).then(function (ok) {
+          if (!ok) { const cancelled = new Error("cancelled"); cancelled.code = "USER_CANCELLED"; throw cancelled; }
+          return wc.teardownCurrent().then(function () { return wc.bootForProject(project.id); });
+        });
+      }
+      throw err;
+    }).then(function (instance) {
+      if (alreadyBootedForThisProject) return instance;
+      return mountProjectFiles(instance, project).then(function () { return instance; });
+    });
+  }
+
+  function mountProjectFiles(instance, project) {
+    const b = bridge();
+    const tree = buildFileSystemTree(b ? b.listFiles() : []);
+    return instance.mount(tree);
+  }
+
+  // Writes files individually via fs.writeFile rather than re-mounting the whole tree — used
+  // for every sync AFTER the initial mount, specifically because it can only ever add/update
+  // the exact paths given, never delete anything else (unlike mount(), whose semantics for
+  // pre-existing, non-overlapping files aren't part of the documented contract).
+  function writeChangedFilesToWc(instance, files) {
+    const dirsEnsured = new Set();
+    function ensureDir(dirPath) {
+      if (!dirPath || dirsEnsured.has(dirPath)) return Promise.resolve();
+      dirsEnsured.add(dirPath);
+      return instance.fs.mkdir(dirPath, { recursive: true }).catch(function () {});
+    }
+    let chain = Promise.resolve();
+    files.filter(function (f) { return f.type === "file"; }).forEach(function (f) {
+      chain = chain.then(function () {
+        const dir = f.path.indexOf("/") !== -1 ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+        return ensureDir(dir).then(function () {
+          if (f.isBinary && f.dataUrl) {
+            const b64 = f.dataUrl.split(",")[1] || "";
+            return instance.fs.writeFile(f.path, base64ToUint8Array(b64)).catch(function () {});
+          }
+          return instance.fs.writeFile(f.path, f.content || "").catch(function () {});
+        });
+      });
+    });
+    return chain;
+  }
+
+  // Converts CodeForge's flat {path, type, content, isBinary, dataUrl}[] into the nested
+  // {name: {file:{contents}} | {directory:{...}}} shape WebContainers' mount() expects.
+  function buildFileSystemTree(files) {
+    const root = {};
+    function ensureDir(pathParts) {
+      let node = root;
+      pathParts.forEach(function (part) {
+        if (!node[part]) node[part] = { directory: {} };
+        node = node[part].directory;
+      });
+      return node;
+    }
+    files.forEach(function (f) {
+      if (f.type !== "file") return;
+      const parts = f.path.split("/").filter(Boolean);
+      const name = parts.pop();
+      if (!name) return;
+      const dir = ensureDir(parts);
+      if (f.isBinary && f.dataUrl) {
+        const b64 = f.dataUrl.split(",")[1] || "";
+        try { dir[name] = { file: { contents: base64ToUint8Array(b64) } }; }
+        catch (e) { dir[name] = { file: { contents: "" } }; }
+      } else {
+        dir[name] = { file: { contents: f.content || "" } };
+      }
+    });
+    return root;
+  }
+  function base64ToUint8Array(b64) {
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+
+  function describeWebContainerError(err) {
+    if (err && err.code === "USER_CANCELLED") return "Cancelled.";
+    if (err && /crossOriginIsolated|SharedArrayBuffer/i.test(err.message || "")) return "This browser/page isn't cross-origin isolated, so the in-browser runtime can't start here.";
+    return (err && err.message) || String(err);
+  }
+
+  let wcNoticeShown = false;
+  function announceWebContainerNoticeOnce() {
+    if (wcNoticeShown) return;
+    wcNoticeShown = true;
+    const b = bridge();
+    if (b) b.toast("Using WebContainers for a real in-browser terminal — free for personal/OSS/prototype use; see README.md for commercial-use licensing terms.");
+  }
+
+  function createWebContainerSession(project, title) {
+    const built = buildTerm();
+    const session = {
+      id: genId(), kind: "webcontainer", projectId: project.id, title: title,
+      status: "starting", term: built.term, fitAddon: built.fitAddon, searchAddon: built.searchAddon,
+      host: built.host, proc: null, inputWriter: null, devServerShown: false,
+    };
+    built.term.write("\x1b[90mBooting an in-browser Node.js runtime (WebContainers)\u2026 first boot needs network access and can take a few seconds.\x1b[0m\r\n");
+    announceWebContainerNoticeOnce();
+    spawnWebContainerShell(session, project);
+
+    built.term.onData(function (data) {
+      if (session.status === "exited") { restartSession(session); return; }
+      if (data === "\x03" && built.term.hasSelection()) { copySelection(built.term); return; }
+      if (session.inputWriter) { try { session.inputWriter.write(data); } catch (e) {} }
+    });
+    built.term.onResize(function () {
+      if (session.proc) { try { session.proc.resize({ cols: built.term.cols, rows: built.term.rows }); } catch (e) {} }
+    });
+    return session;
+  }
+
+  function spawnWebContainerShell(session, project) {
+    bootWebContainerForProject(project).then(function (instance) {
+      return instance.spawn("jsh", { terminal: { cols: session.term.cols, rows: session.term.rows } });
+    }).then(function (proc) {
+      session.proc = proc;
+      session.status = "running";
+      session.inputWriter = proc.input.getWriter();
+      renderTabs();
+      const reader = proc.output.getReader();
+      (function pump() {
+        reader.read().then(function (res) {
+          if (res.done || session.proc !== proc) return; // stale reader from a process a restart already replaced
+          session.term.write(res.value);
+          watchForDevServerUrl(session, res.value);
+          pump();
+        }).catch(function () {});
+      })();
+      proc.exit.then(function (code) {
+        // Guard against the same restart race as the server-side PTY code: killing this proc
+        // in restartWebContainerSession() is followed synchronously by a fresh spawn that
+        // reassigns session.proc, but this OLD process's exit promise still resolves afterward.
+        if (session.proc !== proc) return;
+        session.status = "exited";
+        session.term.write("\r\n\x1b[1;30m[Process exited" + (code != null ? " with code " + code : "") + "]\x1b[0m\r\n\x1b[90mPress any key to restart.\x1b[0m");
+        renderTabs();
+      });
+    }).catch(function (err) {
+      session.status = "exited";
+      session.term.writeln("\x1b[31m" + describeWebContainerError(err) + "\x1b[0m");
+      renderTabs();
+    });
+  }
+
+  function restartWebContainerSession(session) {
+    if (session.proc) try { session.proc.kill(); } catch (e) {}
+    session.status = "starting";
+    session.inputWriter = null;
+    session.term.clear();
+    session.term.writeln("\x1b[90m[restarting\u2026]\x1b[0m");
+    const p = bridge() ? bridge().getCurrentProject() : null;
+    if (p) spawnWebContainerShell(session, p);
+  }
+
   /* ============================== simulated (in-browser) sessions ============================== */
   function createSimSession(project, title) {
     const built = buildTerm();
@@ -623,10 +848,12 @@
   function printBanner(session) {
     const t = session.term;
     t.writeln("\x1b[1mCodeForge \u2014 simulated terminal\x1b[0m");
-    t.writeln("No local backend found, so this is an in-browser simulation working on your");
-    t.writeln("project's virtual filesystem \u2014 not a real shell. Real git/npm/node/python etc.");
-    t.writeln("need CodeForge's optional local backend: run \x1b[36mnpm run dev\x1b[0m or \x1b[36mnode server.js\x1b[0m");
-    t.writeln("from this project's folder, then reload this page.");
+    t.writeln("No local backend found, and no in-browser Node runtime is available here either, so");
+    t.writeln("this is an in-browser simulation working on your project's virtual filesystem \u2014 not a");
+    t.writeln("real shell. For a real shell with git/npm/node/python, run \x1b[36mnpm run dev\x1b[0m or");
+    t.writeln("\x1b[36mnode server.js\x1b[0m from this project's folder, then reload. For real (but git/Python-");
+    t.writeln("less) npm/node execution with zero server, this deploy would need to serve pages cross-");
+    t.writeln("origin isolated (see public/_headers, vercel.json) on a browser that supports it.");
     t.writeln("Type \x1b[36mhelp\x1b[0m for what works here.");
     t.writeln("");
   }
@@ -859,8 +1086,12 @@
     return Promise.resolve();
   }
 
-  /* ============================== workspace sync: push (browser \u2192 disk) ============================== */
+  /* ============================== workspace sync: push (browser \u2192 disk or in-browser fs) ============================== */
   function syncPush(projectId, announce) {
+    if (state.mode === "webcontainer") return wcSyncPush(projectId, announce);
+    return restSyncPush(projectId, announce);
+  }
+  function restSyncPush(projectId, announce) {
     const b = bridge();
     if (!b || state.mode === "simulated") return Promise.resolve();
     const files = b.listFiles().filter(function (f) { return f.type === "file"; }).map(function (f) {
@@ -882,9 +1113,27 @@
       if (announce) b.toast("Sync failed: " + err.message, "error");
     });
   }
+  function wcSyncPush(projectId, announce) {
+    const b = bridge();
+    const wc = window.__cfWebContainer;
+    // Only push into an instance that's already running for this project — a background sync
+    // tick should never be what triggers the (slow, network-dependent) first boot.
+    if (!wc || wc.getBootedProjectId() !== projectId) return Promise.resolve();
+    return wc.bootForProject(projectId).then(function (instance) {
+      return writeChangedFilesToWc(instance, b.listFiles());
+    }).then(function () {
+      if (announce && b) b.toast("Synced current files into the in-browser runtime.");
+    }).catch(function (err) {
+      if (announce && b) b.toast("Sync failed: " + describeWebContainerError(err), "error");
+    });
+  }
 
-  /* ============================== workspace sync: pull (disk \u2192 browser) ============================== */
+  /* ============================== workspace sync: pull (disk or in-browser fs \u2192 browser) ============================== */
   function syncPull(projectId) {
+    if (state.mode === "webcontainer") { wcSyncPull(projectId); return; }
+    restSyncPull(projectId);
+  }
+  function restSyncPull(projectId) {
     const b = bridge();
     if (!b) return;
     if (state.mode === "simulated") { b.toast("No local backend to pull from — run the real terminal backend first.", "error"); return; }
@@ -907,6 +1156,78 @@
         b.hideBusy();
         b.toast("Couldn't check disk: " + err.message, "error");
       });
+  }
+
+  const WC_EXPORT_EXCLUDES = ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**", "**/__pycache__/**", "**/.cache/**"];
+  function flattenFileSystemTree(tree, prefix, out) {
+    Object.keys(tree).forEach(function (name) {
+      const node = tree[name];
+      const path = prefix ? prefix + "/" + name : name;
+      if (node.directory) { flattenFileSystemTree(node.directory, path, out); return; }
+      if (!node.file || node.file.symlink !== undefined) return; // skip symlinks
+      const contents = node.file.contents;
+      if (typeof contents === "string") out.push({ path: path, isBinary: false, content: contents });
+      else if (contents) out.push({ path: path, isBinary: true, content: uint8ArrayToBase64(contents) });
+    });
+  }
+  function uint8ArrayToBase64(u8) {
+    let bin = "";
+    for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    return btoa(bin);
+  }
+  function wcSyncPull(projectId) {
+    const b = bridge();
+    const wc = window.__cfWebContainer;
+    if (!wc || wc.getBootedProjectId() !== projectId) { b.toast("No in-browser runtime running for this project yet.", "error"); return; }
+    b.showBusy("Checking the in-browser filesystem\u2026");
+    wc.bootForProject(projectId).then(function (instance) {
+      return instance.export(".", { format: "json", excludes: WC_EXPORT_EXCLUDES });
+    }).then(function (tree) {
+      b.hideBusy();
+      const flat = [];
+      flattenFileSystemTree(tree, "", flat);
+      const browserPaths = new Set(b.listFiles().filter(function (f) { return f.type === "file"; }).map(function (f) { return f.path; }));
+      // WebContainers' export doesn't give per-file timestamps, so: new paths always count as
+      // changed, and existing text files count if their content actually differs. Binary files
+      // are cheap to re-offer since there's no cheap way to diff them here.
+      const changed = flat.filter(function (f) {
+        if (!browserPaths.has(f.path)) return true;
+        const existing = b.getFile(f.path);
+        if (!existing || f.isBinary !== existing.isBinary) return true;
+        return f.isBinary ? true : f.content !== existing.content;
+      }).map(function (f) { return f.path; });
+      if (!changed.length) { b.toast("Nothing new in the in-browser filesystem — already in sync."); return; }
+      showWcPullConfirm(flat, changed);
+    }).catch(function (err) {
+      b.hideBusy();
+      b.toast("Couldn't read the in-browser filesystem: " + describeWebContainerError(err), "error");
+    });
+  }
+  function showWcPullConfirm(flatFiles, changedPaths) {
+    const b = bridge();
+    const shown = changedPaths.slice(0, 30).map(function (p) { return "<div>" + escapeHtml(p) + "</div>"; }).join("");
+    const more = changedPaths.length > 30 ? "<div>\u2026and " + (changedPaths.length - 30) + " more</div>" : "";
+    b.openModal({
+      title: "Pull changes from the in-browser runtime?",
+      bodyHtml: '<p>' + changedPaths.length + " file(s) look new or changed:</p>" +
+        '<div style="max-height:220px;overflow:auto;font-family:monospace;font-size:12px;margin:8px 0;">' + shown + more + "</div>" +
+        "<p>Files with unsaved edits in the editor will be skipped.</p>",
+      actions: [{ label: "Cancel" }, { label: "Pull " + changedPaths.length + " file(s)", primary: true, action: function () { return true; } }],
+    }).then(function (ok) { if (ok) doWcPull(flatFiles, changedPaths); });
+  }
+  function doWcPull(flatFiles, changedPaths) {
+    const b = bridge();
+    const changedSet = new Set(changedPaths);
+    let written = 0, skipped = 0;
+    flatFiles.forEach(function (f) {
+      if (!changedSet.has(f.path)) return;
+      if (b.isDirty(f.path)) { skipped++; return; }
+      if (f.isBinary) b.writeBinaryFile(f.path, "data:application/octet-stream;base64," + f.content, f.content.length);
+      else b.writeFile(f.path, f.content);
+      written++;
+    });
+    b.refreshTree();
+    b.toast("Pulled " + written + " file(s)" + (skipped ? ", skipped " + skipped + " with unsaved changes" : ""));
   }
 
   function showPullConfirm(projectId, paths) {
@@ -948,9 +1269,8 @@
     if (!state.open || state.mode === "simulated") return;
     const p = bridge() ? bridge().getCurrentProject() : null;
     if (!p) return;
-    if (sessionsForProject(p.id).some(function (s) { return s.kind === "real" && s.status === "running"; })) {
-      syncPush(p.id, false);
-    }
+    const hasRunning = sessionsForProject(p.id).some(function (s) { return (s.kind === "real" || s.kind === "webcontainer") && s.status === "running"; });
+    if (hasRunning) syncPush(p.id, false);
   }
 
   /* ============================== public API ============================== */
