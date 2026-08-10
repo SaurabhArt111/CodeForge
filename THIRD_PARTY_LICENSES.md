@@ -35,3 +35,15 @@ All of the above are used only as client-side libraries; none of them transmit a
 - License: MIT
 - Not vendored — installed via `npm install` as an `optionalDependencies` entry (CodeForge works
   fine without it; see `README.md`). Only ever runs locally; never part of a static deploy.
+
+## @webcontainer/api (client SDK)
+- Source: https://github.com/stackblitz/webcontainer-core
+- License: MIT (client library) — see `vendor/webcontainer/LICENSE`
+- Version bundled: 1.6.4
+- Used by the Terminal panel as its last-resort fallback (see `README.md`): when no local
+  backend is reachable at all, this boots an actual Node.js runtime compiled to WebAssembly,
+  running entirely inside the browser tab (Vite-style `npm install`/`npm run dev`, no server).
+- Important: this MIT license covers the *client library* only. The hosted WebContainers boot
+  service it talks to is separately licensed by StackBlitz — free for personal, open-source, and
+  prototype use; a paid commercial license is required for production use in a for-profit
+  setting. See `vendor/webcontainer/LICENSE` and https://webcontainers.io/enterprise.

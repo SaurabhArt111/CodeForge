@@ -2632,7 +2632,6 @@ kbd {
   cursor: ns-resize;
   background: transparent;
   flex-shrink: 0;
-  z-index: 99009;
 }
 
 #terminal-resizer:hover {
@@ -2644,10 +2643,9 @@ kbd {
   flex-direction: column;
   flex-shrink: 0;
   background: var(--bg-panel);
-  /* border-top: 1px solid var(--border); */
+  border-top: 1px solid var(--border);
   min-height: 120px;
   overflow: hidden;
-  z-index: 99009;
 }
 
 #terminal-panel.maximized {
@@ -2774,6 +2772,10 @@ kbd {
   color: var(--warn);
 }
 
+.term-mode-badge.mode-webcontainer {
+  color: var(--accent);
+}
+
 .term-mode-badge.mode-simulated {
   color: var(--text-mute);
 }
@@ -2808,11 +2810,7 @@ kbd {
   position: relative;
   flex: 1;
   min-height: 0;
-  background: var(--bg-terminal);
-}
-
-.xterm-screen {
-  background: var(--bg-terminal) !important;
+  background: var(--bg-editor);
 }
 
 .term-pool {
