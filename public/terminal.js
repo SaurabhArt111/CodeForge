@@ -377,6 +377,7 @@
       if (session.ws) try { session.ws.close(); } catch (e) {}
     } else if (session.kind === "webcontainer") {
       if (session.proc) try { session.proc.kill(); } catch (e) {}
+      if (session.serverReadyOff) { try { session.serverReadyOff(); } catch (e) {} }
       // Only tear down the shared instance once nothing else for this project needs it —
       // other tabs on the same project may still have a live jsh process in it.
       const stillNeeded = sessionsForProject(session.projectId).some(function (s) { return s.kind === "webcontainer" && s !== session; });
@@ -537,12 +538,8 @@
     return { term: term, fitAddon: fitAddon, searchAddon: searchAddon, host: host };
   }
 
-  function watchForDevServerUrl(session, chunk) {
+  function showDevServerBanner(session, url) {
     if (session.devServerShown) return;
-    const clean = stripAnsi(chunk);
-    const m = clean.match(DEVSERVER_RE);
-    if (!m) return;
-    let url = m[0].replace(/[.,;]+$/, "");
     session.devServerShown = true;
     const banner = ce("div", "term-devserver-banner");
     banner.innerHTML = '<span class="term-devserver-icon">\uD83C\uDF10</span><span class="term-devserver-text">Dev server detected — ' + escapeHtml(url) + "</span>" +
@@ -552,6 +549,21 @@
     });
     banner.querySelector('[data-act="dismiss"]').addEventListener("click", function () { banner.remove(); });
     session.host.insertBefore(banner, session.host.firstChild);
+  }
+  // Only used for "real" (PTY-backed) sessions, where a literal "localhost:PORT" printed by the
+  // dev server genuinely IS reachable — it's the person's own machine. WebContainer sessions
+  // use attachServerReadyListener() instead: their dev server runs inside a sandboxed in-browser
+  // Node process, so "localhost:PORT" in ITS stdout means something only inside that sandbox and
+  // can't be reached from the outer browser tab at all (that's the literal cause of "localhost
+  // refused to connect" if it's opened) — only the WebContainer API's own `server-ready` event
+  // hands back a URL that's actually reachable from here.
+  function watchForDevServerUrl(session, chunk) {
+    if (session.devServerShown) return;
+    const clean = stripAnsi(chunk);
+    const m = clean.match(DEVSERVER_RE);
+    if (!m) return;
+    const url = m[0].replace(/[.,;]+$/, "");
+    showDevServerBanner(session, url);
   }
 
   /* ============================== real (PTY-backed) sessions ============================== */
@@ -783,8 +795,22 @@
     return session;
   }
 
+  // See the comment on watchForDevServerUrl for why WebContainer sessions can't use stdout
+  // scraping: only this event hands back a URL actually reachable from the outer browser tab.
+  // Re-attached on every spawn (including restarts) since a fresh instance.spawn() call doesn't
+  // imply a fresh WebContainer boot — the underlying instance (and its event emitter) is reused
+  // across restarts within the same project, so the old listener is torn down first to avoid
+  // stacking duplicate listeners and duplicate banners over repeated restarts.
+  function attachServerReadyListener(session, instance) {
+    if (session.serverReadyOff) { try { session.serverReadyOff(); } catch (e) {} }
+    session.serverReadyOff = instance.on("server-ready", function (port, url) {
+      showDevServerBanner(session, url);
+    });
+  }
+
   function spawnWebContainerShell(session, project) {
     bootWebContainerForProject(project).then(function (instance) {
+      attachServerReadyListener(session, instance);
       return instance.spawn("jsh", { terminal: { cols: session.term.cols, rows: session.term.rows } });
     }).then(function (proc) {
       session.proc = proc;
@@ -796,7 +822,6 @@
         reader.read().then(function (res) {
           if (res.done || session.proc !== proc) return; // stale reader from a process a restart already replaced
           session.term.write(res.value);
-          watchForDevServerUrl(session, res.value);
           pump();
         }).catch(function () {});
       })();
@@ -818,6 +843,10 @@
 
   function restartWebContainerSession(session) {
     if (session.proc) try { session.proc.kill(); } catch (e) {}
+    if (session.serverReadyOff) { try { session.serverReadyOff(); } catch (e) {} session.serverReadyOff = null; }
+    session.devServerShown = false;
+    const staleBanner = session.host.querySelector(".term-devserver-banner");
+    if (staleBanner) staleBanner.remove();
     session.status = "starting";
     session.inputWriter = null;
     session.term.clear();

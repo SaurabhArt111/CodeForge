@@ -566,6 +566,17 @@ function keyDefFromLabel(raw) {
   if (PUNCT[c]) return Object.assign({ label: c }, PUNCT[c]);
   return { key: c, code: "", keyCode: 0, label: c.slice(0, 3) };
 }
+// A <button> is focusable by default, so tapping one shifts DOM focus to the button before its
+// click handler ever runs — which blurs the editor's hidden textarea. Monaco gates nearly every
+// keybinding on the editor's real DOM focus state (not just this app's own state.focusedPane),
+// so a blurred editor silently no-ops the synthetic keydown dispatchVirtualKey sends it, even
+// though the event itself was dispatched correctly. Preventing the default mousedown/touchstart
+// action stops that focus shift without stopping the click itself, so the editor never loses
+// focus when tapping a vkey-bar button.
+function preventFocusSteal(btn) {
+  btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+  btn.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+}
 function currentFocusedEditorInputEl() {
   const ed = editors[state.focusedPane];
   if (!ed) return null;
@@ -648,6 +659,7 @@ function renderVkeyBar() {
     if (shown.indexOf(m) === -1) return;
     const btn = ce("button", "vkey-btn mod" + (vkeyModState[m] ? " active" : ""), VKEY_MOD_LABELS[m]);
     btn.type = "button";
+    preventFocusSteal(btn);
     btn.addEventListener("click", function () {
       vkeyModState[m] = !vkeyModState[m];
       btn.classList.toggle("active", vkeyModState[m]);
@@ -659,6 +671,7 @@ function renderVkeyBar() {
     const def = VKEY_DEFS[id];
     const btn = ce("button", "vkey-btn", def.label);
     btn.type = "button";
+    preventFocusSteal(btn);
     btn.addEventListener("click", function () {
       dispatchVirtualKey(def, vkeyModState);
       VKEY_MODIFIERS.forEach(function (m) { vkeyModState[m] = false; });
@@ -673,6 +686,7 @@ function renderVkeyBar() {
       const btn = ce("button", "vkey-btn custom", escapeHtml(sc.label));
       btn.type = "button";
       btn.title = shortcutComboText(sc);
+      preventFocusSteal(btn);
       btn.addEventListener("click", function () { dispatchVirtualKey(keyDefFromLabel(sc.keyLabel), sc); });
       row.appendChild(btn);
     });

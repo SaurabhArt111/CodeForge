@@ -65,7 +65,7 @@ async function teardownCurrent() {
     // nothing else attaches to it in the same tick — surfaces as an unhandled rejection and a
     // scary "Something went wrong" toast. There's nothing actionable for the person to do
     // about a teardown failure, so swallow it here.
-    if (WebContainer._teardownPromise) WebContainer._teardownPromise.catch(function () { });
+    if (WebContainer._teardownPromise) WebContainer._teardownPromise.catch(function () {});
   }
   bootedInstance = null;
   bootedProjectId = null;
