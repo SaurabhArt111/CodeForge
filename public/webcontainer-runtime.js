@@ -49,7 +49,24 @@ async function bootForProject(projectId) {
 }
 
 async function teardownCurrent() {
-  if (bootedInstance) { try { bootedInstance.teardown(); } catch (e) { /* already gone */ } }
+  // If a boot is still in flight, let it settle first. Tearing down before the container has
+  // finished coming up races its own startup — the underlying process hasn't fully initialized
+  // yet, so asking it to shut down mid-boot is a likely source of "Process aborted" (as opposed
+  // to a clean teardown of an instance that's actually up and running).
+  if (bootPromise) {
+    try { await bootPromise; } catch (e) { /* boot failed on its own; nothing to tear down */ }
+  }
+  if (bootedInstance) {
+    try { bootedInstance.teardown(); } catch (e) { /* already gone */ }
+    // WebContainer#teardown() is fire-and-forget internally: it kicks off an async teardown
+    // chain and stashes the promise on the static WebContainer._teardownPromise field without
+    // returning or catching it. If the underlying process/iframe was already killed (e.g.
+    // torn down a second time), that promise rejects with "Process aborted" and — since
+    // nothing else attaches to it in the same tick — surfaces as an unhandled rejection and a
+    // scary "Something went wrong" toast. There's nothing actionable for the person to do
+    // about a teardown failure, so swallow it here.
+    if (WebContainer._teardownPromise) WebContainer._teardownPromise.catch(function () { });
+  }
   bootedInstance = null;
   bootedProjectId = null;
   bootPromise = null;

@@ -319,7 +319,10 @@
       }
       return;
     }
-    if (state.mode === "simulated") { createSessionForCurrentProject(false); return; }
+    // "simulated" and "webcontainer" both mean no real backend is reachable, so there's
+    // nothing on a server to reattach to — go straight to creating a local session instead of
+    // firing a /api/terminal/sessions request that's guaranteed to 404.
+    if (state.mode === "simulated" || state.mode === "webcontainer") { createSessionForCurrentProject(false); return; }
     // A page reload wipes our in-memory session list, but the server may still have this
     // project's shell(s) running — reattach to those instead of spawning duplicates.
     fetch("/api/terminal/sessions?projectId=" + encodeURIComponent(p.id))
