@@ -109,6 +109,12 @@ self.addEventListener("fetch", function (event) {
   const referer = event.request.referrer || "";
   if (referer.indexOf(LIVE_PREFIX) !== -1) {
     const path = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+    // Browsers probe for a favicon even when the project did not request one.
+    // Keep that browser-generated request from appearing as a missing project asset.
+    if (path === "favicon.ico") {
+      event.respondWith(new Response(null, { status: 204 }));
+      return;
+    }
     event.respondWith(serveNode(path));
     return;
   }

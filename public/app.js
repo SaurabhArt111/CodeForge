@@ -2767,7 +2767,7 @@ function ensureBrowserPreviewEl(pane) {
       '<button class="bpv-btn" data-act="external" title="Open in new tab">' + iconSvg("external-link", "icon-sm") + "</button>" +
       '<button class="bpv-btn" data-act="close" title="Close preview">' + iconSvg("x", "icon-sm") + "</button>" +
       "</div>" +
-      '<iframe class="bpv-frame" sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-popups"></iframe>';
+      '<iframe class="bpv-frame" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>';
     container.appendChild(bp);
     bp.querySelector('[data-act="refresh"]').addEventListener("click", function () {
       flushAllPersists();
