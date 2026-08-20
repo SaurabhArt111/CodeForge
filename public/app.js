@@ -3685,6 +3685,7 @@ function renderGitPanel() {
     '<div class="git-section-label">GitHub Token</div>' +
     '<div class="git-field">' +
     '<input id="git-token-input" type="password" autocomplete="off" placeholder="ghp_\u2026 (needs \u2018repo\u2019 scope)" value="' + escapeHtml(gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") + '" />' +
+    '<button type="button" class="proj-btn" id="btn-toggle-git-token" aria-label="Show GitHub token" title="Show token">&#128065;</button>' +
     '</div>' +
     '<div class="setting-desc">Stored only on this device, sent only to api.github.com, only when you use a Git action here. <a href="https://github.com/settings/tokens/new?scopes=repo&description=CodeForge" target="_blank" rel="noopener" style="color:var(--focus);">Create one on GitHub</a>.</div>';
 
@@ -3895,10 +3896,19 @@ function openGitLinkModal() {
 function wireGitTokenAndImport(scope) {
   const tokenInput = qs("#git-token-input", scope);
   if (tokenInput) {
-    tokenInput.addEventListener("focus", function () { if (gitState.token) tokenInput.value = ""; });
+    const toggle = qs("#btn-toggle-git-token", scope);
+    if (toggle) toggle.addEventListener("click", function () {
+      const isVisible = tokenInput.type === "text";
+      tokenInput.type = isVisible ? "password" : "text";
+      tokenInput.value = isVisible ? (gitState.token ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "") : (gitState.token || "");
+      toggle.setAttribute("aria-label", isVisible ? "Show GitHub token" : "Hide GitHub token");
+      toggle.title = isVisible ? "Show token" : "Hide token";
+      if (!isVisible) tokenInput.focus();
+    });
     tokenInput.addEventListener("change", function () {
       const v = tokenInput.value.trim();
-      if (v) { gitState.token = v; idbSetMeta("githubToken", v); toast("Token saved locally"); renderGitPanel(); }
+      const masked = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+      if (v && v !== masked) { gitState.token = v; idbSetMeta("githubToken", v); toast("Token saved locally"); renderGitPanel(); }
     });
   }
 }
