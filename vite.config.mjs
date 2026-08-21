@@ -61,11 +61,38 @@ export default defineConfig({
     outDir: "dist",
     assetsDir: "assets",
     emptyOutDir: true,
+    minify: "terser",
+    sourcemap: false,
   },
   server: {
     port: 5173,
+    middlewareMode: false,
+    fs: {
+      strict: false,
+      allow: [".."]
+    },
+    headers: {
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN",
+      "X-XSS-Protection": "1; mode=block"
+    }
   },
   preview: {
     port: 4173,
+    headers: {
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+    }
   },
+  optimizeDeps: {
+    include: [
+      "monaco-editor",
+      "xterm",
+      "jszip"
+    ]
+  }
 });

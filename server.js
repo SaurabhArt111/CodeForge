@@ -61,6 +61,13 @@ function send(res, status, headers, body) {
 
 const server = http.createServer(function (req, res) {
   try {
+    // Log request
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
+
     if (terminalBackend.handleRequest(req, res)) return;
     let urlPath = decodeURIComponent(req.url.split("?")[0]);
     if (urlPath === "/") urlPath = "/index.html";
@@ -76,22 +83,37 @@ const server = http.createServer(function (req, res) {
     fs.stat(rootPath, function (err, stat) {
       if (!err && stat.isFile()) { serveFile(res, rootPath, stat); return; }
       fs.stat(publicPath, function (err2, stat2) {
-        if (err2 || !stat2.isFile()) { send(res, 404, { "Content-Type": "text/plain" }, "Not found: " + urlPath); return; }
+        if (err2 || !stat2.isFile()) { 
+          console.error(`[ERROR] 404: ${urlPath}`);
+          send(res, 404, { "Content-Type": "text/plain" }, "Not found: " + urlPath); 
+          return; 
+        }
         serveFile(res, publicPath, stat2);
       });
     });
   } catch (e) {
+    console.error("[ERROR]", e);
     send(res, 500, { "Content-Type": "text/plain" }, "Server error: " + e.message);
   }
 });
 function serveFile(res, filePath, stat) {
   const ext = path.extname(filePath).toLowerCase();
   const type = MIME[ext] || "application/octet-stream";
-  res.writeHead(200, {
+  
+  // Set CORS and security headers
+  const headers = {
     "Content-Type": type,
     "Content-Length": stat.size,
     "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
-  });
+    "Cross-Origin-Embedder-Policy": "require-corp",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-XSS-Protection": "1; mode=block"
+  };
+  
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 
@@ -115,5 +137,40 @@ server.listen(PORT, HOST, function () {
   console.log("");
 });
 
-process.on("SIGINT", function () { terminalBackend.closeAll(); process.exit(0); });
-process.on("SIGTERM", function () { terminalBackend.closeAll(); process.exit(0); });
+// Graceful shutdown handler
+const gracefulShutdown = () => {
+  console.log("\n[SHUTDOWN] Received shutdown signal, closing gracefully...");
+  
+  const shutdownTimeout = setTimeout(() => {
+    console.error("[SHUTDOWN] Forced exit after timeout");
+    process.exit(1);
+  }, 10000); // 10 second timeout
+  
+  server.close(() => {
+    clearTimeout(shutdownTimeout);
+    terminalBackend.closeAll();
+    console.log("[SHUTDOWN] Server closed successfully");
+    process.exit(0);
+  });
+  
+  // Force close after timeout
+  setTimeout(() => {
+    console.error("[SHUTDOWN] Force closing server");
+    process.exit(1);
+  }, 11000);
+};
+
+process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", gracefulShutdown);
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("[UNCAUGHT EXCEPTION]", error);
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[UNHANDLED REJECTION]", reason);
+  // Don't exit - could be application-level error
+});
