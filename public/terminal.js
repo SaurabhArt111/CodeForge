@@ -90,7 +90,8 @@
     wireResizer();
     wireMobileBack();
     wireSearchBar();
-    window.addEventListener("resize", debounce(layoutVisiblePanes, 120));
+    renderQuickKeyRow();
+    window.addEventListener("resize", debounce(function () { layoutVisiblePanes(); updateQuickbarVisibility(); }, 120));
     wirePaneFocusTracking();
     detectCapabilities();
     setInterval(pollProjectSwitch, 1200);
@@ -114,6 +115,9 @@
     els.btnMaximize = qs("#btn-terminal-maximize");
     els.btnClose = qs("#btn-terminal-close");
     els.btnMobileBack = qs("#btn-terminal-mobile-back");
+    els.btnQuickCmds = qs("#btn-terminal-quickcmds");
+    els.quickbar = qs("#term-quickbar");
+    els.qkeyRow = qs("#term-qkey-row");
 
     // Build the two-pane layout + hidden pool once.
     els.body.innerHTML =
@@ -192,6 +196,7 @@
     qs("#btn-terminal-toggle").classList.add("active-toggle");
     qsa('.nav-btn[data-nav="terminal"]').forEach(function (b) { b.classList.add("active"); });
     ensureSessionForActiveProject();
+    updateQuickbarVisibility();
     setTimeout(layoutVisiblePanes, 30);
     setTimeout(function () { const s = activeSession(); if (s) s.term.focus(); }, 60);
   }
@@ -202,6 +207,57 @@
     els.resizer.classList.add("hidden");
     qs("#btn-terminal-toggle").classList.remove("active-toggle");
     qsa('.nav-btn[data-nav="terminal"]').forEach(function (b) { b.classList.remove("active"); });
+    updateQuickbarVisibility();
+  }
+
+  /* ============================== mobile quick-key row ==============================
+     A phone's on-screen keyboard has no Ctrl/Esc/Tab/arrows and no easy way to send them, which
+     makes a real shell painfully hard to drive on mobile (no Tab-completion, no Ctrl+C to kill a
+     runaway process, no Up-arrow for command history). This row sends the exact bytes a real
+     keyboard would for each key straight to the active session via sendToSession(), so it works
+     identically across every backend kind (real PTY, WebContainer, and the simulated fallback —
+     see handleSimInput's own arrow/Tab/Ctrl+C handling above). Desktop keyboards already have all
+     of these, so the row only ever shows on mobile. */
+  const QKEY_DEFS = [
+    { label: "Esc", data: "\x1b" },
+    { label: "Tab", data: "\t" },
+    { label: "\u2190", data: "\x1b[D" },
+    { label: "\u2191", data: "\x1b[A" },
+    { label: "\u2193", data: "\x1b[B" },
+    { label: "\u2192", data: "\x1b[C" },
+    { label: "^C", data: "\x03", title: "Ctrl+C — interrupt" },
+    { label: "^D", data: "\x04", title: "Ctrl+D — end input / exit shell" },
+    { label: "^L", data: "\x0c", title: "Ctrl+L — clear screen" },
+    { label: "|", data: "|" },
+    { label: "/", data: "/" },
+    { label: "-", data: "-" },
+    { label: "~", data: "~" },
+  ];
+  function renderQuickKeyRow() {
+    if (!els.qkeyRow) return;
+    els.qkeyRow.innerHTML = "";
+    QKEY_DEFS.forEach(function (def) {
+      const btn = ce("button", "term-qkey-btn");
+      btn.type = "button";
+      btn.textContent = def.label;
+      if (def.title) btn.title = def.title;
+      // Same trick app.js's editor vkey-bar uses: without this, tapping a <button> steals DOM
+      // focus away from the terminal's hidden textarea first, which (depending on backend/
+      // browser) can drop the on-screen keyboard or momentarily blur the terminal.
+      btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+      btn.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+      btn.addEventListener("click", function () {
+        const s = activeSession();
+        if (s) sendToSession(s, def.data);
+        s && s.term && s.term.focus();
+      });
+      els.qkeyRow.appendChild(btn);
+    });
+  }
+  function updateQuickbarVisibility() {
+    if (!els.quickbar) return;
+    const show = state.open && !!(bridge() && bridge().isMobile());
+    els.quickbar.classList.toggle("hidden", !show);
   }
 
   function wireResizer() {
@@ -243,6 +299,7 @@
     els.btnKill.addEventListener("click", function () { const s = activeSession(); if (s) closeSession(s); });
     els.btnMaximize.addEventListener("click", toggleMaximize);
     els.btnClose.addEventListener("click", closePanel);
+    els.btnQuickCmds.addEventListener("click", openQuickCommandsMenu);
   }
 
   function toggleMaximize() {
@@ -577,7 +634,7 @@
     built.term.onData(function (data) {
       if (session.status === "exited") { restartSession(session); return; }
       if (data === "\x03" && built.term.hasSelection()) { copySelection(built.term); return; }
-      if (session.ws && session.ws.readyState === 1) session.ws.send("d" + data);
+      sendToSession(session, data);
     });
     built.term.onResize(function () { sendResize(session); });
     return session;
@@ -618,6 +675,23 @@
     const text = term.getSelection();
     if (!text) return;
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function () {});
+  }
+
+  // Single choke point for "send this data to the backend as if it had been typed" — used by
+  // every onData handler below AND by the mobile quick-key row / Quick Commands menu, so a
+  // one-tap button press is indistinguishable from real typing to whichever backend is active.
+  // Kept here (rather than duplicated per-kind) so new input sources never have to know which
+  // of the three transport mechanisms (WebSocket / WebContainer input stream / simulated line
+  // buffer) the current session actually uses.
+  function sendToSession(session, data) {
+    if (!session || !data) return;
+    if (session.kind === "real") {
+      if (session.ws && session.ws.readyState === 1) session.ws.send("d" + data);
+    } else if (session.kind === "webcontainer") {
+      if (session.inputWriter) { try { session.inputWriter.write(data); } catch (e) {} }
+    } else if (session.kind === "sim") {
+      handleSimInput(session, data);
+    }
   }
 
   function attachSocket(session) {
@@ -787,7 +861,7 @@
     built.term.onData(function (data) {
       if (session.status === "exited") { restartSession(session); return; }
       if (data === "\x03" && built.term.hasSelection()) { copySelection(built.term); return; }
-      if (session.inputWriter) { try { session.inputWriter.write(data); } catch (e) {} }
+      sendToSession(session, data);
     });
     built.term.onResize(function () {
       if (session.proc) { try { session.proc.resize({ cols: built.term.cols, rows: built.term.rows }); } catch (e) {} }
@@ -873,7 +947,7 @@
     printBanner(session);
     printPrompt(session);
 
-    built.term.onData(function (data) { handleSimInput(session, data); });
+    built.term.onData(function (data) { sendToSession(session, data); });
     return session;
   }
 
@@ -1116,6 +1190,140 @@
         }
     }
     return Promise.resolve();
+  }
+
+  /* ============================== Quick Commands menu ==============================
+     A one-tap npm/git/run menu — the whole point is that typing a shell command on a phone
+     keyboard (autocorrect fighting you the entire time) is the single biggest reason "just use
+     the terminal" is unpleasant on mobile. This never introduces a new execution path: every
+     command still goes through sendToSession(), the exact function real typing uses, so it's
+     only ever as capable as the backend already is (and just as limited — e.g. the simulated
+     shell only understands `git status`, so that's the only git button enabled there). */
+
+  // POSIX single-quote escaping: safe for any text (spaces, $, `, ", \, newlines) inside a
+  // single-quoted shell argument — the only special case is an embedded single quote itself,
+  // which has to close the quote, emit an escaped quote, then reopen it.
+  function shellQuote(str) {
+    return "'" + String(str == null ? "" : str).replace(/'/g, "'\\''") + "'";
+  }
+
+  // What actually works, per backend — shown as a note in the menu and used to grey out buttons
+  // that would just fail: the simulated shell only understands `git status`, and WebContainers
+  // has no git at all (see README.md). Real/PTY and no-PTY-shell modes have everything.
+  function commandAvailability() {
+    if (state.mode === "webcontainer") return { npm: true, git: false, gitStatusOnly: false, note: "In-browser Node — npm/node run for real here. Git isn't available in WebContainers; that needs the local backend (`npm run dev` / `node server.js`)." };
+    if (state.mode === "simulated") return { npm: false, git: true, gitStatusOnly: true, note: "Simulated shell — only \u201cgit status\u201d and the Utility commands below actually run here. Everything else needs the local backend (`npm run dev` / `node server.js`) or a cross-origin-isolated deploy." };
+    if (state.mode === "pty" || state.mode === "shell") return { npm: true, git: true, gitStatusOnly: false, note: "Real shell — these run for real, exactly as if you'd typed them." };
+    return { npm: false, git: false, gitStatusOnly: false, note: "Still detecting the terminal backend\u2026 open a terminal tab first." };
+  }
+
+  // Looks at the CURRENT PROJECT's own package.json (via the bridge — this is CodeForge's
+  // in-browser copy, not whatever's on disk) to build a one-tap "install + run" action. Prefers
+  // a Vite project's own label since that's the case this was specifically asked for, but works
+  // for any npm project with a dev/start/serve script (Next.js, CRA, plain Express, etc.).
+  function detectProjectRun() {
+    const b = bridge();
+    if (!b) return null;
+    const pkgFile = b.getFile("package.json");
+    if (!pkgFile || pkgFile.type !== "file" || pkgFile.isBinary) return null;
+    let pkg;
+    try { pkg = JSON.parse(pkgFile.content || "{}"); } catch (e) { return null; }
+    const scripts = pkg.scripts || {};
+    const scriptName = ["dev", "start", "serve"].filter(function (s) { return typeof scripts[s] === "string"; })[0];
+    if (!scriptName) return null;
+    const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
+    const isVite = !!deps.vite || ["vite.config.js", "vite.config.ts", "vite.config.mjs", "vite.config.cjs"].some(function (f) { return b.exists(f); });
+    return {
+      command: "npm install && npm run " + scriptName,
+      label: isVite ? "\u25B6 Install & Run Vite Dev Server" : "\u25B6 Install & Run (npm run " + scriptName + ")",
+    };
+  }
+
+  function qcSendCommand(text) {
+    const session = activeSession();
+    if (!session) { const b = bridge(); if (b) b.toast("Open a terminal tab first", "error"); return; }
+    sendToSession(session, text + "\r");
+    const b = bridge();
+    if (b) b.toast("Sent: " + text);
+    session.term.focus();
+  }
+
+  function openQuickCommandsMenu() {
+    const b = bridge();
+    if (!b) return;
+    const avail = commandAvailability();
+    const runAction = detectProjectRun();
+    const dis = function (ok) { return ok ? "" : " disabled"; };
+    const disTitle = function (ok, why) { return ok ? "" : ' title="' + escapeHtml(why) + '"'; };
+
+    let html = '<p class="qc-note">' + escapeHtml(avail.note) + "</p>";
+
+    if (runAction) {
+      html += '<div class="qc-section"><button type="button" class="qc-run-btn' + dis(avail.npm) + '" data-cmd="' + escapeHtml(runAction.command) + '"' + disTitle(avail.npm, "Needs a real npm — not available in the simulated shell.") + ">" + escapeHtml(runAction.label) + "</button></div>";
+    }
+
+    html += '<div class="qc-section"><div class="qc-section-title">npm</div><div class="qc-grid">' +
+      '<button type="button" class="qc-btn' + dis(avail.npm) + '" data-cmd="npm install"' + disTitle(avail.npm, "Needs a real npm.") + ">Install</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.npm) + '" data-cmd="npm run dev"' + disTitle(avail.npm, "Needs a real npm.") + ">Run dev</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.npm) + '" data-cmd="npm run build"' + disTitle(avail.npm, "Needs a real npm.") + ">Build</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.npm) + '" data-cmd="npm test"' + disTitle(avail.npm, "Needs a real npm.") + ">Test</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.npm) + '" data-cmd="npm run"' + disTitle(avail.npm, "Needs a real npm.") + ">List scripts</button>" +
+      "</div></div>";
+
+    html += '<div class="qc-section"><div class="qc-section-title">git</div><div class="qc-grid">' +
+      '<button type="button" class="qc-btn" data-cmd="git status">Status</button>' +
+      '<button type="button" class="qc-btn' + dis(avail.git && !avail.gitStatusOnly) + '" data-cmd="git add -A"' + disTitle(avail.git && !avail.gitStatusOnly, "Only \u201cgit status\u201d runs in the simulated shell.") + ">Add all</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.git && !avail.gitStatusOnly) + '" data-cmd="git log --oneline -n 10"' + disTitle(avail.git && !avail.gitStatusOnly, "Only \u201cgit status\u201d runs in the simulated shell.") + ">Log</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.git && !avail.gitStatusOnly) + '" data-cmd="git branch"' + disTitle(avail.git && !avail.gitStatusOnly, "Only \u201cgit status\u201d runs in the simulated shell.") + ">Branches</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.git && !avail.gitStatusOnly) + '" data-cmd="git pull"' + disTitle(avail.git && !avail.gitStatusOnly, "Only \u201cgit status\u201d runs in the simulated shell.") + ">Pull</button>" +
+      '<button type="button" class="qc-btn' + dis(avail.git && !avail.gitStatusOnly) + '" data-cmd="git push"' + disTitle(avail.git && !avail.gitStatusOnly, "Only \u201cgit status\u201d runs in the simulated shell.") + ">Push</button>" +
+      "</div>" +
+      '<div class="qc-inline-row"><input type="text" id="qc-commit-msg" placeholder="Commit message\u2026" autocomplete="off"' + (avail.git && !avail.gitStatusOnly ? "" : " disabled") + " />" +
+      '<button type="button" id="qc-commit-btn"' + dis(avail.git && !avail.gitStatusOnly) + ">Add + Commit</button></div>" +
+      "</div>";
+
+    html += '<div class="qc-section"><div class="qc-section-title">Utility</div><div class="qc-grid">' +
+      '<button type="button" class="qc-btn" data-cmd="clear">Clear</button>' +
+      '<button type="button" class="qc-btn" data-cmd="ls -la">List files</button>' +
+      '<button type="button" class="qc-btn" data-cmd="pwd">Working dir</button>' +
+      "</div></div>";
+
+    html += '<div class="qc-section"><div class="qc-section-title">Custom</div>' +
+      '<div class="qc-inline-row"><input type="text" id="qc-custom-input" placeholder="Type any command\u2026" autocomplete="off" />' +
+      '<button type="button" id="qc-custom-run">Run</button></div></div>';
+
+    b.openModal({
+      title: "Quick Commands",
+      wide: true,
+      bodyHtml: html,
+      build: function (body) {
+        qsa(".qc-btn, .qc-run-btn", body).forEach(function (btn) {
+          if (btn.disabled) return;
+          btn.addEventListener("click", function () { qcSendCommand(btn.getAttribute("data-cmd")); });
+        });
+        const commitBtn = qs("#qc-commit-btn", body);
+        const commitInput = qs("#qc-commit-msg", body);
+        if (commitBtn && !commitBtn.disabled) {
+          commitBtn.addEventListener("click", function () {
+            const msg = (commitInput.value || "").trim();
+            if (!msg) { commitInput.focus(); return; }
+            qcSendCommand("git add -A && git commit -m " + shellQuote(msg));
+            commitInput.value = "";
+          });
+          commitInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); commitBtn.click(); } });
+        }
+        const customBtn = qs("#qc-custom-run", body);
+        const customInput = qs("#qc-custom-input", body);
+        function runCustom() {
+          const cmd = (customInput.value || "").trim();
+          if (!cmd) { customInput.focus(); return; }
+          qcSendCommand(cmd);
+          customInput.value = "";
+        }
+        customBtn.addEventListener("click", runCustom);
+        customInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); runCustom(); } });
+      },
+    });
   }
 
   /* ============================== workspace sync: push (browser \u2192 disk or in-browser fs) ============================== */

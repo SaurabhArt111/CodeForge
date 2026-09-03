@@ -2994,3 +2994,162 @@ kbd {
     flex: 1;
   }
 }
+
+/* ============================== Terminal: mobile quick-key row + Quick Commands menu ==============================
+   #term-quickbar is the phone-only strip of Esc/Tab/arrow/Ctrl-combo buttons docked under the
+   terminal panel (a real keyboard already has all of these, so it's hidden on desktop — see
+   updateQuickbarVisibility() in terminal.js). The .qc-* rules below style the "Quick Commands"
+   modal content (npm/git/run/utility buttons), which is available on both mobile and desktop. */
+.term-quickcmds-btn {
+  font-size: 15px;
+  line-height: 1;
+}
+
+#term-quickbar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-titlebar);
+  border-top: 1px solid var(--border);
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+
+.term-qkey-row {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.term-qkey-row::-webkit-scrollbar {
+  display: none;
+}
+
+.term-qkey-btn {
+  flex-shrink: 0;
+  min-width: 38px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.term-qkey-btn:active {
+  background: rgba(255, 255, 255, .16);
+}
+
+.qc-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.qc-section {
+  margin-bottom: 16px;
+}
+
+.qc-section:last-child {
+  margin-bottom: 0;
+}
+
+.qc-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-mute);
+  margin-bottom: 8px;
+}
+
+.qc-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.qc-btn,
+.qc-run-btn {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+}
+
+.qc-btn:hover,
+.qc-run-btn:hover {
+  background: rgba(255, 255, 255, .1);
+}
+
+.qc-run-btn {
+  width: 100%;
+  text-align: left;
+  background: rgba(14, 99, 156, .25);
+  border-color: var(--accent);
+  color: #cfe9ff;
+  padding: 10px 12px;
+}
+
+.qc-run-btn:hover {
+  background: rgba(14, 99, 156, .4);
+}
+
+.qc-btn:disabled,
+.qc-run-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.qc-inline-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.qc-inline-row input {
+  flex: 1;
+  padding: 8px 9px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.qc-inline-row input:focus {
+  outline: none;
+  border-color: var(--focus);
+}
+
+.qc-inline-row input:disabled {
+  opacity: .4;
+}
+
+.qc-inline-row button {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+}
+
+.qc-inline-row button:hover {
+  background: var(--accent-hover);
+}
+
+.qc-inline-row button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, .06);
+  color: var(--text);
+}

@@ -14,6 +14,27 @@ CodeForge also has an integrated Terminal panel (`` Ctrl+` ``, or the terminal i
 titlebar / bottom nav), built on [xterm.js](https://xtermjs.org/) — the same terminal engine
 VS Code uses. It automatically picks the most capable option available, in this order:
 
+### Mobile: a quick-key row + a Quick Commands menu
+
+A phone's on-screen keyboard has no Ctrl, Esc, Tab, or arrow keys, and no easy way to send them —
+which makes a real shell painfully hard to drive on mobile (no Tab-completion, no Ctrl+C to kill
+a runaway process, no Up-arrow for command history). Opening the Terminal panel on a phone adds:
+
+- **A quick-key row** docked under the terminal — Esc, Tab, the four arrows, one-tap Ctrl+C /
+  Ctrl+D / Ctrl+L, and the punctuation (`| / - ~`) that's awkward to reach on a phone keyboard.
+  Every tap sends the exact bytes a physical keyboard would, so it works identically across a
+  real shell, WebContainers, or the simulated fallback.
+- **A "⚡ Quick Commands" menu** (the lightning-bolt button in the terminal's toolbar, on both
+  mobile and desktop) with one-tap npm (`install`, `run dev`, `build`, `test`, list scripts) and
+  git (`status`, `add -A`, `log`, `branch`, `pull`, `push`, plus an inline commit-message field
+  for "add + commit" in one tap) buttons, a free-text field for any other command, and — when the
+  open project's `package.json` has a `dev`/`start`/`serve` script — a one-tap **"Install & Run"**
+  action (labeled "Run Vite Dev Server" when it detects Vite) that runs `npm install && npm run
+  <script>` and, once CodeForge notices the dev server come up, offers to open it right in the
+  built-in preview pane. Buttons that can't work in the current mode (e.g. git in WebContainers,
+  which has no git binary; anything but `git status` in the simulated fallback) are greyed out
+  with a tooltip explaining why, rather than failing silently.
+
 ### 1. Run it locally → a real terminal
 
 ```

@@ -353,6 +353,8 @@
               title="Back to editor"></button>
             <div id="terminal-tabs"></div>
             <button id="btn-terminal-new" class="term-tool-btn" title="New Terminal" data-icon="plus"></button>
+            <button id="btn-terminal-quickcmds" class="term-tool-btn term-quickcmds-btn"
+              title="Quick Commands — npm, git, run project…">&#9889;</button>
             <div class="term-toolbar-spacer"></div>
             <span id="terminal-mode-badge" class="term-mode-badge"></span>
             <button id="btn-terminal-sync-push" class="term-tool-btn" title="Sync project to disk (push)"
@@ -368,6 +370,9 @@
             <button id="btn-terminal-close" class="term-tool-btn" title="Close panel (Ctrl+`)" data-icon="x"></button>
           </div>
           <div id="terminal-body"></div>
+          <div id="term-quickbar" class="hidden">
+            <div class="term-qkey-row" id="term-qkey-row"></div>
+          </div>
         </div>
       </div>
 
