@@ -61,7 +61,7 @@ export default defineConfig({
     outDir: "dist",
     assetsDir: "assets",
     emptyOutDir: true,
-    minify: "terser",
+    minify: "esbuild",
     sourcemap: false,
   },
   server: {
