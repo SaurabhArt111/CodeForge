@@ -21,17 +21,22 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { createTerminalBackend } = require("./server/terminal-backend.js");
+const { createEnhancedAPI } = require("./server/enhanced-api.js");
 
 const PORT = parseInt(process.argv[2], 10) || parseInt(process.env.PORT, 10) || 5500;
 // Bind to localhost only by default — this process can spawn a real shell, so it shouldn't be
 // reachable from other devices on the network unless explicitly opted into.
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
+const WORKSPACE = path.join(ROOT, ".codeforge-workspace");
 
 const terminalBackend = createTerminalBackend({
-  workspaceRoot: path.join(ROOT, ".codeforge-workspace"),
+  workspaceRoot: WORKSPACE,
   port: PORT,
 });
+
+// Initialize enhanced API (Git, Preview, etc.)
+const enhancedAPI = createEnhancedAPI(WORKSPACE);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -68,6 +73,10 @@ const server = http.createServer(function (req, res) {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
     });
 
+    // Try enhanced API (Git, Preview) first
+    if (enhancedAPI.handleRequest(req, res)) return;
+    
+    // Then try terminal backend
     if (terminalBackend.handleRequest(req, res)) return;
     let urlPath = decodeURIComponent(req.url.split("?")[0]);
     if (urlPath === "/") urlPath = "/index.html";
@@ -123,17 +132,28 @@ server.on("upgrade", function (req, socket, head) {
 
 server.listen(PORT, HOST, function () {
   console.log("");
-  console.log("  CodeForge is running \u2014 nothing leaves this machine.");
-  console.log("  Open: http://localhost:" + PORT);
+  console.log("  ╔══════════════════════════════════════════════════════╗");
+  console.log("  ║  CodeForge Enhanced — Development IDE               ║");
+  console.log("  ║  🚀 Nothing leaves this machine                     ║");
+  console.log("  ╚══════════════════════════════════════════════════════╝");
+  console.log("");
+  console.log("  📂 Open: http://localhost:" + PORT);
+  console.log("");
+  console.log("  ✨ Features:");
+  console.log("     • Code Editor with split view");
+  console.log("     • File Explorer & Search");
   if (!terminalBackend.enabled) {
-    console.log("  Terminal: simulated only (run `npm install` to add the real local Terminal backend)");
+    console.log("     • Terminal: simulated (run npm install for real shell)");
   } else if (terminalBackend.hasPty) {
-    console.log("  Terminal: real PTY backend enabled \u2014 the in-app Terminal panel gets a full shell.");
+    console.log("     • Terminal: Full PTY shell (git, npm, node, python, etc)");
   } else {
-    console.log("  Terminal: backend enabled, but without node-pty (no C++ build tools found) \u2014");
-    console.log("            commands still run for real, but full-screen TUI apps (vim, htop) won't render.");
+    console.log("     • Terminal: Shell support without PTY (git, npm, node work fine)");
   }
-  console.log("  Stop: Ctrl+C");
+  console.log("     • Git Integration (status, log, branches)");
+  console.log("     • Preview Servers (Node.js/Express & Static)");
+  console.log("     • npm/yarn package management");
+  console.log("");
+  console.log("  🛑 Stop: Ctrl+C");
   console.log("");
 });
 
@@ -148,7 +168,16 @@ const gracefulShutdown = () => {
   
   server.close(() => {
     clearTimeout(shutdownTimeout);
-    terminalBackend.closeAll();
+    try {
+      terminalBackend.closeAll();
+    } catch (e) {
+      console.error("[SHUTDOWN] Error closing terminal backend:", e.message);
+    }
+    try {
+      enhancedAPI.cleanup();
+    } catch (e) {
+      console.error("[SHUTDOWN] Error cleaning up enhanced API:", e.message);
+    }
     console.log("[SHUTDOWN] Server closed successfully");
     process.exit(0);
   });

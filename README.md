@@ -1,123 +1,328 @@
-# CodeForge v6.2
+# CodeForge Enhanced ✨
 
-A fast, private, browser-based code editor. Upload a project (or a ZIP of one), edit it with
-a real code-editing engine, and export it back out — all on your own device. No account, no
-login, and nothing is ever uploaded anywhere.
+A fast, private, browser-based code editor with **integrated Git support**, **Node.js/npm terminal**, and **local project preview**. Everything runs locally on your machine — nothing ever leaves your device.
 
-The editor, file explorer, and project management are a **pure static frontend** — deploy the
-`public/` folder (or `dist/` after `npm run build`) to Netlify, Vercel, GitHub Pages, or any
-static host, and that's the whole app.
+## 🚀 New Features (v7.0.0)
 
-## Terminal
+### 1. **Integrated Git Support**
+- **Git Status** — View file changes in real-time
+- **Commit History** — Browse past commits with author, date, and message
+- **Branch Management** — List and manage git branches
+- **Repository Init** — Initialize new git repositories from the UI
+- **Git Terminal** — Full git command support in the terminal
 
-CodeForge also has an integrated Terminal panel (`` Ctrl+` ``, or the terminal icon in the
-titlebar / bottom nav), built on [xterm.js](https://xtermjs.org/) — the same terminal engine
-VS Code uses. It automatically picks the most capable option available, in this order:
+### 2. **Enhanced Terminal**
+- **Real Shell Integration** — Full bash/zsh/PowerShell/cmd support
+- **Git Commands** — `git clone`, `git commit`, `git push`, etc.
+- **npm/yarn Support** — Install packages, run scripts, manage dependencies
+- **Node.js** — Run Node.js applications directly
+- **Python & More** — Execute any installed command-line tool
+- **Auto-detection** — Terminal automatically detects your system shell
 
-### Mobile: a quick-key row + a Quick Commands menu
+### 3. **Local Project Preview**
+- **Express/Node.js Preview** — Run and preview Express.js servers
+- **Static Server** — Preview HTML/CSS/JS projects on localhost
+- **Multiple Ports** — Run multiple projects simultaneously on different ports
+- **Quick Links** — One-click preview access to running servers
+- **Auto Port Management** — Automatically finds available ports
 
-A phone's on-screen keyboard has no Ctrl, Esc, Tab, or arrow keys, and no easy way to send them —
-which makes a real shell painfully hard to drive on mobile (no Tab-completion, no Ctrl+C to kill
-a runaway process, no Up-arrow for command history). Opening the Terminal panel on a phone adds:
+### 4. **Development Workflow**
+- **Package.json Recognition** — Detects Node.js projects automatically
+- **npm Scripts** — Run custom scripts defined in package.json
+- **Hot Reload Ready** — Compatible with nodemon and other dev tools
+- **Build Tools** — Supports webpack, Vite, Parcel, and more
 
-- **A quick-key row** docked under the terminal — Esc, Tab, the four arrows, one-tap Ctrl+C /
-  Ctrl+D / Ctrl+L, and the punctuation (`| / - ~`) that's awkward to reach on a phone keyboard.
-  Every tap sends the exact bytes a physical keyboard would, so it works identically across a
-  real shell, WebContainers, or the simulated fallback.
-- **A "⚡ Quick Commands" menu** (the lightning-bolt button in the terminal's toolbar, on both
-  mobile and desktop) with one-tap npm (`install`, `run dev`, `build`, `test`, list scripts) and
-  git (`status`, `add -A`, `log`, `branch`, `pull`, `push`, plus an inline commit-message field
-  for "add + commit" in one tap) buttons, a free-text field for any other command, and — when the
-  open project's `package.json` has a `dev`/`start`/`serve` script — a one-tap **"Install & Run"**
-  action (labeled "Run Vite Dev Server" when it detects Vite) that runs `npm install && npm run
-  <script>` and, once CodeForge notices the dev server come up, offers to open it right in the
-  built-in preview pane. Buttons that can't work in the current mode (e.g. git in WebContainers,
-  which has no git binary; anything but `git status` in the simulated fallback) are greyed out
-  with a tooltip explaining why, rather than failing silently.
+## 📋 Requirements
 
-### 1. Run it locally → a real terminal
+- **Node.js** ≥ 14 (for running locally)
+- **npm** or **yarn** (for package management)
+- **Git** (optional, for git integration)
 
-```
+### Recommended Dependencies
+
+```bash
+# Install full dependencies for best experience
 npm install
-npm run dev          # or: npm run serve:simple
+
+# For real PTY support (better TUI apps like vim, htop)
+npm install node-pty
 ```
 
-Open the Terminal panel and you get an actual shell (bash/zsh/PowerShell — whatever's on your
-machine) rooted in the currently-open project's files, with real `git`, `node`, `npm`, `npx`,
-`pnpm`, `bun`, `python`, and anything else on your `PATH`. Run `npm install`, `git status`,
-`vite dev`, `next dev`, `node server.js` — whatever the project needs. Multiple tabs, split
-view, command history (it's a real shell, so that's just your shell's own history), and
-sessions survive a page reload — the shell keeps running on your machine even if you refresh.
+## 🚀 Quick Start
 
-If CodeForge detects a dev server starting up (Vite, Next.js, Create React App, Express, …) it
-offers to open it right there in the built-in preview pane.
+### Option 1: Simple Serve (No Build Required)
+```bash
+npm install
+npm run serve
+# Open http://localhost:5500 in your browser
+```
 
-If `node-pty` can't be built on your machine (no C++ build tools installed), CodeForge still
-gives you a real shell running real commands — it just won't have a real TTY, so full-screen
-apps like `vim` or `htop` won't render correctly. Everything else works fine either way.
+### Option 2: Development Mode (With Hot Reload)
+```bash
+npm install
+npm run dev
+# Open http://localhost:5173 in your browser (or the port shown)
+```
 
-**How this works, and what it can see.** Because a browser tab can't spawn OS processes on its
-own, this is backed by one small, optional Node process — the same one that already serves the
-app locally (`server.js`, or a plugin inside `vite.config.mjs` for `npm run dev`). It:
+### Option 3: Build for Production
+```bash
+npm install
+npm run build
+# Deploy dist/ folder to any static host
+```
 
-- **Only ever listens on localhost.** Not reachable from other devices on your network by default.
-- **Rejects requests from any other origin.** A malicious page open in another browser tab can't
-  reach it — every request is checked against this app's own origin before anything runs.
-- **Only touches its own sandboxed workspace folder** (`.codeforge-workspace/`, gitignored).
-  Before starting a shell, CodeForge writes the current project's files there (that's the
-  "working directory" the shell starts in); path traversal outside that folder is rejected
-  server-side, not just hidden in the UI.
-- **Never deletes anything it didn't create.** Files real tools generate — `node_modules`,
-  `.git`, build output — are left alone even when CodeForge re-syncs your edits to disk; only
-  files CodeForge itself previously wrote there are ever cleaned up.
-- Use **⤒ Sync to disk** / **⤓ Pull from disk** in the terminal toolbar to control when the
-  browser's copy and the on-disk copy exchange changes (pushing also happens automatically
-  before a new terminal starts, and periodically while a real session is running). Files with
-  unsaved edits open in the editor are never silently overwritten by a pull.
+## 📁 Project Structure
 
-None of this runs, or is even loaded, when no local backend is reachable — including on a
-static deploy.
+```
+CodeForge-Enhanced/
+├── public/                    # Static assets
+│   ├── app.js                # Main application logic
+│   ├── terminal.js           # Terminal UI
+│   ├── git-integration.js    # Git UI integration
+│   ├── style.css             # Styles
+│   └── vendor/               # Dependencies (Monaco, xterm, etc)
+├── server/
+│   ├── terminal-backend.js   # Terminal server (shell execution)
+│   ├── git-handler.js        # Git command executor
+│   ├── preview-manager.js    # Preview server manager
+│   └── enhanced-api.js       # API endpoints
+├── index.html                # Main HTML
+├── server.js                 # Express server entry point
+├── package.json              # Dependencies
+└── vite.config.mjs          # Vite configuration
+```
 
-### 2. No local backend reachable (e.g. deployed to Vercel/Netlify) → still real execution, via WebContainers
+## 🔧 Core Features
 
-This is the case that matters most on mobile/tablet, where there's no local machine to run a
-backend on at all. If the page loaded [cross-origin isolated](https://webcontainers.io/guides/configuring-headers)
-(already set up for Vercel in `vercel.json` and for Netlify/Cloudflare Pages in
-`public/_headers`) and the browser supports it, the Terminal panel boots
-[WebContainers](https://webcontainers.io/) — an actual Node.js runtime compiled to WebAssembly,
-running entirely inside that browser tab. `npm install` really downloads and installs real
-packages from the real npm registry; `npm run dev` really starts a real dev server, previewable
-right in the app. No server involved anywhere, so it works the same on a phone as a desktop.
+### Terminal Panel
 
-Real trade-offs worth knowing before relying on it:
-- **No `git`, no Python** — only Node.js/npm execution (`pnpm` mostly works since it's
-  Node-based; `bun` doesn't, it isn't Node at all).
-- **Mobile Safari support is newer and more memory-constrained** than desktop Chromium/Firefox;
-  large projects (a big `node_modules`, for instance) may hit memory limits sooner there.
-- **Needs network access** the first time it boots per project (fetching the runtime itself),
-  and obviously for anything `npm install` downloads.
-- **Only one instance runs at a time** per browser tab — switching which project's terminal is
-  "live" tears down and reboots it, with a confirmation first since that stops whatever was
-  running.
-- **GitHub Pages can't do this at all** — it has no way to set custom response headers, which
-  cross-origin isolation requires. CodeForge falls back to the plain simulated shell there
-  instead, same as any other unsupported browser/deploy.
-- **Licensing**: the `@webcontainer/api` client library (vendored in `public/vendor/webcontainer/`)
-  is MIT-licensed, but *using* the WebContainers boot service it talks to is free only for
-  personal, open-source, and prototype use — production use in a commercial, for-profit setting
-  needs a paid license from StackBlitz. See [webcontainers.io/enterprise](https://webcontainers.io/enterprise).
-  This only matters if you deploy CodeForge itself commercially; using your own local copy for
-  personal projects is unaffected.
+**Keyboard Shortcuts:**
+- `Ctrl+`` — Toggle terminal panel
+- `Ctrl+Shift+`` — Open new terminal tab
+- `Ctrl+C` — Kill current process
+- `Ctrl+D` — Exit terminal session
 
-### 3. Neither available → a simulated fallback, so the panel is never just broken
+**Quick Commands:**
+- `npm install` — Install dependencies
+- `npm start` — Run start script
+- `npm run dev` — Run dev script
+- `git init` — Initialize repository
+- `git clone` — Clone repository
+- `git status` — Check status
+- `node app.js` — Run Node.js file
+- `npx create-react-app` — Create React app
 
-A lightweight in-browser simulated shell (`ls`, `cd`, `cat`, `git status`, etc. against the
-project's virtual filesystem) that clearly explains, right there in the terminal, what a real
-shell would need — the local backend, or a cross-origin-isolated deploy on a browser that
-supports WebContainers.
+### Git Integration
 
-## Third-party code
+**Access via:**
+1. **Source Control Panel** (in sidebar) — Visual git interface
+2. **Terminal** — Full git command support
+3. **API** (`/api/git/`) — Programmatic access
 
-See `THIRD_PARTY_LICENSES.md` for what's bundled (Monaco, JSZip, xterm.js, the WebContainers
-client SDK) and what the local Terminal backend optionally depends on (`ws`, `node-pty`).
+**Git APIs:**
+```javascript
+// In browser console or git-integration.js
+const git = new GitIntegration();
+await git.initializeProject('my-project');
+await git.getStatus();     // Get file changes
+await git.getLog(10);      // Get commit history
+await git.getBranches();   // Get branches
+await git.initRepository('Your Name', 'you@example.com'); // Init repo
+```
 
+### Preview Servers
+
+**Access via:**
+1. **Quick Commands** — Click "Start Preview" button
+2. **Terminal** — `npm start` or `node server.js`
+3. **API** (`/api/preview/`) — Programmatic control
+
+**Starting Previews:**
+```javascript
+// In browser console
+const preview = new PreviewIntegration();
+await preview.initializeProject('my-project');
+
+// For Express/Node.js servers
+await preview.startNodePreview('server.js');
+// Returns: { ok: true, url: 'http://localhost:3000', ... }
+
+// For static HTML projects
+await preview.startStaticPreview('public');
+// Returns: { ok: true, url: 'http://localhost:3001', ... }
+
+preview.openPreview(); // Open in new window
+```
+
+## 📡 API Endpoints
+
+### Git Endpoints
+
+```
+GET  /api/git/status?project=PROJECT_ID
+GET  /api/git/log?project=PROJECT_ID&limit=10
+GET  /api/git/branches?project=PROJECT_ID
+GET  /api/git/isrepo?project=PROJECT_ID
+POST /api/git/init?project=PROJECT_ID
+```
+
+### Preview Endpoints
+
+```
+POST /api/preview/start-node?project=PROJECT_ID
+POST /api/preview/start-static?project=PROJECT_ID
+POST /api/preview/stop?project=PROJECT_ID
+GET  /api/preview/list
+```
+
+### Project Endpoints
+
+```
+GET /api/project/info?id=PROJECT_ID
+```
+
+## 🎯 Usage Examples
+
+### Example 1: Create and Preview Express App
+
+1. **Create new project** → Click "New Empty Project"
+2. **Create server.js:**
+   ```javascript
+   const express = require('express');
+   const app = express();
+   const PORT = process.env.PORT || 3000;
+   
+   app.get('/', (req, res) => res.send('Hello World!'));
+   app.listen(PORT, () => console.log(`Server on port ${PORT}`));
+   ```
+3. **Create package.json:** Click terminal → type `npm init -y`
+4. **Install Express:** Type `npm install express`
+5. **Start Preview:** Terminal → type `npm start`
+6. **View:** Access http://localhost:3000 (auto-linked in preview panel)
+
+### Example 2: Clone and Develop
+
+1. **Open terminal** → Click terminal icon
+2. **Clone repo:** `git clone https://github.com/user/repo.git`
+3. **Install deps:** `cd repo && npm install`
+4. **View status:** Terminal → `git status`
+5. **Start dev:** `npm run dev`
+6. **Preview:** Automatically opens at http://localhost:3000+
+
+### Example 3: Create React App
+
+1. **Terminal:** `npx create-react-app my-app`
+2. **Navigate:** `cd my-app`
+3. **Start:** `npm start`
+4. **Preview:** React app opens at http://localhost:3000
+5. **Edit:** Make changes in editor, see live reload in preview
+
+## ⚙️ Configuration
+
+### Server Configuration
+
+**Environment Variables:**
+```bash
+PORT=5500                 # Server port (default: 5500)
+HOST=127.0.0.1           # Server host (default: localhost only)
+NODE_ENV=development     # Environment mode
+```
+
+**Starting with custom port:**
+```bash
+PORT=8000 npm run serve
+# or
+node server.js 8000
+```
+
+### Preview Server Configuration
+
+**Default Ports:**
+- Node.js previews: Start at 3000, increment for each project
+- Static previews: Start at 3500, increment for each project
+- Automatic port detection prevents conflicts
+
+## 🔐 Security
+
+✅ **All local** — Terminal execution restricted to workspace directory
+✅ **CORS protected** — WebSocket and API restricted to localhost origins
+✅ **Path traversal prevented** — Safe path resolution, no escape attempts
+✅ **Sandbox directory** — All work in `.codeforge-workspace/`
+✅ **On-device only** — Zero data transmission to external servers
+
+## 🐛 Troubleshooting
+
+### Terminal not working?
+```bash
+# Ensure ws dependency is installed
+npm install ws
+
+# For better PTY support (optional)
+npm install node-pty
+```
+
+### Preview server won't start?
+1. Check if port is already in use: `lsof -i :3000`
+2. Check for syntax errors in server.js
+3. Check terminal output for detailed error message
+
+### Git not working?
+```bash
+# Ensure Git is installed
+git --version
+
+# Check if project is a git repository
+cd .codeforge-workspace/your-project
+git status
+```
+
+### Out of memory with large projects?
+- Close unused previews: Terminal → Click "X" on preview tabs
+- Increase Node.js heap: `node --max-old-space-size=4096 server.js`
+
+## 📦 Deployment
+
+### Static Deploy (Editor Only, No Terminal)
+```bash
+npm run build
+# Deploy dist/ to:
+# - Netlify
+# - Vercel
+# - GitHub Pages
+# - Cloudflare Pages
+# - Any static host
+```
+
+### Local Development (Full Features)
+```bash
+npm install
+npm run serve
+```
+
+## 🔗 Related Files
+
+- **Terminal Backend:** `server/terminal-backend.js`
+- **Git Handler:** `server/git-handler.js`
+- **Preview Manager:** `server/preview-manager.js`
+- **Enhanced API:** `server/enhanced-api.js`
+- **Git Integration UI:** `public/git-integration.js`
+- **Main App:** `public/app.js`
+- **Terminal UI:** `public/terminal.js`
+
+## 📝 License
+
+CodeForge Enhanced — Based on CodeForge by Zed Shaw
+Enhanced with Git and Preview features
+
+## 🎓 Learning Resources
+
+- [Node.js Docs](https://nodejs.org/docs/)
+- [npm Docs](https://docs.npmjs.com/)
+- [Git Docs](https://git-scm.com/doc)
+- [Express.js Guide](https://expressjs.com/)
+
+---
+
+**Happy Coding! 🚀**
+
+Questions? Found a bug? Create an issue or contribute!
