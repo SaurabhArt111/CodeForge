@@ -22,6 +22,8 @@ const fs = require("fs");
 const path = require("path");
 const { createTerminalBackend } = require("./server/terminal-backend.js");
 const { createEnhancedAPI } = require("./server/enhanced-api.js");
+const { addCORSHeaders, handlePreflightRequest } = require("./server/cors-config.js");
+const { BrowserPreviewHandler } = require("./server/browser-preview-handler.js");
 
 const PORT = parseInt(process.argv[2], 10) || parseInt(process.env.PORT, 10) || 5500;
 // Bind to localhost only by default — this process can spawn a real shell, so it shouldn't be
@@ -37,6 +39,9 @@ const terminalBackend = createTerminalBackend({
 
 // Initialize enhanced API (Git, Preview, etc.)
 const enhancedAPI = createEnhancedAPI(WORKSPACE);
+
+// Initialize browser preview handler
+const browserPreview = new BrowserPreviewHandler();
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -73,8 +78,19 @@ const server = http.createServer(function (req, res) {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
     });
 
+    // Add CORS headers to all responses
+    const origin = req.headers.origin || "*";
+    addCORSHeaders(res, origin);
+
+    // Handle preflight requests
+    if (handlePreflightRequest(req, res)) return;
+
     // Try enhanced API (Git, Preview) first
     if (enhancedAPI.handleRequest(req, res)) return;
+    
+    // Try browser preview handler
+    if (browserPreview.handleWebContainerAPI(req.url, res)) return;
+    if (browserPreview.serveVendorWithCORS(req.url, res)) return;
     
     // Then try terminal backend
     if (terminalBackend.handleRequest(req, res)) return;
@@ -177,6 +193,11 @@ const gracefulShutdown = () => {
       enhancedAPI.cleanup();
     } catch (e) {
       console.error("[SHUTDOWN] Error cleaning up enhanced API:", e.message);
+    }
+    try {
+      browserPreview.clearPreviews();
+    } catch (e) {
+      console.error("[SHUTDOWN] Error cleaning up browser preview:", e.message);
     }
     console.log("[SHUTDOWN] Server closed successfully");
     process.exit(0);

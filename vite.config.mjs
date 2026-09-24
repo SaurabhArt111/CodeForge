@@ -87,5 +87,12 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Resource-Policy": "cross-origin",
     }
+  },
+  optimizeDeps: {
+    include: [
+      "monaco-editor",
+      "xterm",
+      "jszip"
+    ]
   }
 });
