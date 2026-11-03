@@ -1,0 +1,3 @@
+{ "name": "codeforge-devhost", "version": "1.0.0", "private": true, "type": "module",
+  "description": "Desktop development host: serves the web IDE and implements the native bridge with Node, for UI development and tests.",
+  "dependencies": { "jszip": "^3.10.1" }, "optionalDependencies": { "node-pty": "^1.0.0" } }

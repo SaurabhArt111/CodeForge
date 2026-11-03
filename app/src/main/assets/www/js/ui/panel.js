@@ -1,0 +1,42 @@
+// Bottom panel (Terminal / Preview / Output / Problems): tab switching, resize sash, maximize, mobile behaviour.
+import { bus, Emitter } from "../core/events.js";
+import { settings } from "../core/settings.js";
+import { h, icon, clamp, isMobile } from "../core/util.js";
+
+export const panelEvents = new Emitter();
+let panel, sash, current = null;
+const views = new Map(); // name -> {onShow}
+
+export function init() {
+  panel = document.getElementById("panel"); sash = document.getElementById("sash-h");
+  panel.querySelectorAll(".ptab").forEach((b) => b.addEventListener("click", () => show(b.dataset.panel)));
+  document.getElementById("panel-close").addEventListener("click", hide);
+  document.getElementById("panel-max").addEventListener("click", () => { panel.classList.toggle("max"); panelEvents.emit("resize"); });
+  const hpx = settings.state.panelHeight; if (hpx) panel.style.setProperty("--panel-h", hpx + "px");
+  sash.addEventListener("pointerdown", (e) => {
+    sash.setPointerCapture(e.pointerId); sash.classList.add("drag");
+    const wb = document.getElementById("workbench").getBoundingClientRect();
+    const mv = (ev) => { const px = clamp(wb.bottom - ev.clientY, 90, wb.height - 120); panel.style.setProperty("--panel-h", px + "px"); settings.state.panelHeight = px; panelEvents.emit("resize"); };
+    const up = () => { sash.classList.remove("drag"); sash.removeEventListener("pointermove", mv); sash.removeEventListener("pointerup", up); settings.saveState(); };
+    sash.addEventListener("pointermove", mv); sash.addEventListener("pointerup", up);
+  });
+  new ResizeObserver(() => panelEvents.emit("resize")).observe(document.getElementById("panel-body"));
+  bus.on("panel", (n) => show(n)); bus.on("cmd:terminal", () => toggle("terminal"));
+}
+export function registerView(name, { onShow } = {}) { views.set(name, { onShow }); }
+export const isOpen = () => !panel.classList.contains("hidden");
+export const active = () => current;
+export function show(name = current || "terminal") {
+  current = name;
+  panel.classList.remove("hidden"); sash.classList.toggle("hidden", isMobile());
+  panel.querySelectorAll(".ptab").forEach((b) => b.classList.toggle("active", b.dataset.panel === name));
+  panel.querySelectorAll(".pane").forEach((p) => p.classList.toggle("on", p.id === "pane-" + name));
+  const actions = document.getElementById("panel-actions"); actions.replaceChildren();
+  views.get(name)?.onShow?.(actions);
+  panelEvents.emit("show", name); panelEvents.emit("resize");
+  document.querySelector('#bottomnav [data-nav="terminal"]')?.classList.toggle("active", name === "terminal");
+}
+export function hide() { panel.classList.add("hidden"); panel.classList.remove("max"); sash.classList.add("hidden"); panelEvents.emit("hide"); panelEvents.emit("resize"); document.querySelector('#bottomnav [data-nav="terminal"]')?.classList.remove("active"); }
+export function toggle(name) { if (isOpen() && current === name) hide(); else show(name); }
+export function setBadge(name, n) { const b = panel.querySelector(`.ptab[data-panel="${name}"]`); if (!b) return; let c = b.querySelector(".count"); if (c) { c.textContent = n; c.classList.toggle("hidden", !n); } }
+export function pane(name) { return document.getElementById("pane-" + name); }

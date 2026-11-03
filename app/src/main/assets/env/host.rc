@@ -1,0 +1,4 @@
+# Minimal rc for the fallback Android shell (used until the Linux environment is installed).
+alias ll='ls -la'
+code() { for p in "${@:-.}"; do printf '\033]7770;open;%s\007' "$(cd "$p" 2>/dev/null && pwd || echo "$p")"; done; }
+echo "CodeForge host shell (limited). Install the Linux environment from the Terminal menu for git, node, npm and more."

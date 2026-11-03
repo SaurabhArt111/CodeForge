@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">CodeForge</string>
+    <string name="notif_channel_name">Terminals and servers</string>
+    <string name="notif_title">CodeForge is running</string>
+    <string name="notif_stop_all">Stop all</string>
+    <string name="root_title">CodeForge Workspace</string>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- rounded accent tile -->
+    <path android:fillColor="#007ACC"
+        android:pathData="M30,24h48a8,8 0 0 1 8,8v44a8,8 0 0 1 -8,8h-48a8,8 0 0 1 -8,-8v-44a8,8 0 0 1 8,-8z" />
+    <!-- </> glyph -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5" android:strokeLineCap="round"
+        android:strokeLineJoin="round" android:fillColor="#00000000"
+        android:pathData="M45,43L34,54L45,65" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5" android:strokeLineCap="round"
+        android:strokeLineJoin="round" android:fillColor="#00000000"
+        android:pathData="M63,43L74,54L63,65" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5" android:strokeLineCap="round"
+        android:fillColor="#00000000" android:pathData="M58,40L50,68" />
+</vector>

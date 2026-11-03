@@ -1,0 +1,2 @@
+-keep class dev.codeforge.ide.core.Pty { *; }
+-keepclasseswithmembernames class * { native <methods>; }

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>CodeForge</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#181818">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23007acc'/%3E%3Cpath d='M9 8l-4 4 4 4M15 8l4 4-4 4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/codicons/codicon.css">
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="boot"><div class="boot-logo"><i class="codicon codicon-code"></i></div><div class="boot-title">CodeForge</div><div id="boot-msg">Starting…</div><div id="boot-err"></div></div>
+
+<div id="app" class="hidden">
+  <header id="titlebar">
+    <button id="btn-sidebar" class="tb-btn" title="Menu"><i class="codicon codicon-menu"></i></button>
+    <div id="title" title="Command Palette"><i class="codicon codicon-search"></i><span id="title-text">CodeForge</span></div>
+    <div class="spacer"></div>
+    <button id="btn-run" class="tb-btn" title="Run file / Live preview"><i class="codicon codicon-play"></i></button>
+    <button id="btn-split" class="tb-btn desk" title="Split editor"><i class="codicon codicon-split-horizontal"></i></button>
+    <button id="btn-term" class="tb-btn" title="Terminal"><i class="codicon codicon-terminal"></i></button>
+    <button id="btn-ai" class="tb-btn" title="AI Assistant"><i class="codicon codicon-sparkle"></i></button>
+    <button id="btn-account" class="tb-btn desk" title="Account"><i class="codicon codicon-account"></i></button>
+  </header>
+
+  <div id="main">
+    <nav id="activitybar">
+      <div class="ab-group">
+        <button class="ab-btn" data-view="explorer" title="Explorer"><i class="codicon codicon-files"></i></button>
+        <button class="ab-btn" data-view="search" title="Search"><i class="codicon codicon-search"></i></button>
+        <button class="ab-btn" data-view="git" title="Source Control"><i class="codicon codicon-source-control"></i><span class="badge hidden" id="git-badge"></span></button>
+        <button class="ab-btn" data-view="run" title="Run &amp; Preview"><i class="codicon codicon-debug-alt"></i></button>
+        <button class="ab-btn" data-view="extensions" title="Extensions &amp; Plugins"><i class="codicon codicon-extensions"></i></button>
+        <button class="ab-btn" data-view="ai" title="AI Assistant"><i class="codicon codicon-sparkle"></i></button>
+      </div>
+      <div class="ab-group bottom">
+        <button class="ab-btn" id="ab-account" title="Account"><i class="codicon codicon-account"></i></button>
+        <button class="ab-btn" id="ab-settings" title="Settings"><i class="codicon codicon-settings-gear"></i></button>
+      </div>
+    </nav>
+
+    <aside id="sidebar">
+      <section class="view" id="view-explorer"></section>
+      <section class="view" id="view-search"></section>
+      <section class="view" id="view-git"></section>
+      <section class="view" id="view-run"></section>
+      <section class="view" id="view-extensions"></section>
+      <section class="view" id="view-ai"></section>
+    </aside>
+    <div id="sash-v" class="sash v"></div>
+    <div id="side-backdrop"></div>
+
+    <main id="workbench">
+      <div id="editor-area">
+        <div class="group" id="group-0"><div class="tabs-row"><div class="tabs"></div></div><div class="group-body"></div></div>
+        <div class="sash v hidden" id="sash-split"></div>
+        <div class="group hidden" id="group-1"><div class="tabs-row"><div class="tabs"></div></div><div class="group-body"></div></div>
+      </div>
+      <div id="sash-h" class="sash h hidden"></div>
+      <section id="panel" class="hidden">
+        <div id="panel-head">
+          <div id="panel-tabs">
+            <button class="ptab" data-panel="terminal">Terminal</button>
+            <button class="ptab" data-panel="preview">Preview</button>
+            <button class="ptab" data-panel="output">Output</button>
+            <button class="ptab" data-panel="problems">Problems<span class="count hidden" id="problems-count"></span></button>
+          </div>
+          <div class="spacer"></div>
+          <div id="panel-actions"></div>
+          <button class="icon-btn" id="panel-max" title="Maximize"><i class="codicon codicon-screen-full"></i></button>
+          <button class="icon-btn" id="panel-close" title="Close panel"><i class="codicon codicon-close"></i></button>
+        </div>
+        <div id="panel-body">
+          <div class="pane" id="pane-terminal"></div>
+          <div class="pane" id="pane-preview"></div>
+          <div class="pane" id="pane-output"></div>
+          <div class="pane" id="pane-problems"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer id="statusbar">
+    <div class="sb-left" id="sb-left"></div>
+    <div class="sb-right" id="sb-right"></div>
+  </footer>
+
+  <div id="keybar" class="hidden"><div id="keybar-row"></div></div>
+  <nav id="bottomnav">
+    <button data-nav="explorer"><i class="codicon codicon-files"></i><span>Files</span></button>
+    <button data-nav="search"><i class="codicon codicon-search"></i><span>Search</span></button>
+    <button data-nav="editor"><i class="codicon codicon-edit"></i><span>Editor</span></button>
+    <button data-nav="terminal"><i class="codicon codicon-terminal"></i><span>Terminal</span></button>
+    <button data-nav="more"><i class="codicon codicon-ellipsis"></i><span>More</span></button>
+  </nav>
+
+</div>
+
+<div id="overlay"></div>
+<div id="toasts"></div>
+
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-web-links.js"></script>
+<script src="vendor/xterm/addon-search.js"></script>
+<script src="vendor/xterm/addon-unicode11.js"></script>
+<script src="vendor/jszip/jszip.min.js"></script>
+<script src="vendor/buffer/buffer.js"></script>
+<script src="vendor/isomorphic-git/isomorphic-git.min.js"></script>
+<script src="vendor/marked/marked.umd.js"></script>
+<script src="vendor/monaco/vs/loader.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

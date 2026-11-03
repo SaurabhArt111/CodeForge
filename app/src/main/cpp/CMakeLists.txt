@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.10)
+project(cfpty C)
+add_library(cfpty SHARED pty.c)
+target_compile_options(cfpty PRIVATE -std=c11 -Wall -Os -fno-stack-protector -D_GNU_SOURCE)
+target_link_options(cfpty PRIVATE -Wl,--gc-sections)
