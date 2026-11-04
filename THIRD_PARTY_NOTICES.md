@@ -26,6 +26,8 @@ the vendored files (`app/src/main/assets/www/vendor/*/LICENSE`) or are available
 | Fira Code | OFL-1.1 | font |
 | androidx.webkit 1.11.0 | Apache-2.0 | WebViewAssetLoader / WebMessageListener |
 
+The web version and extension host use only browser APIs (IndexedDB, Web Workers, WebCrypto) — no additional libraries.
+
 Extensions downloaded at runtime from Open VSX remain under their authors' licenses.
 
 If you redistribute an APK, you must make the corresponding source of the GPL/LGPL components above available

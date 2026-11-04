@@ -5,19 +5,34 @@
 <title>CodeForge</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#181818">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23007acc'/%3E%3Cpath d='M9 8l-4 4 4 4M15 8l4 4-4 4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <link rel="stylesheet" href="vendor/codicons/codicon.css">
 <link rel="stylesheet" href="vendor/xterm/xterm.css">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-<div id="boot"><div class="boot-logo"><i class="codicon codicon-code"></i></div><div class="boot-title">CodeForge</div><div id="boot-msg">Starting…</div><div id="boot-err"></div></div>
+<div id="boot">
+  <svg class="boot-svg" viewBox="0 0 108 108" aria-hidden="true">
+    <defs>
+      <linearGradient id="bgg" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1c2541"/><stop offset=".55" stop-color="#1d4ed8"/><stop offset="1" stop-color="#06b6d4"/></linearGradient>
+      <linearGradient id="spg" x1="54" y1="41" x2="54" y2="67" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe29a"/><stop offset="1" stop-color="#ff7a18"/></linearGradient>
+      <radialGradient id="glg" cx="54" cy="54" r="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffb347" stop-opacity=".55"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect class="tile" x="4" y="4" width="100" height="100" rx="26" fill="url(#bgg)"/>
+    <circle class="glow" cx="54" cy="54" r="32" fill="url(#glg)"/>
+    <path class="br l" d="M44 38L29 54L44 70" pathLength="1"/><path class="br r" d="M64 38L79 54L64 70" pathLength="1"/>
+    <path class="spark" d="M54 41C55.2 49.5 58.5 52.8 67 54C58.5 55.2 55.2 58.5 54 67C52.8 58.5 49.5 55.2 41 54C49.5 52.8 52.8 49.5 54 41Z" fill="url(#spg)"/>
+  </svg>
+  <div class="boot-title">CodeForge</div><div class="boot-bar"><i></i></div><div id="boot-msg">Starting…</div><div id="boot-err"></div>
+</div></div>
 
 <div id="app" class="hidden">
   <header id="titlebar">
     <button id="btn-sidebar" class="tb-btn" title="Menu"><i class="codicon codicon-menu"></i></button>
     <div id="title" title="Command Palette"><i class="codicon codicon-search"></i><span id="title-text">CodeForge</span></div>
     <div class="spacer"></div>
+    <button id="btn-undo" class="tb-btn" title="Undo (Ctrl+Z)"><i class="codicon codicon-discard"></i></button>
+    <button id="btn-redo" class="tb-btn" title="Redo (Ctrl+Shift+Z)"><i class="codicon codicon-redo"></i></button>
     <button id="btn-run" class="tb-btn" title="Run file / Live preview"><i class="codicon codicon-play"></i></button>
     <button id="btn-split" class="tb-btn desk" title="Split editor"><i class="codicon codicon-split-horizontal"></i></button>
     <button id="btn-term" class="tb-btn" title="Terminal"><i class="codicon codicon-terminal"></i></button>
@@ -25,6 +40,7 @@
     <button id="btn-account" class="tb-btn desk" title="Account"><i class="codicon codicon-account"></i></button>
   </header>
 
+  <div id="toploader"><i></i></div>
   <div id="main">
     <nav id="activitybar">
       <div class="ab-group">

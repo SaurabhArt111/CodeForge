@@ -13,7 +13,9 @@ export async function init(api) {
   const refreshSoon = debounce(() => refresh(), 700);
   A.ws.on("root", () => { dir = A.ws.root; state = { ...state, repo: false, log: null }; refresh(); });
   A.bus.on("saved", refreshSoon); A.bus.on("fs:external", refreshSoon); A.ws.on("changed", refreshSoon);
-  window.addEventListener("focus", refreshSoon);
+  // coming back from another app must never stall the UI: refresh lazily, at most every 20 s, after the first paint
+  const onReturn = () => { if (!document.hidden && Date.now() - lastDone > 20000) setTimeout(() => refresh(), 1800); };
+  window.addEventListener("focus", onReturn); A.N.on("app.resume", onReturn);
   A.bus.on("workspace:opened", () => refresh());
   A.ed.editorEvents.on("active", () => gutterSoon()); A.ed.editorEvents.on("content", () => gutterSoon());
   A.bus.on("github:changed", async () => { signedIn = await A.N.github.signedIn().catch(() => false); });
@@ -49,7 +51,15 @@ async function onAuthFor(url) {
 }
 
 // ---------------------------------------------------------------- status
-export async function refresh() {
+let running = null, rerun = false, lastDone = 0;
+/** single-flight: overlapping triggers (save + poll + focus) collapse into one trailing run instead of N parallel full scans */
+export function refresh() {
+  if (running) { rerun = true; return running; }
+  A.bus.emit("busy", "git", "Git: checking changes…");
+  running = doRefresh().catch(() => {}).finally(() => { running = null; lastDone = Date.now(); A.bus.emit("busy", "git", null); if (rerun) { rerun = false; setTimeout(refresh, 400); } });
+  return running;
+}
+async function doRefresh() {
   if (!dir) { state.repo = false; return render(); }
   try {
     if (!(await A.N.fs.exists(dir + "/.git"))) { state = { ...state, repo: false, changes: [], staged: [] }; A.explorer.explorer.setDecorations(new Map()); badge(0); return render(); }

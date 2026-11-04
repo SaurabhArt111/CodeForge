@@ -15,13 +15,20 @@ export function item(id, { side = "left", priority = 0, mobile = true, icon: ic,
   }
   el.className = "sb-item " + cls + (mobile ? "" : " hide-m");
   el.title = title; el.style.order = String(priority);
-  el.replaceChildren(...[ic ? icon(ic) : null, text ? h("span", text) : null].filter(Boolean));
+  el.replaceChildren(...[ic ? icon(ic.replace("~spin", ""), ic.includes("~spin") ? "codicon-modifier-spin" : "") : null, text ? h("span", text) : null].filter(Boolean));
   el.onclick = onClick || null; el.style.display = text || ic ? "" : "none";
   return el;
 }
 export function remove(id) { items.get(id)?.el.remove(); items.delete(id); }
 
 export function init() {
+  // global activity indicator: slim animated bar under the title bar + spinner item in the status bar
+  const busy = new Map(); const top = document.getElementById("toploader");
+  bus.on("busy", (id, label) => {
+    if (label) busy.set(id, label); else busy.delete(id);
+    top?.classList.toggle("on", busy.size > 0);
+    if (busy.size) item("busy", { side: "left", priority: 1, ic: "sync~spin", text: [...busy.values()].pop(), title: "Working…" }); else remove("busy");
+  });
   left = document.getElementById("sb-left"); right = document.getElementById("sb-right");
   const refresh = () => {
     const t = ed.activeTab(); const e = ed.activeEditor(); const d = t?.kind === "file" ? t.doc : null;

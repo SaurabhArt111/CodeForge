@@ -12,7 +12,7 @@ let row, root, focusTarget = "editor", kbdOpen = false, baseH = 0;
 const K = (label, o) => ({ label, ...o });
 const KEYS = [
   K("Esc", { seq: "\x1b", mk: "escape" }), K("Tab", { seq: "\t", mk: "tab" }),
-  K("Ctrl", { mod: "ctrl" }), K("Alt", { mod: "alt" }),
+  K("Shift", { mod: "shift" }), K("Ctrl", { mod: "ctrl" }), K("Alt", { mod: "alt" }),
   K("←", { seq: "\x1b[D", mk: "cursorLeft" }), K("↓", { seq: "\x1b[B", mk: "cursorDown" }), K("↑", { seq: "\x1b[A", mk: "cursorUp" }), K("→", { seq: "\x1b[C", mk: "cursorRight" }),
   K("Home", { seq: "\x1b[H", mk: "cursorHome" }), K("End", { seq: "\x1b[F", mk: "cursorEnd" }), K("PgUp", { seq: "\x1b[5~", mk: "cursorPageUp" }), K("PgDn", { seq: "\x1b[6~", mk: "cursorPageDown" }),
   { sep: true },
@@ -53,9 +53,10 @@ function refresh() {
 
 async function press(k, btn) {
   const toTerm = focusTarget === "terminal" && panel.isOpen();
-  if (k.mod) { term.setMod(k.mod, !term.modifiers[k.mod]); if (!toTerm) { /* editor: ctrl/alt sticky not meaningful */ } return; }
+  if (k.mod) { term.setMod(k.mod, !term.modifiers[k.mod]); return; }
+  const shift = term.modifiers.shift;
   if (toTerm) {
-    if (k.seq) return term.sendKey(k.seq);
+    if (k.seq) return term.sendKey(k.seq);   // Shift (Shift+Tab, Shift+arrows) is applied inside sendKey
     if (k.ch) return sendTermChar(k.ch);
     if (k.act === "paste") return term.pasteFromClipboard();
     if (k.act === "copy") { const t = term.get(); if (t?.xt.hasSelection()) N.sys.clipboardSet(t.xt.getSelection()); return; }
@@ -64,12 +65,16 @@ async function press(k, btn) {
   }
   const e = ed.activeEditor(); if (!e) return;
   e.focus();
-  if (k.ch) return e.trigger("keyboard", "type", { text: k.ch });
-  if (k.mk === "tab") return e.trigger("keyboard", "tab", null);
+  if (k.ch) { term.setMod("shift", false); return e.trigger("keyboard", "type", { text: k.ch }); }
+  if (k.mk === "tab") { term.setMod("shift", false); return e.trigger("keyboard", shift ? "outdent" : "tab", null); }
   if (k.mk === "escape") return e.trigger("keyboard", "hideSuggestWidget", null) || e.trigger("keyboard", "removeSecondaryCursors", null);
-  if (k.mk) return e.trigger("keyboard", k.mk, null);
-  if (k.act === "undo") return e.trigger("keyboard", "undo", null);
-  if (k.act === "redo") return e.trigger("keyboard", "redo", null);
+  if (k.mk) {
+    // sticky Shift in the editor = extend selection with arrows / Home / End / PgUp / PgDn
+    const sel = { cursorLeft: "cursorLeftSelect", cursorRight: "cursorRightSelect", cursorUp: "cursorUpSelect", cursorDown: "cursorDownSelect", cursorHome: "cursorHomeSelect", cursorEnd: "cursorEndSelect", cursorPageUp: "cursorPageUpSelect", cursorPageDown: "cursorPageDownSelect" };
+    return e.trigger("keyboard", shift && sel[k.mk] ? sel[k.mk] : k.mk, null);
+  }
+  if (k.act === "undo") return ed.undo();
+  if (k.act === "redo") return ed.redo();
   if (k.act === "selectAll") return e.setSelection(e.getModel().getFullModelRange());
   if (k.act === "copy" || k.act === "cut") {
     const sel = e.getSelection(); const m = e.getModel();

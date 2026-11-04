@@ -320,10 +320,19 @@ class LiveServer(
             else -> "application/octet-stream"
         }
 
-        fun lanAddress(): String? = try {
-            NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
-                .flatMap { it.inetAddresses.toList() }.firstOrNull { it is Inet4Address && !it.isLoopbackAddress }?.hostAddress
-        } catch (_: Exception) { null }
+        /** Wi-Fi / LAN IPv4 address. Android 11+ blocks the netlink calls behind NetworkInterface, so ask ConnectivityManager first. */
+        fun lanAddress(): String? {
+            try {
+                val cm = Paths.app.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                val lp = cm.getLinkProperties(cm.activeNetwork)
+                val a = lp?.linkAddresses?.map { it.address }?.firstOrNull { it is Inet4Address && !it.isLoopbackAddress }
+                if (a != null) return a.hostAddress
+            } catch (_: Exception) { }
+            return try {
+                NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
+                    .flatMap { it.inetAddresses.toList() }.firstOrNull { it is Inet4Address && !it.isLoopbackAddress }?.hostAddress
+            } catch (_: Exception) { null }
+        }
 
         // Injected into every served HTML page. Forwards console output / errors / navigation to the IDE (via postMessage),
         // reloads the page on file changes and hot-swaps stylesheets without a full reload.

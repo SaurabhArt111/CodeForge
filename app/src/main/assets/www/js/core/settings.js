@@ -24,12 +24,23 @@ export const DEFAULTS = {
   "editor.formatOnSave": false,
   "editor.formatOnPaste": false,
   "editor.emmet": true,
+  "editor.lineHeight": 0,
+  "editor.scrollBeyondLastLine": true,
+  "editor.bottomPadding": 160,
+  "editor.quickSuggestions": true,
+  "editor.acceptSuggestionOnEnter": "smart",
+  "editor.linkedEditing": true,
+  "editor.autoClosing": true,
+  "editor.formatOnType": false,
+  "editor.parameterHints": true,
   "files.autoSave": "afterDelay",
   "files.autoSaveDelay": 1000,
   "files.showHidden": true,
   "files.confirmDelete": true,
   "terminal.mode": "auto",
-  "terminal.fontSize": 13,
+  "terminal.fontSize": 14,
+  "terminal.lineHeight": 1.35,
+  "terminal.letterSpacing": 0,
   "terminal.fontFamily": "JetBrains Mono",
   "terminal.scheme": "follow-theme",
   "terminal.scrollback": 5000,
@@ -49,6 +60,10 @@ export const DEFAULTS = {
   "ai.endpoint.ollama": "http://127.0.0.1:11434",
   "ai.systemPrompt": "",
   "github.clientId": "",
+  "security.appLock": false,
+  "security.lockAfter": 30,
+  "security.method": "auto",
+  "security.secure": false,
   "extensions.registry": "https://open-vsx.org",
   "plugins.registry": "",
 };
@@ -63,12 +78,22 @@ class Settings extends Emitter {
     try { const r = await N.fs.readText(this.settingsFile); if (r.text) Object.assign(this.values, JSON.parse(r.text)); } catch { /* first run */ }
     try { const r = await N.fs.readText(this.stateFile); if (r.text) Object.assign(this.state, JSON.parse(r.text)); } catch { /* first run */ }
     this.ready = true;
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this.flush(); });
+    window.addEventListener("pagehide", () => this.flush());
+    N.on("app.pause", () => this.flush());
     return info;
   }
   get(k) { return this.values[k] ?? DEFAULTS[k]; }
   set(k, v) { if (this.values[k] === v) return; this.values[k] = v; this._saveSettings(); this.emit("change", k, v); this.emit("change:" + k, v); }
-  _saveSettings = debounce(() => N.fs.writeText(this.settingsFile, JSON.stringify(this.values, null, 2)).catch(() => {}), 400);
-  saveState = debounce(() => N.fs.writeText(this.stateFile, JSON.stringify(this.state)).catch(() => {}), 600);
+  // Writes are serialized (an older write can never land after a newer one) and flushed the moment the app
+  // is hidden: Android pauses WebView timers on pause, so a plain debounce could be lost when the app is swiped away.
+  _write(file, getText) {
+    this._chain = (this._chain || Promise.resolve()).then(() => N.fs.writeText(file, getText())).catch((e) => console.warn("settings write failed", file, e));
+    return this._chain;
+  }
+  _saveSettings = debounce(() => this._write(this.settingsFile, () => JSON.stringify(this.values, null, 2)), 120);
+  saveState = debounce(() => this._write(this.stateFile, () => JSON.stringify(this.state)), 250);
+  flush() { this._saveSettings.cancel(); this.saveState.cancel(); if (!this.ready) return Promise.resolve(); this._write(this.settingsFile, () => JSON.stringify(this.values, null, 2)); return this._write(this.stateFile, () => JSON.stringify(this.state)); }
   addRecent(path) {
     this.state.recent = [path, ...this.state.recent.filter((p) => p !== path)].slice(0, 20);
     this.state.lastWorkspace = path; this.saveState();

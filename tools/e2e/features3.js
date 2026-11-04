@@ -1,7 +1,7 @@
 const { launch } = require("./lib"); const fs = require("fs"); const JSZip = require("/home/claude/build/CodeForge/tools/devhost/node_modules/jszip");
 let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
 for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f, { force: true });
-fs.rmSync("/tmp/cf-dev/home/imported", { recursive: true, force: true });
+fs.rmSync("/tmp/cf-dev/home/imported", { recursive: true, force: true }); fs.rmSync("/tmp/cf-dev/home/projects/tpl1", { recursive: true, force: true });
 (async () => {
   const z = new JSZip(); z.file("myproj/index.html", "<h1>zip</h1>"); z.file("myproj/src/a.js", "1"); fs.mkdirSync("/tmp/cf-dev/shared", { recursive: true }); fs.writeFileSync("/tmp/cf-dev/shared/myproj.zip", await z.generateAsync({ type: "nodebuffer" }));
   const { browser, page, logs } = await launch();

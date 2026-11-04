@@ -3,6 +3,10 @@ package dev.codeforge.ide
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.KeyguardManager
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
+import android.os.CancellationSignal
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
@@ -89,7 +93,7 @@ class MainActivity : Activity(), Bridge.Host {
     }
 
     override fun onPause() {
-        if (::web.isInitialized) web.onPause()
+        if (::web.isInitialized) { Bridge.emit("app.pause", JSONObject()); web.onPause() }
         super.onPause()
     }
 
@@ -287,6 +291,57 @@ class MainActivity : Activity(), Bridge.Host {
             }
         }
         return fut.get(20, TimeUnit.MINUTES)
+    }
+
+    // ------------------------------------------------------------------ biometrics / device credential
+    override fun authStatus(): JSONObject {
+        var bio = false; var cred = false
+        try {
+            val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+            cred = km.isDeviceSecure
+            bio = when {
+                Build.VERSION.SDK_INT >= 30 -> getSystemService(BiometricManager::class.java).canAuthenticate(
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS
+                Build.VERSION.SDK_INT == 29 -> getSystemService(BiometricManager::class.java).canAuthenticate() == BiometricManager.BIOMETRIC_SUCCESS || cred
+                Build.VERSION.SDK_INT == 28 -> packageManager.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)
+                else -> false
+            }
+        } catch (_: Throwable) { }
+        return JSONObject().put("biometric", bio).put("deviceSecure", cred).put("sdk", Build.VERSION.SDK_INT)
+    }
+
+    override fun authenticate(title: String, subtitle: String): JSONObject {
+        if (Build.VERSION.SDK_INT < 28) return JSONObject().put("ok", false).put("unsupported", true)
+        val fut = CompletableFuture<JSONObject>()
+        runOnUiThread {
+            try {
+                val cancel = CancellationSignal()
+                val b = BiometricPrompt.Builder(this).setTitle(title)
+                if (subtitle.isNotEmpty()) b.setSubtitle(subtitle)
+                if (Build.VERSION.SDK_INT >= 30) {
+                    b.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                } else {
+                    b.setNegativeButton("Use PIN", mainExecutor) { _, _ -> fut.complete(JSONObject().put("ok", false).put("cancelled", true)) }
+                }
+                b.build().authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) { fut.complete(JSONObject().put("ok", true)) }
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                        // 10 = user cancelled, 13 = negative button, 5 = cancelled by system
+                        val cancelled = errorCode == 10 || errorCode == 13 || errorCode == 5
+                        fut.complete(JSONObject().put("ok", false).put("cancelled", cancelled).put("error", errString?.toString() ?: "error $errorCode"))
+                    }
+                })
+            } catch (e: Throwable) { fut.complete(JSONObject().put("ok", false).put("error", e.message ?: "biometric prompt failed")) }
+        }
+        return try { fut.get(2, TimeUnit.MINUTES) } catch (e: Exception) { JSONObject().put("ok", false).put("cancelled", true) }
+    }
+
+    /** Hides app content in the recent-apps switcher and blocks screenshots / screen recording. */
+    override fun setSecure(on: Boolean) {
+        runOnUiThread {
+            if (on) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
     }
 
     override fun hasAllFiles(): Boolean =

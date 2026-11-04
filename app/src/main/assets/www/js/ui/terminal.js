@@ -10,7 +10,7 @@ import { ws } from "./workspace.js";
 
 const terms = new Map(); // id -> T
 let activeId = null, bar, bodies, tabsEl;
-const mods = { ctrl: false, alt: false };
+const mods = { ctrl: false, alt: false, shift: false };
 export const modifiers = mods;
 let ptyResizeTimer, creating = 0;
 
@@ -28,6 +28,8 @@ export function init() {
   panel.panelEvents.on("resize", () => { clearTimeout(ptyResizeTimer); ptyResizeTimer = setTimeout(fitAll, 60); });
   N.on("term.data", (d) => { const t = terms.get(d.id); if (t) { const bytes = b64ToBytes(d.b64); t.xt.write(bytes); scanOutput(t, bytes); } });
   N.on("term.exit", (d) => { const t = terms.get(d.id); if (!t) return; t.alive = false; t.xt.write(`\r\n\x1b[2m[Process exited with code ${d.code}]  press any key to close\x1b[0m\r\n`); refreshTabs(); t.onExit?.(d.code); });
+  // xterm measures glyph cells once: if the web font arrives later the rows overlap. Re-measure when fonts are ready.
+  try { document.fonts.load(`14px "${settings.get("terminal.fontFamily")}"`).then(() => document.fonts.ready).then(() => applyTheme()); } catch { /* ignore */ }
   themes.themeEvents.on("change", applyTheme);
   settings.on("change", (k) => { if (k.startsWith("terminal.")) applyTheme(); });
   bus.on("terminal:at", (dir) => create({ cwd: dir }));
@@ -42,7 +44,7 @@ async function restore() {
 }
 
 function xtermOptions() {
-  return { fontFamily: `"${settings.get("terminal.fontFamily")}", var(--mono), monospace`, fontSize: settings.get("terminal.fontSize"), cursorBlink: settings.get("terminal.cursorBlink"), scrollback: settings.get("terminal.scrollback"), allowProposedApi: true, convertEol: false, macOptionIsMeta: true, rightClickSelectsWord: true, bellStyle: "none", smoothScrollDuration: 0, theme: currentTheme };
+  return { fontFamily: `"${settings.get("terminal.fontFamily")}", var(--mono), monospace`, fontSize: settings.get("terminal.fontSize"), lineHeight: settings.get("terminal.lineHeight"), letterSpacing: settings.get("terminal.letterSpacing"), fontWeight: "400", fontWeightBold: "700", minimumContrastRatio: 4.5, cursorBlink: settings.get("terminal.cursorBlink"), scrollback: settings.get("terminal.scrollback"), allowProposedApi: true, convertEol: false, macOptionIsMeta: true, rightClickSelectsWord: true, bellStyle: "none", smoothScrollDuration: 0, theme: currentTheme };
 }
 let currentTheme = {};
 async function computeTheme() {
@@ -52,7 +54,7 @@ async function computeTheme() {
 }
 async function applyTheme() {
   currentTheme = await computeTheme();
-  for (const t of terms.values()) { t.xt.options.theme = currentTheme; t.xt.options.fontSize = settings.get("terminal.fontSize"); t.xt.options.fontFamily = `"${settings.get("terminal.fontFamily")}", var(--mono), monospace`; t.xt.options.cursorBlink = settings.get("terminal.cursorBlink"); t.xt.options.scrollback = settings.get("terminal.scrollback"); }
+  for (const t of terms.values()) { t.xt.options.theme = currentTheme; t.xt.options.fontSize = settings.get("terminal.fontSize"); t.xt.options.fontFamily = `"${settings.get("terminal.fontFamily")}", var(--mono), monospace`; t.xt.options.lineHeight = settings.get("terminal.lineHeight"); t.xt.options.letterSpacing = settings.get("terminal.letterSpacing"); t.xt.options.cursorBlink = settings.get("terminal.cursorBlink"); t.xt.options.scrollback = settings.get("terminal.scrollback"); }
   bodies.style.background = currentTheme.background || ""; fitAll();
 }
 
@@ -63,6 +65,7 @@ function newXterm(t) {
   try { const u = new Unicode11Addon.Unicode11Addon(); xt.loadAddon(u); xt.unicode.activeVersion = "11"; } catch { /* optional */ }
   try { t.search = new SearchAddon.SearchAddon(); xt.loadAddon(t.search); } catch { /* optional */ }
   t.fit = fit;
+  pinchZoom(xt);
   // OSC 7770: "open;<abs path>" emitted by the `code`/`codeforge` command inside the shell
   xt.parser.registerOscHandler(7770, (data) => { const i = data.indexOf(";"); const verb = data.slice(0, i), arg = data.slice(i + 1); bus.emit("term:cmd", verb, arg, t); return true; });
   xt.parser.registerOscHandler(7, (data) => { try { const u = new URL(data); t.cwd = decodeURIComponent(u.pathname); } catch { /* ignore */ } return false; });
@@ -71,6 +74,7 @@ function newXterm(t) {
     if (!t.alive) { closeTerm(t.id); return; }
     let out = d;
     if (mods.ctrl && d.length === 1) { const c = d.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) out = String.fromCharCode(c - 64); else if (d === " ") out = "\0"; setMod("ctrl", false); }
+    if (mods.shift && d.length === 1) { out = out.toUpperCase(); setMod("shift", false); }
     if (mods.alt) { out = "\x1b" + out; setMod("alt", false); }
     N.term.writeStr(t.id, out).catch(() => {});
   });
@@ -168,7 +172,13 @@ export function setMod(k, on) { mods[k] = on; bus.emit("term:mods", { ...mods })
 export function sendKey(seq) {
   const t = get(); if (!t?.alive) return;
   let out = seq;
-  if (mods.ctrl && seq.length === 1) { const c = seq.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) out = String.fromCharCode(c - 64); setMod("ctrl", false); }
+  if (mods.shift) {
+    if (seq === "\t") out = "\x1b[Z";
+    else if (/^\x1b\[[ABCDHF]$/.test(seq)) out = "\x1b[1;2" + seq[2];
+    else if (seq.length === 1) out = seq.toUpperCase();
+    setMod("shift", false);
+  }
+  if (mods.ctrl && out.length === 1 && seq.length === 1) { const c = seq.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) out = String.fromCharCode(c - 64); setMod("ctrl", false); }
   if (mods.alt) { out = "\x1b" + out; setMod("alt", false); }
   N.term.writeStr(t.id, out); t.xt.focus();
 }
@@ -198,4 +208,21 @@ function profileMenu(x, y) {
     { label: "Set default: Android shell", run: () => settings.set("terminal.mode", "host") },
     { label: "Set default: Linux", run: () => settings.set("terminal.mode", "linux") },
   ], x, y);
+}
+
+/** Two-finger pinch on the terminal changes the font size (persisted). */
+function pinchZoom(xt) {
+  let d0 = 0, f0 = 0, host = null;
+  const dist = (e) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  const attach = () => {
+    host = xt.element?.parentElement; if (!host) return setTimeout(attach, 200);
+    host.addEventListener("touchstart", (e) => { if (e.touches.length === 2) { d0 = dist(e); f0 = settings.get("terminal.fontSize"); } }, { passive: true });
+    host.addEventListener("touchmove", (e) => {
+      if (e.touches.length !== 2 || !d0) return; e.preventDefault();
+      const size = Math.max(8, Math.min(32, Math.round(f0 * dist(e) / d0)));
+      if (size !== settings.get("terminal.fontSize")) settings.set("terminal.fontSize", size);
+    }, { passive: false });
+    host.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
+  };
+  attach();
 }

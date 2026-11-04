@@ -34,7 +34,7 @@ object LinuxEnv {
 
     /** Copies launcher scripts out of the APK so the shell can read them. */
     fun prepare() {
-        for (name in listOf("start-linux.sh", "setup-linux.sh", "host.rc")) {
+        for (name in listOf("start-linux.sh", "setup-linux.sh", "host.rc", "node-patch.js")) {
             val out = File(Paths.env, name)
             Paths.app.assets.open("env/$name").use { ins -> FileOutputStream(out).use { ins.copyTo(it) } }
             out.setReadable(true, false)
@@ -49,6 +49,7 @@ object LinuxEnv {
         m["LANG"] = "en_US.UTF-8"
         m["CODEFORGE"] = "1"
         m["CODEFORGE_HOME"] = Paths.home.path
+        LiveServer.lanAddress()?.let { m["CF_LAN_IP"] = it }   // used by the guest's os.networkInterfaces() shim
         val tz = java.util.TimeZone.getDefault().id
         m["ANDROID_TZ"] = tz
         m["TZ"] = tz

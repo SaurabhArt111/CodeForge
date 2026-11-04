@@ -1,12 +1,14 @@
 // Extensions: Open VSX marketplace (search / install / update), local .vsix install, and contribution loading for the
 // declarative parts of VS Code extensions: colour themes, file-icon themes, snippets, language configuration.
-// (Extensions that need the VS Code extension-host / Node APIs cannot run; that is shown clearly in the UI.)
+// Extension code (`browser`/`main`) runs in the sandboxed "lite" extension host (exthost.js) — a best-effort subset of the VS Code API;
+// extensions that need Node.js, webviews, language servers or debuggers cannot run, and the UI says so.
 import { h, icon, P, fmtBytes, parseJsonc, debounce, esc } from "../core/util.js";
+import * as host from "./exthost.js";
 let A, root, view, listEl, searchIn, filter = "installed", market = { q: "", items: [], total: 0, offset: 0, loading: false };
 const installed = new Map(); // id -> ext
 
-const SUPPORTED = ["themes", "iconThemes", "snippets", "languages"];
-const SUPPORT_NOTES = { grammars: "TextMate grammars (syntax highlighting for new languages) are not supported; Monaco's built-in highlighting is used", commands: "commands need the VS Code extension host", debuggers: "debug adapters are not supported", languageServers: "language servers are not supported", views: "custom views are not supported", keybindings: "keybindings are not imported", configuration: "extension settings are not applied", productIconThemes: "product icon themes are not supported", taskDefinitions: "tasks are not supported", problemMatchers: "problem matchers are not supported", menus: "menus are not supported", viewsContainers: "view containers are not supported" };
+const SUPPORTED = ["themes", "iconThemes", "snippets", "languages", "commands", "configuration", "configurationDefaults", "jsonValidation"];
+const SUPPORT_NOTES = { grammars: "TextMate grammars (syntax highlighting for new languages) are not supported; Monaco's built-in highlighting is used", debuggers: "debug adapters are not supported", languageServers: "language servers are not supported", views: "custom sidebar views are not supported", keybindings: "keybindings are not imported", productIconThemes: "product icon themes are not supported", taskDefinitions: "tasks are not supported", problemMatchers: "problem matchers are not supported", menus: "context/title menus are not shown (commands are available from the palette)", viewsContainers: "view containers are not supported", walkthroughs: "walkthroughs are not shown", colors: "custom theme colour ids are not registered", customEditors: "custom editors are not supported", notebooks: "notebooks are not supported", semanticTokenScopes: "semantic token scopes are not applied", typescriptServerPlugins: "TypeScript server plugins are not supported", submenus: "submenus are not supported", authentication: "authentication providers are not supported" };
 
 export async function init(api) {
   A = api; root = P.join(A.settings.dataDir, "extensions");
@@ -14,6 +16,7 @@ export async function init(api) {
   A.registerView("extensions", build);
   A.cmd.register({ id: "ext.install", title: "Extensions: Install from VSIX…", run: installFromFile }); A.cmd.register({ id: "ext.search", title: "Extensions: Browse Marketplace", run: () => { A.showView("extensions"); setFilter("market"); } });
   A.cmd.register({ id: "ext.updates", title: "Extensions: Check for Updates", run: checkUpdates });
+  host.init(A, list);
   await scan();
 }
 export const list = () => [...installed.values()];
@@ -21,8 +24,19 @@ const registry = () => (A.settings.get("extensions.registry") || "https://open-v
 
 // ---------------------------------------------------------------- install / scan / activation
 async function readManifest(dir) {
-  for (const p of [P.join(dir, "extension/package.json"), P.join(dir, "package.json")]) if (await A.N.fs.exists(p)) { const r = await A.N.fs.readText(p); return { manifest: JSON.parse(r.text), base: P.dirname ? P.dirname(p) : p.slice(0, p.lastIndexOf("/")) }; }
+  for (const p of [P.join(dir, "extension/package.json"), P.join(dir, "package.json")]) if (await A.N.fs.exists(p)) {
+    const r = await A.N.fs.readText(p); const base = P.dir(p); let manifest = JSON.parse(r.text);
+    const nls = P.join(base, "package.nls.json");   // resolve "%key%" placeholders (display name, descriptions, command titles …)
+    if (await A.N.fs.exists(nls)) { try { manifest = resolveNls(manifest, parseJsonc((await A.N.fs.readText(nls)).text || "{}")); } catch { /* keep raw */ } }
+    return { manifest, base };
+  }
   return null;
+}
+function resolveNls(v, nls) {
+  if (typeof v === "string") { const m = /^%(.+)%$/.exec(v); if (!m) return v; const x = nls[m[1]]; return x == null ? v : typeof x === "object" ? x.message ?? v : x; }
+  if (Array.isArray(v)) return v.map((x) => resolveNls(x, nls));
+  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) o[k] = resolveNls(v[k], nls); return o; }
+  return v;
 }
 async function scan() {
   installed.clear();
@@ -37,7 +51,7 @@ function mk(dir, { manifest, base }) {
   const id = `${manifest.publisher || "local"}.${manifest.name}`.toLowerCase(); const c = manifest.contributes || {};
   const disabled = A.settings.state.extDisabled || [];
   return { id, dir, base, manifest, name: manifest.displayName && !/^%/.test(manifest.displayName) ? manifest.displayName : manifest.name, version: manifest.version, publisher: manifest.publisher || "local", description: /^%/.test(manifest.description || "") ? "" : manifest.description || "", enabled: !disabled.includes(id),
-    contributes: Object.keys(c), main: !!(manifest.main || manifest.browser) };
+    contributes: Object.keys(c).filter((k) => !(Array.isArray(c[k]) && !c[k].length)), main: !!(manifest.main || manifest.browser) };
 }
 async function readJsonFile(p) { return parseJsonc((await A.N.fs.readText(p)).text || "{}"); }
 
@@ -62,8 +76,10 @@ async function activate(ext) {
     if (!mon.languages.getLanguages().some((x) => x.id === l.id)) mon.languages.register({ id: l.id, extensions: l.extensions, filenames: l.filenames, aliases: l.aliases });
     if (l.configuration && sn) { try { sn.applyLanguageConfig(l.id, await readJsonFile(rel(l.configuration))); } catch { /* ignore */ } }
   }
+  host.register(ext).catch((e) => console.warn("extension host", ext.id, e));   // commands, configuration, jsonValidation, extension code
 }
 function deactivate(ext) {
+  host.unregister(ext);
   A.themes.unregisterSource(ext.id); A.icons.unregisterSource(ext.id);
   A.feat("snippets").then((s) => s.removeSnippets(ext.id)).catch(() => {});
   if (A.settings.get("ui.iconTheme").startsWith(ext.id + ":")) A.settings.set("ui.iconTheme", "seti");
@@ -162,9 +178,9 @@ const matchesFilter = (x) => filter !== "icons" || /icon/i.test(x.displayName + 
 function extIcon(src) { return h("img.ext-icon", { src: src || "", alt: "", onerror: (e) => { e.target.replaceWith(h("div.ext-icon.ph", icon("extensions"))); } }); }
 function installedRow(e) {
   let iconEl = h("div.ext-icon.ph", icon("extensions")); if (e.manifest.icon) { iconEl = extIcon(""); A.N.fs.url(P.join(e.base, e.manifest.icon)).then((u) => (iconEl.src = u)); }
-  const warn = e.main || e.contributes.some((k) => !SUPPORTED.includes(k)); const good = e.contributes.filter((k) => SUPPORTED.includes(k));
+  const st = host.status(e.id); const warn = st === "error" || st === "denied" || e.contributes.some((k) => !SUPPORTED.includes(k)); const good = e.contributes.filter((k) => SUPPORTED.includes(k));
   return h("div.ext-row" + (e.enabled ? "" : ".off"), { onclick: () => details(e) }, iconEl,
-    h("div.ext-info", h("div.ext-name", e.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "11px" } }, e.version)), h("div.ext-desc", e.description), h("div.ext-pub", e.publisher, " · ", good.length ? good.join(", ") : "no supported contributions", warn ? h("span", { title: "Parts of this extension can't run here" }, " ⚠") : null)),
+    h("div.ext-info", h("div.ext-name", e.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "11px" } }, e.version)), h("div.ext-desc", e.description), h("div.ext-pub", e.publisher, " · ", good.length ? good.join(", ") : "no supported contributions", warn ? h("span", { title: st === "error" ? "Extension code failed to start" : st === "denied" ? "Extension code is not allowed to run" : "Parts of this extension can't run here" }, " ⚠") : null, e.main && st === "running" ? h("span", { title: "Extension code is running" }, " ●") : null)),
     h("div.ext-actions", h("button.btn.small", { onclick: (ev) => { ev.stopPropagation(); setEnabled(e, !e.enabled); } }, e.enabled ? "Disable" : "Enable"), h("button.icon-btn", { title: "Uninstall", onclick: (ev) => { ev.stopPropagation(); uninstall(e); } }, icon("trash"))));
 }
 function marketRow(x) {
@@ -175,29 +191,99 @@ function marketRow(x) {
 }
 const fmtK = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
 
+// ---------------------------------------------------------------- README rendering (themed, sandboxed)
+function themedDoc(body) {
+  const cs = getComputedStyle(document.documentElement); const v = (n, d) => cs.getPropertyValue(n).trim() || d;
+  const bg = v("--bg", "#1f1f1f"), fg = v("--fg", "#ccc"), link = v("--link", "#3794ff"), bd = v("--widget-border", "#454545"), wb = v("--widget-bg", "#202020");
+  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src * data: blob:; style-src 'unsafe-inline'; font-src data:"><meta name="color-scheme" content="${document.documentElement.dataset.theme === "light" ? "light" : "dark"}">
+<style>html{background:${bg}}body{font:14px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:4px 14px 24px;margin:0;color:${fg};background:${bg};word-wrap:break-word;overflow-wrap:anywhere}
+a{color:${link}}img{max-width:100%;height:auto}h1,h2,h3{border-bottom:1px solid ${bd};padding-bottom:.25em;line-height:1.25}h4,h5,h6{line-height:1.3}
+code{background:${wb};padding:.1em .35em;border-radius:4px;font:12.5px ui-monospace,Menlo,Consolas,monospace}pre{background:${wb};padding:10px 12px;border-radius:6px;overflow:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow:auto}td,th{border:1px solid ${bd};padding:4px 10px}blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${bd};opacity:.9}hr{border:0;border-top:1px solid ${bd}}.muted{opacity:.65}</style><body>${body}</body>`;
+}
+async function resolveImages(html, resolve) {
+  const srcs = [...new Set([...html.matchAll(/<img\b[^>]*?\ssrc=["']([^"']+)["']/gi)].map((m) => m[1]))].filter((u) => !/^(https?:|data:|blob:)/i.test(u));
+  const map = new Map();
+  await Promise.all(srcs.map(async (u) => { try { const r = await resolve(u); if (r) map.set(u, r); } catch { /* leave as is */ } }));
+  return html.replace(/(<img\b[^>]*?\ssrc=)(["'])([^"']+)\2/gi, (m, a, q, u) => (map.has(u) ? `${a}${q}${map.get(u)}${q}` : m));
+}
+function frame(html, tall = "52vh") {
+  const fr = h("iframe.ext-readme", { sandbox: "", style: { width: "100%", height: tall, border: "1px solid var(--border)", borderRadius: "6px", background: "var(--bg)" } });
+  fr.srcdoc = themedDoc(html); return fr;
+}
+async function renderMd(text, resolve) {
+  let html = window.marked ? window.marked.parse(text) : `<pre>${esc(text)}</pre>`;
+  html = html.replace(/<script[\s\S]*?<\/script>/gi, ""); // iframe is sandboxed + CSP'd anyway; belt and braces
+  return resolve ? resolveImages(html, resolve) : html;
+}
 async function readmeFrame(url, md = true) {
-  const fr = h("iframe", { sandbox: "", style: { width: "100%", height: "52vh", border: "1px solid var(--border)", borderRadius: "6px", background: "#fff" } });
-  try { const r = await A.N.net.request({ url, timeoutMs: 20000 }); const html = md && window.marked ? window.marked.parse(r.text) : `<pre>${esc(r.text)}</pre>`; fr.srcdoc = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src * data:; style-src 'unsafe-inline'"><body style="font:14px/1.6 system-ui;padding:0 12px;color:#222">${html}</body>`; } catch (e) { fr.srcdoc = `<body>${esc(e.message)}</body>`; }
-  return fr;
+  try {
+    const r = await A.N.net.request({ url, timeoutMs: 20000 });
+    const html = md ? await renderMd(r.text, async (u) => new URL(u, url).href) : `<pre>${esc(r.text)}</pre>`;
+    return frame(html);
+  } catch (e) { return frame(`<p class="muted">Could not load the README (${esc(e.message)}).</p>`); }
 }
-function compat(contributes, main) {
+/** README lookup is case-insensitive and also checks the folder above `extension/` (VSIX layout). */
+async function findLocalReadme(e) {
+  for (const dir of [e.base, P.dir(e.base)]) {
+    let items = []; try { items = await A.N.fs.list(dir); } catch { continue; }
+    const f = items.find((it) => it.t === "f" && /^readme(\.(md|markdown|txt))?$/i.test(it.n)); if (f) return P.join(dir, f.n);
+  }
+  return null;
+}
+
+function compat(contributes, main, ext) {
   const sup = contributes.filter((k) => SUPPORTED.includes(k)), un = contributes.filter((k) => !SUPPORTED.includes(k));
-  return h("div.ext-compat", h("div", icon("pass"), " Supported here: ", sup.length ? sup.join(", ") : "—"), un.length || main ? h("div", icon("warning"), " Not supported: ", [...un, ...(main ? ["extension code (main)"] : [])].join(", "), h("div.muted", { style: { fontSize: "11px" } }, un.map((k) => SUPPORT_NOTES[k]).filter(Boolean).join(" · "))) : null);
+  const st = ext ? host.status(ext.id) : "off";
+  const stText = { running: "Extension code is running", idle: "Extension code starts when needed (command / language)", starting: "Starting…", denied: "Extension code was not allowed to run", error: "Extension code failed to start", off: "" }[st];
+  return h("div.ext-compat", h("div", icon("pass"), " Supported here: ", sup.length ? sup.join(", ") : "—"),
+    main ? h("div", icon(st === "error" ? "error" : "info"), " ", stText || "Has extension code: runs in CodeForge's lite extension host (a subset of the VS Code API; no Node.js)") : null,
+    un.length ? h("div", icon("warning"), " Not supported: ", un.join(", "), h("div.muted", { style: { fontSize: "11px" } }, un.map((k) => SUPPORT_NOTES[k]).filter(Boolean).join(" · "))) : null);
 }
+
+// ---------------------------------------------------------------- extension settings (contributes.configuration)
+function settingsEditor(e) {
+  const props = host.configSchema(e); if (!props.length) return null;
+  const rows = props.map((p) => {
+    const cur = host.getCfg(p.key); const desc = p.markdownDescription || p.description || "";
+    let ctl;
+    if (p.type === "boolean") ctl = h("input", { type: "checkbox", checked: !!cur, onchange: (ev) => host.setCfg(p.key, ev.target.checked) });
+    else if (Array.isArray(p.enum)) ctl = h("select", { onchange: (ev) => host.setCfg(p.key, p.enum[ev.target.selectedIndex]) }, ...p.enum.map((v, i) => h("option", { selected: v === cur, title: p.enumDescriptions?.[i] || "" }, String(v))));
+    else if (p.type === "number" || p.type === "integer") ctl = h("input.input", { type: "number", value: cur ?? "", onchange: (ev) => host.setCfg(p.key, ev.target.value === "" ? p.default : Number(ev.target.value)) });
+    else if (p.type === "string" || (p.type == null && typeof cur === "string")) ctl = h("input.input", { value: cur ?? "", spellcheck: false, autocapitalize: "off", onchange: (ev) => host.setCfg(p.key, ev.target.value) });
+    else ctl = h("textarea.input", { rows: 3, spellcheck: false, value: JSON.stringify(cur ?? p.default ?? null, null, 2), onchange: (ev) => { try { host.setCfg(p.key, JSON.parse(ev.target.value)); ev.target.style.outline = ""; } catch { ev.target.style.outline = "1px solid var(--danger)"; } } });
+    return h("div.ext-set", h("div.ext-set-key", p.key), desc ? h("div.muted.ext-set-desc", desc.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[`*_]/g, "")) : null, h("div.ext-set-ctl", ctl));
+  });
+  return h("details.ext-settings", h("summary", `Settings (${props.length})`), ...rows);
+}
+
 async function details(e) {
-  const rd = P.join(e.base, "README.md"); const text = (await A.N.fs.exists(rd)) ? (await A.N.fs.readText(rd)).text : "";
-  const fr = h("iframe", { sandbox: "", style: { width: "100%", height: "46vh", border: "1px solid var(--border)", borderRadius: "6px", background: "#fff" } });
-  fr.srcdoc = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src * data:; style-src 'unsafe-inline'"><body style="font:14px/1.6 system-ui;padding:0 12px;color:#222">${window.marked ? window.marked.parse(text || "_No README_") : esc(text)}</body>`;
+  const body = h("div", { style: { minHeight: "120px" } }, h("div.loader-block", h("div.spinner"), h("span", "Loading…")));
+  const readmeHold = h("div"); const actions = h("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap", margin: "8px 0" } });
   const themeButtons = (e.manifest.contributes?.themes || []).map((t) => h("button.btn.small", { onclick: () => { A.settings.set("ui.theme", t.label || t.id); } }, `Use “${t.label || t.id}”`));
   const iconButtons = (e.manifest.contributes?.iconThemes || []).map((t) => h("button.btn.small", { onclick: () => A.settings.set("ui.iconTheme", `${e.id}:${t.id}`) }, `Use icons “${t.label || t.id}”`));
-  A.modal({ title: `${e.name} ${e.version}`, width: 720, className: "wide", body: h("div", h("p.modal-detail", `${e.id} · ${e.publisher}`), h("p.modal-text", e.description), compat(e.contributes, e.main), h("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap", margin: "8px 0" } }, ...themeButtons, ...iconButtons), fr), buttons: [{ label: "Close", primary: true }] });
+  const codeButtons = e.main ? [h("button.btn.small", { onclick: () => A.output.show(`Extension: ${e.name}`) }, "Show output"), h("button.btn.small", { onclick: async () => { await host.restart(e); A.toast(`${e.name} restarted`); } }, "Restart")] : [];
+  actions.append(...themeButtons, ...iconButtons, ...codeButtons);
+  body.replaceChildren(h("p.modal-detail", `${e.id} · ${e.publisher}`), h("p.modal-text", e.description), compat(e.contributes, e.main, e), actions, settingsEditor(e), readmeHold);
+  A.modal({ title: `${e.name} ${e.version}`, width: 720, className: "wide", body, buttons: [{ label: "Close", primary: true }] });
+  readmeHold.append(h("div.loader-block", h("div.spinner"), h("span", "Loading README…")));
+  try {
+    const rf = await findLocalReadme(e); let html;
+    if (rf) { const dir = P.dir(rf); const t = (await A.N.fs.readText(rf)).text || ""; html = /\.txt$/i.test(rf) ? `<pre>${esc(t)}</pre>` : await renderMd(t, async (u) => (u.startsWith("#") || u.startsWith("//") ? null : A.N.fs.url(P.join(dir, decodeURIComponent(u.split(/[?#]/)[0]))))); }
+    else html = `<h2>${esc(e.name)}</h2><p>${esc(e.description || "")}</p><p class="muted">This extension did not ship a README.</p>`;
+    readmeHold.replaceChildren(frame(html, "46vh"));
+  } catch (err) { readmeHold.replaceChildren(frame(`<p class="muted">Could not render README: ${esc(err.message)}</p>`, "20vh")); }
 }
 async function marketDetails(x) {
-  let d = x; try { d = await api(`/api/${x.namespace}/${x.name}`); } catch { /* use list item */ }
   const id = `${x.namespace}.${x.name}`.toLowerCase(); const have = installed.get(id);
-  const fr = d.files?.readme ? await readmeFrame(d.files.readme) : h("div.muted", "No README");
+  const hold = h("div", h("div.loader-block", h("div.spinner"), h("span", "Loading…")));
+  const buttons = [{ label: "Close", value: undefined }, ...(have ? [] : [{ label: "Install", primary: true, value: "install" }])];
+  let d = x; const p = A.modal({ title: `${x.displayName || x.name} ${x.version || ""}`, width: 720, className: "wide", body: hold, buttons });
+  try { d = await api(`/api/${x.namespace}/${x.name}`); } catch { /* use list item */ }
   const cats = (d.categories || []).join(", ");
-  const r = await A.modal({ title: `${d.displayName || d.name} ${d.version || ""}`, width: 720, className: "wide", body: h("div", h("p.modal-detail", `${d.namespace}.${d.name}${cats ? " · " + cats : ""}${d.license ? " · " + d.license : ""}`), h("p.modal-text", d.description || ""), (d.repository ? h("p", h("a.link", { onclick: () => A.N.sys.openUrl(d.repository) }, d.repository)) : null), h("div.ext-compat", h("div", icon("info"), " Only themes, icon themes, snippets and language configuration are applied. Extensions that need VS Code's extension host won't run.")), fr),
-    buttons: [{ label: "Close", value: undefined }, ...(have ? [] : [{ label: "Install", primary: true, value: "install" }])] });
+  const rd = d.files?.readme ? await readmeFrame(d.files.readme) : frame(`<h2>${esc(d.displayName || d.name)}</h2><p>${esc(d.description || "")}</p><p class="muted">No README published for this extension.</p>`, "30vh");
+  hold.replaceChildren(h("p.modal-detail", `${d.namespace}.${d.name}${cats ? " · " + cats : ""}${d.license ? " · " + d.license : ""}`), h("p.modal-text", d.description || ""), (d.repository ? h("p", h("a.link", { onclick: () => A.N.sys.openUrl(d.repository) }, d.repository)) : null),
+    h("div.ext-compat", h("div", icon("info"), " Themes, icon themes, snippets, language configuration, settings and commands are applied. Extension code runs in CodeForge's lite, sandboxed extension host (a subset of the VS Code API, no Node.js) — extensions that depend on Node, webviews or language servers won't work fully.")), rd);
+  const r = await p;
   if (r === "install") installRemote(d);
 }

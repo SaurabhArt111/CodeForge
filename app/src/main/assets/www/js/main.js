@@ -18,6 +18,8 @@ import * as keybar from "./ui/keybar.js";
 import * as sv from "./ui/settingsview.js";
 import * as of from "./ui/openfolder.js";
 import * as output from "./ui/output.js";
+import { makeSash } from "./ui/sash.js";
+import * as security from "./ui/security.js";
 
 const $ = (s) => document.querySelector(s);
 const bootMsg = (m) => ($("#boot-msg").textContent = m);
@@ -44,6 +46,7 @@ async function boot() {
   try {
     bootMsg("Connecting to native host…");
     info = await settings.init();
+    security.init(); await security.gateStartup();   // optional app lock (PIN / biometrics) before anything is shown
     await ws.init(info); of.setInfo(info);
     bootMsg("Loading themes…");
     await Promise.all([themes.init(), icons.init()]);
@@ -53,7 +56,8 @@ async function boot() {
     await ed.loadMonaco(); themes.attachMonaco(ed.monaco); await themes.apply(settings.get("ui.theme"));
     ed.initEditor(); panel.init(); output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); cmd.initKeys();
     layout(); registerCommands(); wireEvents();
-    $("#boot").classList.add("done");
+    // keep the splash on screen long enough for its animation to play, then fade it out
+    setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 1500 - performance.now()));
     // restore last project
     const last = settings.state.lastWorkspace;
     if (last && (await N.fs.exists(last))) { await openFolder(last, { restore: true }); }
@@ -98,17 +102,22 @@ function layout() {
   $("#btn-term").addEventListener("click", () => panel.toggle("terminal"));
   $("#btn-ai").addEventListener("click", () => showView("ai", { toggle: true }));
   $("#btn-run").addEventListener("click", (e) => runMenu(e.clientX, e.clientY));
+  const undoBtn = $("#btn-undo"), redoBtn = $("#btn-redo");
+  const syncUR = () => { const s = ed.undoState(); undoBtn.classList.toggle("dim", !s.undo); redoBtn.classList.toggle("dim", !s.redo); };
+  undoBtn.addEventListener("click", () => { ed.undo(); syncUR(); }); redoBtn.addEventListener("click", () => { ed.redo(); syncUR(); });
+  for (const ev of ["content", "active", "saved"]) ed.editorEvents.on(ev, syncUR);
+  syncUR();
   $("#btn-account").addEventListener("click", (e) => accountMenu(e.clientX, e.clientY));
   $("#ab-account").addEventListener("click", (e) => accountMenu(e.clientX, e.clientY));
   $("#ab-settings").addEventListener("click", (e) => settingsMenu(e.clientX, e.clientY));
   // sidebar sash
   const sash = $("#sash-v"), sb = $("#sidebar");
   const w0 = settings.state.sidebarWidth; if (w0) document.documentElement.style.setProperty("--sidebar-w", w0 + "px");
-  sash.addEventListener("pointerdown", (e) => {
-    sash.setPointerCapture(e.pointerId); sash.classList.add("drag");
-    const mv = (ev) => { const w = clamp(ev.clientX - sb.getBoundingClientRect().left, 180, 640); document.documentElement.style.setProperty("--sidebar-w", w + "px"); settings.state.sidebarWidth = w; };
-    const up = () => { sash.classList.remove("drag"); sash.removeEventListener("pointermove", mv); sash.removeEventListener("pointerup", up); settings.saveState(); };
-    sash.addEventListener("pointermove", mv); sash.addEventListener("pointerup", up);
+  makeSash(sash, {
+    axis: "x", size: () => sb.getBoundingClientRect().width, min: () => 180, max: () => Math.min(640, innerWidth - 240),
+    apply: (w) => document.documentElement.style.setProperty("--sidebar-w", w + "px"),
+    commit: (w) => { settings.state.sidebarWidth = Math.round(w); settings.saveState(); },
+    reset: () => { document.documentElement.style.removeProperty("--sidebar-w"); settings.state.sidebarWidth = 0; settings.saveState(); },
   });
   // bottom navigation (mobile)
   document.querySelectorAll("#bottomnav button").forEach((b) => b.addEventListener("click", (e) => {
@@ -123,6 +132,9 @@ function layout() {
   // theme changes → relayout
   themes.themeEvents.on("change", () => document.body.dataset.themeType = themes.current.type);
   settings.on("change:ui.theme", (v) => themes.apply(v));
+  // themes / icon themes contributed by extensions register AFTER first paint: re-apply the saved choice when they appear
+  themes.themeEvents.on("registry", () => { const want = settings.get("ui.theme"); if (themes.current?.id !== want && themes.list().some((t) => t.id === want)) themes.apply(want); });
+  icons.iconEvents.on("registry", () => { const want = settings.get("ui.iconTheme"); if (icons.activeId() !== want && icons.list().some((t) => t.id === want)) icons.use(want); });
   settings.on("change:ui.iconTheme", (v) => icons.use(v));
   // title
   const upd = () => { const t = ed.activeTab(); $("#title-text").textContent = [t?.title, ws.name].filter(Boolean).join(" — ") || "CodeForge"; document.title = $("#title-text").textContent + " — CodeForge"; };
@@ -184,6 +196,12 @@ function wireEvents() {
   bus.on("cmd:newfile", () => explorer.explorer.newFile());
   bus.on("cmd:run", () => runMenu(innerWidth - 60, 48));
   bus.on("term:cmd", async (verb, arg) => {
+    if (verb === "url") {   // xdg-open / $BROWSER / `open` / vite "press o"
+      if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(arg)) bus.emit("preview:url", arg.replace("//0.0.0.0", "//127.0.0.1"));
+      else if (/^https?:\/\//i.test(arg)) N.sys.openUrl(arg);
+      else if (arg.startsWith("/")) ed.openFile(arg);
+      return;
+    }
     if (verb !== "open") return;
     const st = await N.fs.stat(arg).catch(() => null);
     if (!st) return toast(`code: no such file or folder: ${arg}`, { kind: "error" });

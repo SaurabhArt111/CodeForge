@@ -1,6 +1,7 @@
 // Client side of the native bridge.
 //   Android WebView : window.CFNative (WebMessageListener, origin restricted)
 //   Dev host        : HTTP POST /__rpc + SSE /__events (tools/devhost)
+//   Web version     : window.__CF_WEB (tools/web/build.sh) → core/webhost.js (IndexedDB filesystem, fetch, mini shell)
 //   Plain browser   : tiny in-memory demo backend so the page still opens
 import { Emitter } from "./events.js";
 import { b64ToBytes, bytesToB64, strToB64 } from "./util.js";
@@ -20,9 +21,12 @@ function handleIncoming(text) {
   if (msg.ok) w.res(msg.r); else w.rej(new Error(msg.e || "Native call failed"));
 }
 
-let transport = null;
+let transport = null, web = null;
 function detect() {
-  if (window.CFNative && typeof window.CFNative.postMessage === "function") {
+  if (window.__CF_WEB === true && !window.CFNative) {
+    mode = "web";
+    web = import("./webhost.js").then((m) => m.create((name, d) => ev.emit(name, d)));
+  } else if (window.CFNative && typeof window.CFNative.postMessage === "function") {
     mode = "android";
     window.CFNative.onmessage = (e) => handleIncoming(e.data);
     transport = (payload) => window.CFNative.postMessage(payload);
@@ -43,6 +47,7 @@ detect();
 
 export function call(method, ...args) {
   if (mode === "demo") return demoCall(method, args);
+  if (mode === "web") return web.then((h) => h.call(method, args));
   return new Promise((res, rej) => {
     const id = nextId++;
     waiting.set(id, { res, rej });
@@ -66,7 +71,7 @@ export const N = {
     pickFile: (o = {}) => c("sys.pickFile", o), pickFolder: () => c("sys.pickFolder", {}), createFile: (o) => c("sys.createFile", o),
     importUri: (uri, dest) => c("sys.importUri", uri, dest), importTree: (uri, dest) => c("sys.importTree", uri, dest),
     exportFile: (src, uri) => c("sys.exportFile", src, uri), exportTree: (src, uri) => c("sys.exportTree", src, uri),
-    exit: () => c("sys.exit"),
+    exit: () => c("sys.exit"), setSecure: (on) => c("sys.setSecure", !!on),
   },
   fs: {
     list: (p) => c("fs.list", p), stat: (p) => c("fs.stat", p), lstat: (p) => c("fs.lstat", p), exists: (p) => c("fs.exists", p),
@@ -84,7 +89,7 @@ export const N = {
     mkdir: (p) => c("fs.mkdir", p), rm: (p) => c("fs.rm", p), rename: (a, b) => c("fs.rename", a, b), copy: (a, b) => c("fs.copy", a, b),
     symlink: (t, p) => c("fs.symlink", t, p), readlink: (p) => c("fs.readlink", p), chmod: (p, m) => c("fs.chmod", p, m), realpath: (p) => c("fs.realpath", p),
     tree: (p, o = {}) => c("fs.tree", p, o),
-    async url(p) { fsToken ||= await c("fs.token"); return `${location.origin}/__fs__/${fsToken}${p.split("/").map(encodeURIComponent).join("/")}`; },
+    async url(p) { if (mode === "web") return (await import("./webhost.js")).blobUrl(p); fsToken ||= await c("fs.token"); return `${location.origin}/__fs__/${fsToken}${p.split("/").map(encodeURIComponent).join("/")}`; },
   },
   search: { text: (o) => c("search.text", o), cancel: (id) => c("search.cancel", id) },
   archive: { zip: (o) => c("archive.zip", o), unzip: (o) => c("archive.unzip", o), listZip: (p) => c("archive.listZip", p), untar: (o) => c("archive.untar", o) },
@@ -115,7 +120,17 @@ export const N = {
       return { id, head, body: body(), abort: () => { c("net.abort", id).catch(() => {}); done = true; push(); cleanup(); } };
     },
   },
-  secret: { set: (n, v) => c("secret.set", n, v), has: (n) => c("secret.has", n), delete: (n) => c("secret.delete", n), names: () => c("secret.names") },
+  secret: {
+    set: (n, v) => c("secret.set", n, v), has: (n) => c("secret.has", n), delete: (n) => c("secret.delete", n), names: () => c("secret.names"),
+    /** masked preview like "sk-••••••abcd" – safe to display, no authentication needed */
+    mask: (n) => c("secret.mask", n),
+    /** full value; the native side refuses unless `token` is a live unlock token from auth.verifyPin / auth.biometric */
+    reveal: (n, token) => c("secret.reveal", n, token),
+  },
+  auth: {
+    status: () => c("auth.status"), biometric: (o = {}) => c("auth.biometric", o), verifyPin: (p) => c("auth.verifyPin", p),
+    setPin: (n, old) => c("auth.setPin", n, old || ""), clearPin: (p) => c("auth.clearPin", p), valid: (t) => c("auth.valid", t), lock: () => c("auth.lock"),
+  },
   github: {
     deviceStart: (clientId, scope) => c("github.deviceStart", clientId || "", scope), devicePoll: (clientId, code) => c("github.devicePoll", clientId || "", code),
     signedIn: () => c("github.signedIn"), user: () => c("github.user"), signOut: () => c("github.signOut"),

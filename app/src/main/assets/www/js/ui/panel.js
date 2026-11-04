@@ -2,6 +2,7 @@
 import { bus, Emitter } from "../core/events.js";
 import { settings } from "../core/settings.js";
 import { h, icon, clamp, isMobile } from "../core/util.js";
+import { makeSash } from "./sash.js";
 
 export const panelEvents = new Emitter();
 let panel, sash, current = null;
@@ -12,14 +13,18 @@ export function init() {
   panel.querySelectorAll(".ptab").forEach((b) => b.addEventListener("click", () => show(b.dataset.panel)));
   document.getElementById("panel-close").addEventListener("click", hide);
   document.getElementById("panel-max").addEventListener("click", () => { panel.classList.toggle("max"); panelEvents.emit("resize"); });
+  const wb = () => document.getElementById("workbench");
   const hpx = settings.state.panelHeight; if (hpx) panel.style.setProperty("--panel-h", hpx + "px");
-  sash.addEventListener("pointerdown", (e) => {
-    sash.setPointerCapture(e.pointerId); sash.classList.add("drag");
-    const wb = document.getElementById("workbench").getBoundingClientRect();
-    const mv = (ev) => { const px = clamp(wb.bottom - ev.clientY, 90, wb.height - 120); panel.style.setProperty("--panel-h", px + "px"); settings.state.panelHeight = px; panelEvents.emit("resize"); };
-    const up = () => { sash.classList.remove("drag"); sash.removeEventListener("pointermove", mv); sash.removeEventListener("pointerup", up); settings.saveState(); };
-    sash.addEventListener("pointermove", mv); sash.addEventListener("pointerup", up);
+  makeSash(sash, {
+    axis: "y", invert: true,
+    size: () => panel.getBoundingClientRect().height,
+    min: () => 90, max: () => wb().getBoundingClientRect().height - (isMobile() ? 90 : 120),
+    apply: (px) => { panel.style.setProperty("--panel-h", px + "px"); panelEvents.emit("resize"); },
+    commit: (px) => { settings.state.panelHeight = Math.round(px); settings.saveState(); },
+    reset: () => { panel.style.removeProperty("--panel-h"); settings.state.panelHeight = 0; settings.saveState(); panelEvents.emit("resize"); },
   });
+  // keep the panel inside the workbench when the keyboard opens / the window shrinks
+  window.addEventListener("resize", () => { const max = wb().getBoundingClientRect().height - 90; if (max > 0 && panel.getBoundingClientRect().height > max) panel.style.setProperty("--panel-h", Math.max(90, max) + "px"); });
   new ResizeObserver(() => panelEvents.emit("resize")).observe(document.getElementById("panel-body"));
   bus.on("panel", (n) => show(n)); bus.on("cmd:terminal", () => toggle("terminal"));
 }
@@ -28,7 +33,7 @@ export const isOpen = () => !panel.classList.contains("hidden");
 export const active = () => current;
 export function show(name = current || "terminal") {
   current = name;
-  panel.classList.remove("hidden"); sash.classList.toggle("hidden", isMobile());
+  panel.classList.remove("hidden"); sash.classList.remove("hidden");
   panel.querySelectorAll(".ptab").forEach((b) => b.classList.toggle("active", b.dataset.panel === name));
   panel.querySelectorAll(".pane").forEach((p) => p.classList.toggle("on", p.id === "pane-" + name));
   const actions = document.getElementById("panel-actions"); actions.replaceChildren();

@@ -246,6 +246,37 @@ const methods = {
   },
   "net.abort": async (id) => { streams.get(id)?.abort(); return true; },
   "net.download": async (o) => { const r = await fetch(o.url, { headers: o.headers || {} }); if (!r.ok) throw new Error("HTTP " + r.status); const b = Buffer.from(await r.arrayBuffer()); await fsp.mkdir(path.dirname(o.dest), { recursive: true }); await fsp.writeFile(o.dest, b); emit("net.progress", { id: o.id, done: b.length, total: b.length }); return { path: o.dest, size: b.length }; },
+  // ---- auth emulation (mirrors core/Auth.kt: salted PBKDF2 PIN, escalating lockout, 90 s unlock tokens, no biometrics)
+  ...(() => {
+    const lockFile = `${P.data}/lock.json`; const tokens = new Map();
+    const load = () => { try { return JSON.parse(fs.readFileSync(lockFile, "utf8")); } catch { return {}; } };
+    const save = (o) => fs.writeFileSync(lockFile, JSON.stringify(o));
+    const hashPin = (pin, salt) => crypto.pbkdf2Sync(pin, Buffer.from(salt, "base64"), 1000, 32, "sha256").toString("base64");
+    const issue = () => { const t = crypto.randomBytes(18).toString("base64url"); tokens.set(t, Date.now() + 90000); return t; };
+    const valid = (t) => !!t && tokens.has(t) && tokens.get(t) > Date.now();
+    const verify = (pin) => {
+      const o = load(); if (!o.hash) return { ok: false, error: "No PIN is set" };
+      const wait = Math.max(0, (o.until || 0) - Date.now()); if (wait > 0) return { ok: false, lockedMs: wait };
+      if (crypto.timingSafeEqual(Buffer.from(hashPin(pin, o.salt)), Buffer.from(o.hash))) { o.fails = 0; o.until = 0; save(o); return { ok: true, token: issue() }; }
+      o.fails = (o.fails || 0) + 1; let lockMs = 0; if (o.fails >= 5) { lockMs = 30000 * 2 ** Math.min(o.fails - 5, 6); o.until = Date.now() + lockMs; } save(o);
+      return { ok: false, lockedMs: lockMs, remaining: Math.max(0, 5 - o.fails) };
+    };
+    return {
+      "auth.status": async () => { const o = load(); return { pinSet: !!o.hash, lockedMs: Math.max(0, (o.until || 0) - Date.now()), failures: o.fails || 0, biometric: false, deviceSecure: false, sdk: 0 }; },
+      "auth.biometric": async () => ({ ok: false, unsupported: true }),
+      "auth.verifyPin": async (p) => verify(String(p)),
+      "auth.setPin": async (n, old) => {
+        n = String(n); if (n.length < 4 || n.length > 32) return { ok: false, error: "PIN must be 4–32 characters" };
+        if (load().hash) { const v = verify(String(old || "")); if (!v.ok) return v; }
+        const salt = crypto.randomBytes(16).toString("base64"); save({ salt, hash: hashPin(n, salt), fails: 0, until: 0 }); return { ok: true, token: issue() };
+      },
+      "auth.clearPin": async (p) => { const v = verify(String(p)); if (!v.ok) return v; fs.rmSync(lockFile, { force: true }); return { ok: true }; },
+      "auth.valid": async (t) => valid(t), "auth.lock": async () => { tokens.clear(); return true; },
+      "secret.reveal": async (n, t) => { if (!valid(t)) throw new Error("Authentication required"); if (!(n in secrets)) throw new Error("No such key"); return secrets[n]; },
+      "secret.mask": async (n) => { const v = secrets[n]; if (v == null) return null; return v.length <= 8 ? "•".repeat(v.length) : v.slice(0, 3) + "•".repeat(Math.min(24, v.length - 7)) + v.slice(-4); },
+      "sys.setSecure": async () => true,
+    };
+  })(),
   "secret.set": async (n, v) => { secrets[n] = v; saveSecrets(); return true; }, "secret.has": async (n) => n in secrets, "secret.delete": async (n) => { delete secrets[n]; saveSecrets(); return true; }, "secret.names": async () => Object.keys(secrets),
   "github.deviceStart": async () => { ghPolls = 0; return { device_code: "dev-device-code", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 1 }; },
   "github.devicePoll": async () => { if (++ghPolls < 2) return { status: "pending" }; secrets["github.token"] = "gho_devtoken"; saveSecrets(); return { status: "ok", scope: "repo" }; },

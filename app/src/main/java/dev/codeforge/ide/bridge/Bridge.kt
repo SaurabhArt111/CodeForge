@@ -18,6 +18,7 @@ import android.util.Base64
 import android.widget.Toast
 import androidx.webkit.JavaScriptReplyProxy
 import dev.codeforge.ide.BuildConfig
+import dev.codeforge.ide.core.Auth
 import dev.codeforge.ide.core.FsOps
 import dev.codeforge.ide.core.GitHubAuth
 import dev.codeforge.ide.core.LinuxEnv
@@ -59,6 +60,10 @@ object Bridge {
         fun openUrl(url: String)
         fun share(args: JSONObject)
         fun finishApp()
+        /** Shows the system biometric / device-credential prompt and blocks until it finishes. {ok, cancelled?, error?, unsupported?} */
+        fun authenticate(title: String, subtitle: String): JSONObject
+        fun authStatus(): JSONObject
+        fun setSecure(on: Boolean)
     }
 
     @Volatile var host: Host? = null
@@ -239,6 +244,22 @@ object Bridge {
         "secret.has" -> SecretStore.has(a.str(0))
         "secret.delete" -> { SecretStore.delete(a.str(0)); true }
         "secret.names" -> JSONArray(SecretStore.names())
+        // Reading a stored key back (to show / copy it) needs a live unlock token from a PIN or biometric check.
+        "secret.reveal" -> { if (!Auth.tokenValid(a.optString(1, ""))) throw SecurityException("Authentication required"); SecretStore.get(a.str(0)) ?: throw IllegalStateException("No such key") }
+        "secret.mask" -> SecretStore.get(a.str(0))?.let { v -> if (v.length <= 8) "•".repeat(v.length) else v.take(3) + "•".repeat(minOf(24, v.length - 7)) + v.takeLast(4) }
+        // ---- PIN / biometrics
+        "auth.status" -> JSONObject(Auth.status().toString()).also { st -> (host?.authStatus() ?: JSONObject()).let { b -> for (k in b.keys()) st.put(k, b.get(k)) } }
+        "auth.biometric" -> {
+            val r = host?.authenticate(a.obj(0).optString("title", "Unlock CodeForge"), a.obj(0).optString("subtitle", "")) ?: JSONObject().put("ok", false).put("unsupported", true)
+            if (r.optBoolean("ok")) r.put("token", Auth.issueToken())
+            r
+        }
+        "auth.verifyPin" -> Auth.verifyPin(a.str(0))
+        "auth.setPin" -> Auth.setPin(a.str(0), a.optString(1, "").ifEmpty { null })
+        "auth.clearPin" -> Auth.clearPin(a.str(0))
+        "auth.valid" -> Auth.tokenValid(a.optString(0, ""))
+        "sys.setSecure" -> { host?.setSecure(a.optBoolean(0, false)); true }
+        "auth.lock" -> { Auth.revoke(); true }
 
         // ---------------- github
         "github.deviceStart" -> GitHubAuth.deviceStart(a.str(0).ifBlank { BuildConfig.GITHUB_CLIENT_ID }, a.optString(1, "repo read:user user:email workflow gist read:org"))

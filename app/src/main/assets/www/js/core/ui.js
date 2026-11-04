@@ -114,31 +114,42 @@ export function quickPick(items, { placeholder = "", title = "", initial = "", o
 }
 
 // ---------------------------------------------------------------- context menu
-let openMenu = null;
+let openMenu = null, menuOpenedAt = 0, menuPos = null;
 export function closeMenu() { openMenu?.remove(); openMenu = null; }
+/** The finger that long-pressed is still down / just lifted when the menu appears: ignore that gesture's tail
+ *  (compat mouse events, the native `contextmenu` event firing a second time, the release `click`). */
+const SETTLE_MS = 450;
+// A mouse right-click has no "tail" to ignore, so only touch / pen gestures get the settle window.
+let lastPointer = "mouse";
+document.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType || "mouse"; }, true);
+const settled = () => lastPointer === "mouse" || Date.now() - menuOpenedAt > SETTLE_MS;
 export function contextMenu(items, x, y) {
-  closeMenu();
+  // duplicate request for (almost) the same spot right after opening = same gesture → keep the existing menu
+  if (openMenu && !settled() && menuPos && Math.hypot(menuPos.x - x, menuPos.y - y) < 40) return;
+  closeMenu(); menuOpenedAt = Date.now(); menuPos = { x, y };
   const menu = h("div.ctx");
   const build = (list, parent) => {
     for (const it of list) {
       if (!it) continue;
       if (it.separator) { parent.append(h("div.ctx-sep")); continue; }
       const row = h(`div.ctx-item${it.disabled ? ".disabled" : ""}${it.danger ? ".danger" : ""}`, {
-        onclick: (e) => { e.stopPropagation(); if (it.disabled || it.submenu) return; closeMenu(); it.run?.(); },
+        onclick: (e) => { e.stopPropagation(); if (!settled() || it.disabled || it.submenu) return; closeMenu(); it.run?.(); },
       }, h("span.ctx-ico", it.icon ? icon(it.icon) : null), h("span.ctx-label", it.label), it.keys ? h("span.ctx-keys", it.keys) : null, it.submenu ? icon("chevron-right") : null);
       if (it.submenu) {
         const sub = h("div.ctx.sub"); build(it.submenu, sub); row.append(sub);
-        row.addEventListener("click", (e) => { e.stopPropagation(); row.classList.toggle("open"); });
+        row.addEventListener("click", (e) => { e.stopPropagation(); if (settled()) row.classList.toggle("open"); });
       }
       parent.append(row);
     }
   };
   build(items, menu);
-  const back = h("div.ctx-back", { onmousedown: closeMenu, oncontextmenu: (e) => { e.preventDefault(); closeMenu(); } });
+  // dismiss only on a *new* press outside, never on the tail of the long-press that opened us
+  const back = h("div.ctx-back", { onpointerdown: (e) => { if (settled()) { e.preventDefault(); closeMenu(); } }, oncontextmenu: (e) => { e.preventDefault(); if (settled()) closeMenu(); } });
   overlay().append(back, menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 4)) + "px";
   menu.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) + "px";
+  menu.style.maxHeight = (window.innerHeight - 12) + "px";
   openMenu = { remove() { back.remove(); menu.remove(); } };
 }
 
@@ -146,10 +157,14 @@ export function contextMenu(items, x, y) {
 export function longPress(el, cb, ms = 480) {
   let t = null, sx = 0, sy = 0, fired = false;
   const cancel = () => { clearTimeout(t); t = null; };
-  el.addEventListener("touchstart", (e) => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; fired = false; t = setTimeout(() => { fired = true; navigator.vibrate?.(15); cb(sx, sy, e); }, ms); }, { passive: true });
+  el.addEventListener("touchstart", (e) => { if (e.touches.length !== 1) return cancel(); const p = e.touches[0]; sx = p.clientX; sy = p.clientY; fired = false; t = setTimeout(() => { fired = true; navigator.vibrate?.(15); cb(sx, sy, e); }, ms); }, { passive: true });
   el.addEventListener("touchmove", (e) => { const p = e.touches[0]; if (Math.hypot(p.clientX - sx, p.clientY - sy) > 10) cancel(); }, { passive: true });
-  el.addEventListener("touchend", (e) => { cancel(); if (fired) e.preventDefault(); });
+  el.addEventListener("touchend", (e) => { cancel(); if (fired) { e.preventDefault(); e.stopPropagation(); } }, { passive: false });
   el.addEventListener("touchcancel", cancel);
+  // Android WebView also dispatches a native `contextmenu` after a long press → would open (and then close) a second menu
+  el.addEventListener("contextmenu", (e) => { if (fired || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  // swallow the click that follows a long-press (it would activate the item under the finger)
+  el.addEventListener("click", (e) => { if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); } }, true);
 }
 
 // ---------------------------------------------------------------- busy overlay
@@ -160,3 +175,14 @@ export function busy(label) {
   overlay().append(el);
   return { update(t) { text.textContent = t; }, progress(f) { bar.firstChild.style.width = Math.round(f * 100) + "%"; bar.classList.toggle("on", f >= 0); }, close() { el.remove(); } };
 }
+
+// ---------------------------------------------------------------- global activity indicator (top progress bar + status bar spinner)
+/** bus.emit("busy", id, label|null) from anywhere; or wrap work with busyTask(). */
+export async function busyTask(id, label, fn) {
+  const { bus } = await import("./events.js");
+  bus.emit("busy", id, label);
+  try { return await fn(); } finally { bus.emit("busy", id, null); }
+}
+/** Skeleton / spinner block for views that load asynchronously. */
+export function loaderBlock(text = "Loading…") { return h("div.loader-block", h("div.spinner"), h("span", text)); }
+export function skeleton(rows = 4) { return h("div.skeleton", Array.from({ length: rows }, (_, i) => h("div.sk-row", { style: { width: 55 + ((i * 37) % 40) + "%" } }))); }

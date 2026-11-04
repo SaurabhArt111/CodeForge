@@ -8,6 +8,7 @@ import { toast, toastError, confirm, contextMenu, longPress, modal } from "../co
 import * as themes from "../features/themes.js";
 import * as icons from "../features/icons.js";
 import { ws } from "./workspace.js";
+import { makeSash } from "./sash.js";
 
 export const editorEvents = new Emitter();
 export let monaco = null;
@@ -44,6 +45,7 @@ export async function loadMonaco() {
   monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ allowComments: true, trailingCommas: "ignore", validate: true });
   icons.setLanguageResolver((name) => languageForPath("/" + name));
   monaco.editor.onDidChangeMarkers(() => bus.emit("markers"));
+  import("../features/completions.js").then((m) => m.register(monaco)).catch((e) => console.warn("completions", e));
   return monaco;
 }
 
@@ -75,14 +77,24 @@ export const languages = () => (monaco ? monaco.languages.getLanguages().map((l)
 export function editorOptions() {
   const s = (k) => settings.get(k);
   const mobile = isMobile();
+  const auto = s("editor.autoClosing") ? "languageDefined" : "never";
   return {
-    fontSize: s("editor.fontSize"), fontFamily: `"${s("editor.fontFamily")}", var(--mono), monospace`, fontLigatures: s("editor.ligatures"),
+    fontSize: s("editor.fontSize"), fontFamily: `"${s("editor.fontFamily")}", var(--mono), monospace`, fontLigatures: s("editor.ligatures"), lineHeight: s("editor.lineHeight") || 0,
     tabSize: s("editor.tabSize"), insertSpaces: s("editor.insertSpaces"), wordWrap: s("editor.wordWrap"), minimap: { enabled: s("editor.minimap") && !mobile },
     lineNumbers: s("editor.lineNumbers"), renderWhitespace: s("editor.renderWhitespace"), bracketPairColorization: { enabled: s("editor.bracketPairColors") },
     smoothScrolling: s("editor.smoothScrolling"), cursorBlinking: s("editor.cursorBlinking"), stickyScroll: { enabled: s("editor.stickyScroll") },
-    formatOnPaste: s("editor.formatOnPaste"), automaticLayout: true, scrollBeyondLastLine: false, fixedOverflowWidgets: true, contextmenu: !mobile,
-    padding: { top: 6 }, guides: { bracketPairs: true, indentation: true }, renderLineHighlight: "all", mouseWheelZoom: true, links: true,
-    quickSuggestions: { other: true, comments: false, strings: true }, suggestOnTriggerCharacters: true, acceptSuggestionOnEnter: "on",
+    formatOnPaste: s("editor.formatOnPaste"), formatOnType: s("editor.formatOnType"), automaticLayout: true, fixedOverflowWidgets: true, contextmenu: !mobile,
+    // blank space after the last line so the end of a file can be scrolled up above the keyboard / bottom bars
+    scrollBeyondLastLine: s("editor.scrollBeyondLastLine"), padding: { top: 6, bottom: s("editor.bottomPadding") },
+    guides: { bracketPairs: true, indentation: true }, renderLineHighlight: "all", mouseWheelZoom: true, links: true, linkedEditing: s("editor.linkedEditing"),
+    // ---- suggestions / IntelliSense
+    quickSuggestions: s("editor.quickSuggestions") ? { other: "on", comments: "off", strings: "on" } : false, quickSuggestionsDelay: 40,
+    suggestOnTriggerCharacters: true, acceptSuggestionOnEnter: s("editor.acceptSuggestionOnEnter"), acceptSuggestionOnCommitCharacter: true, tabCompletion: "on",
+    wordBasedSuggestions: "allDocuments", snippetSuggestions: "inline", suggestSelection: "first", parameterHints: { enabled: s("editor.parameterHints"), cycle: true },
+    suggest: { showWords: true, showSnippets: true, showIcons: true, showStatusBar: false, preview: true, previewMode: "subwordSmart", insertMode: "replace", filterGraceful: true, localityBonus: true, shareSuggestSelections: true, showInlineDetails: true, selectionMode: "whenQuickSuggestion" },
+    suggestFontSize: mobile ? 14 : 0, suggestLineHeight: mobile ? 36 : 0, inlineSuggest: { enabled: true }, hover: { enabled: true, delay: 350, sticky: true },
+    autoClosingBrackets: auto, autoClosingQuotes: auto, autoClosingOvertype: "auto", autoSurround: s("editor.autoClosing") ? "languageDefined" : "never", autoIndent: "full",
+    occurrencesHighlight: "singleFile", colorDecorators: true, matchBrackets: "always", renderControlCharacters: false,
     folding: true, foldingHighlight: false, showFoldingControls: mobile ? "always" : "mouseover", glyphMargin: !mobile, lineDecorationsWidth: mobile ? 4 : 10,
     lineNumbersMinChars: mobile ? 3 : 4, dragAndDrop: true, multiCursorModifier: "alt", accessibilitySupport: "off", unicodeHighlight: { ambiguousCharacters: false },
     overviewRulerBorder: false, hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: mobile ? 8 : 12, horizontalScrollbarSize: 10, useShadows: false },
@@ -157,7 +169,13 @@ export async function saveAs(path) {
 }
 
 // external modification detection
+let checking = false, checkAgain = false;
 export async function checkExternal() {
+  if (checking) { checkAgain = true; return; }   // visibilitychange + focus + app.resume all fire on return: run once
+  checking = true;
+  try { await checkExternalNow(); } finally { checking = false; if (checkAgain) { checkAgain = false; setTimeout(checkExternal, 500); } }
+}
+async function checkExternalNow() {
   for (const d of [...docs.values()]) {
     if (!d.model || d.saving) continue;
     let st; try { st = await N.fs.stat(d.path); } catch { continue; }
@@ -236,11 +254,10 @@ export function initEditor() {
   document.getElementById("btn-split").addEventListener("click", () => toggleSplit());
   // sash between groups
   const sash = document.getElementById("sash-split"), area = document.getElementById("editor-area");
-  sash.addEventListener("pointerdown", (e) => {
-    sash.setPointerCapture(e.pointerId); sash.classList.add("drag");
-    const mv = (ev) => { const r = area.getBoundingClientRect(); const f = Math.min(0.85, Math.max(0.15, (ev.clientX - r.left) / r.width)); groups[0].el.style.flex = `${f} 1 0`; groups[1].el.style.flex = `${1 - f} 1 0`; };
-    const up = () => { sash.classList.remove("drag"); sash.removeEventListener("pointermove", mv); sash.removeEventListener("pointerup", up); };
-    sash.addEventListener("pointermove", mv); sash.addEventListener("pointerup", up);
+  makeSash(sash, {
+    axis: "x", size: () => groups[0].el.getBoundingClientRect().width, min: () => 120, max: () => area.getBoundingClientRect().width - 120,
+    apply: (px) => { const w = area.getBoundingClientRect().width, f = px / w; groups[0].el.style.flex = `${f} 1 0`; groups[1].el.style.flex = `${1 - f} 1 0`; },
+    reset: () => { groups[0].el.style.flex = ""; groups[1].el.style.flex = ""; },
   });
   settings.on("change", (k) => { if (k.startsWith("editor.") && monaco) { const o = editorOptions(); groups.forEach((g) => g?.editor?.updateOptions(o)); monaco.editor.getModels().forEach((m) => m.updateOptions({ tabSize: o.tabSize, insertSpaces: o.insertSpaces })); } });
   settings.on("change:files.autoSave", () => { if (settings.get("files.autoSave") === "afterDelay") dirtyDocs().forEach(scheduleAutoSave); });
@@ -523,3 +540,9 @@ export function revealRange(path, r) { return openFile(path, { line: r.startLine
 export function eol(path) { return docs.get(path)?.model?.getEOL() === "\r\n" ? "CRLF" : "LF"; }
 export function markers() { return monaco ? monaco.editor.getModelMarkers({}) : []; }
 export function getEditorGroups() { return groups; }
+
+// ---- toolbar undo / redo (operate on the model so the soft keyboard is not summoned)
+const curModel = () => { const e = activeEditor(); return e && e.getModel && e.getModel(); };
+export function undoState() { const m = curModel(); try { return { undo: !!m?.canUndo?.(), redo: !!m?.canRedo?.() }; } catch { return { undo: false, redo: false }; } }
+export function undo() { const m = curModel(); if (m?.canUndo?.()) { m.undo(); } else toast("Nothing to undo", { timeout: 900 }); }
+export function redo() { const m = curModel(); if (m?.canRedo?.()) { m.redo(); } else toast("Nothing to redo", { timeout: 900 }); }

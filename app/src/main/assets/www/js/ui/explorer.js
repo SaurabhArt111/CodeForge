@@ -40,8 +40,12 @@ function remap(from, to) {
 }
 
 const mtimes = new Map();
+let polling = false;
 async function pollChanges() {
-  if (!ws.isOpen || document.hidden) return;
+  if (!ws.isOpen || document.hidden || polling) return;
+  polling = true; try { await pollOnce(); } finally { polling = false; }
+}
+async function pollOnce() {
   const dirs = [ws.root, ...state.expanded].slice(0, 40); let changed = false;
   for (const d of dirs) {
     try {

@@ -26,6 +26,7 @@ export async function init() {
 export function register(t) { themes.set(t.id, t); iconEvents.emit("registry"); }
 export function unregisterSource(source) { for (const [k, v] of themes) if (v.source === source) themes.delete(k); iconEvents.emit("registry"); }
 export const list = () => [...themes.values()];
+export const activeId = () => active?.id;
 export function use(id) { active = themes.get(id) || themes.get("seti"); iconEvents.emit("change", active?.id); }
 
 const cp = (s) => { try { return String.fromCodePoint(parseInt(String(s).replace(/^\\/, ""), 16)); } catch { return ""; } };
@@ -47,7 +48,7 @@ function render(t, defId, light, fallbackCls) {
   if (!ic) return null;
   if (ic.fontCharacter) {
     const el = h("span.fi.glyph", { style: { fontFamily: t.font || "inherit", color: (light && ic.fontColor) || ic.fontColor || "inherit" } }, cp(ic.fontCharacter));
-    if (def.fonts?.[0]?.size) el.style.fontSize = def.fonts[0].size;
+    // size comes from CSS (.fi.glyph) – a percentage here compounds with the parent's font size and blew up in tabs
     return el;
   }
   if (ic.iconPath) {
