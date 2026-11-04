@@ -1,5 +1,5 @@
 <resources>
     <color name="cf_bg">#1E1E1E</color>
-    <color name="cf_splash_bg">#0F1530</color>
+    <color name="cf_splash_bg">#1E1E1E</color>
     <color name="cf_accent">#007ACC</color>
 </resources>

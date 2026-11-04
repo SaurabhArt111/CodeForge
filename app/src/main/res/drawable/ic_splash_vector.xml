@@ -1,22 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF007ACC" android:pathData="M24,0H84A24,24 0 0 1 108,24V84A24,24 0 0 1 84,108H24A24,24 0 0 1 0,84V24A24,24 0 0 1 24,0Z" />
     <path android:name="left" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
-        android:strokeLineJoin="round" android:fillColor="#00000000" android:trimPathEnd="1"
-        android:pathData="M44,38L29,54L44,70" />
+        android:strokeLineJoin="round" android:fillColor="#00000000" android:trimPathEnd="1" android:pathData="M40,41L26,54L40,67" />
     <path android:name="right" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
-        android:strokeLineJoin="round" android:fillColor="#00000000" android:trimPathEnd="1"
-        android:pathData="M64,38L79,54L64,70" />
-    <group android:name="spark" android:pivotX="54" android:pivotY="54" android:scaleX="1" android:scaleY="1">
-        <path android:pathData="M54,41C55.2,49.5 58.5,52.8 67,54C58.5,55.2 55.2,58.5 54,67C52.8,58.5 49.5,55.2 41,54C49.5,52.8 52.8,49.5 54,41Z">
-            <aapt:attr name="android:fillColor">
-                <gradient android:type="linear" android:startX="54" android:startY="41" android:endX="54" android:endY="67">
-                    <item android:offset="0" android:color="#FFFFE29A" />
-                    <item android:offset="1" android:color="#FFFF7A18" />
-                </gradient>
-            </aapt:attr>
-        </path>
-    </group>
+        android:strokeLineJoin="round" android:fillColor="#00000000" android:trimPathEnd="1" android:pathData="M68,41L82,54L68,67" />
+    <path android:name="slash" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
+        android:strokeLineJoin="round" android:fillColor="#00000000" android:trimPathEnd="1" android:pathData="M58,38L50,70" />
 </vector>

@@ -4,23 +4,19 @@
     <target android:name="left">
         <aapt:attr name="android:animation" xmlns:aapt="http://schemas.android.com/aapt">
             <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1"
-                android:duration="420" android:interpolator="@android:interpolator/fast_out_slow_in" />
+                android:startOffset="0" android:duration="380" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </aapt:attr>
+    </target>
+    <target android:name="slash">
+        <aapt:attr name="android:animation" xmlns:aapt="http://schemas.android.com/aapt">
+            <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1"
+                android:startOffset="140" android:duration="320" android:interpolator="@android:interpolator/fast_out_slow_in" />
         </aapt:attr>
     </target>
     <target android:name="right">
         <aapt:attr name="android:animation" xmlns:aapt="http://schemas.android.com/aapt">
             <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1"
-                android:startOffset="120" android:duration="420" android:interpolator="@android:interpolator/fast_out_slow_in" />
-        </aapt:attr>
-    </target>
-    <target android:name="spark">
-        <aapt:attr name="android:animation" xmlns:aapt="http://schemas.android.com/aapt">
-            <set>
-                <objectAnimator android:propertyName="scaleX" android:valueFrom="0" android:valueTo="1"
-                    android:startOffset="260" android:duration="380" android:interpolator="@android:interpolator/overshoot" />
-                <objectAnimator android:propertyName="scaleY" android:valueFrom="0" android:valueTo="1"
-                    android:startOffset="260" android:duration="380" android:interpolator="@android:interpolator/overshoot" />
-            </set>
+                android:startOffset="260" android:duration="380" android:interpolator="@android:interpolator/fast_out_slow_in" />
         </aapt:attr>
     </target>
 </animated-vector>

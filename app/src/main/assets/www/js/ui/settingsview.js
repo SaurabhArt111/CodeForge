@@ -13,6 +13,7 @@ const S = (key, label, type, extra = {}) => ({ key, label, type, ...extra });
 export const SCHEMA = [
   ["Appearance", [
     S("ui.theme", "Color Theme", "theme"), S("ui.iconTheme", "File Icon Theme", "icontheme"), S("ui.mobileKeyBar", "Extra key row on touch keyboards", "bool"),
+    S("ui.openUrlWith", "Open links (vite “o”, xdg-open, terminal/editor links) with", "select", { options: ["browser", "preview"], hint: "browser = your default Android browser; preview = in-app preview for local URLs" }),
   ]],
   ["Editor", [
     S("editor.fontSize", "Font Size", "number", { min: 8, max: 40 }), S("editor.fontFamily", "Font Family", "select", { options: FONTS }), S("editor.ligatures", "Font Ligatures", "bool"),

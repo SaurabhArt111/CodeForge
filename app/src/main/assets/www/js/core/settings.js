@@ -7,6 +7,7 @@ export const DEFAULTS = {
   "ui.theme": "Dark Modern",
   "ui.iconTheme": "seti",
   "ui.mobileKeyBar": true,
+  "ui.openUrlWith": "browser",
   "ui.language": "auto",
   "editor.fontSize": 14,
   "editor.fontFamily": "JetBrains Mono",

@@ -7,6 +7,8 @@ import { contextMenu, toast, toastError, longPress } from "../core/ui.js";
 import * as themes from "../features/themes.js";
 import * as panel from "./panel.js";
 import { ws } from "./workspace.js";
+import { openUrl, openInBrowser, openInPreview, urlAt, isUrl, isLocal } from "../core/links.js";
+import { showLinkChip, hideLinkChip } from "./linkchip.js";
 
 const terms = new Map(); // id -> T
 let activeId = null, bar, bodies, tabsEl;
@@ -66,6 +68,8 @@ function newXterm(t) {
   try { t.search = new SearchAddon.SearchAddon(); xt.loadAddon(t.search); } catch { /* optional */ }
   t.fit = fit;
   pinchZoom(xt);
+  // a selected URL → floating "open in browser" chip
+  xt.onSelectionChange(() => { const u = t.xt && selectedUrl(t); if (u) showLinkChip(u); else hideLinkChip(); });
   // OSC 7770: "open;<abs path>" emitted by the `code`/`codeforge` command inside the shell
   xt.parser.registerOscHandler(7770, (data) => { const i = data.indexOf(";"); const verb = data.slice(0, i), arg = data.slice(i + 1); bus.emit("term:cmd", verb, arg, t); return true; });
   xt.parser.registerOscHandler(7, (data) => { try { const u = new URL(data); t.cwd = decodeURIComponent(u.pathname); } catch { /* ignore */ } return false; });
@@ -83,17 +87,29 @@ function newXterm(t) {
   return xt;
 }
 
-function openLink(uri) {
-  const m = uri.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)(\/.*)?$/);
-  if (m) bus.emit("preview:url", `http://127.0.0.1:${m[1]}${m[2] || "/"}`);
-  else N.sys.openUrl(uri);
+function openLink(uri) { openUrl(uri); }
+/** URL under a screen point (handles links wrapped over several terminal rows) */
+function urlUnderPoint(t, x, y) {
+  try {
+    const xt = t.xt, scr = xt.element.querySelector(".xterm-screen"), r = scr.getBoundingClientRect();
+    const col = Math.floor((x - r.left) / (r.width / xt.cols)), row = Math.floor((y - r.top) / (r.height / xt.rows));
+    if (col < 0 || row < 0 || row >= xt.rows) return null;
+    const buf = xt.buffer.active; let y0 = buf.viewportY + row; while (y0 > 0 && buf.getLine(y0)?.isWrapped) y0--;
+    let text = "", y1 = y0; for (;;) { const ln = buf.getLine(y1); if (!ln) break; text += ln.translateToString(false); const nx = buf.getLine(y1 + 1); if (nx?.isWrapped) y1++; else break; }
+    return urlAt(text.replace(/\s+$/, ""), (buf.viewportY + row - y0) * xt.cols + col);
+  } catch { return null; }
 }
+const selectedUrl = (t) => { const s = t.xt.hasSelection() ? t.xt.getSelection().replace(/\r?\n$/, "").trim() : ""; return isUrl(s) ? s : null; };
 
-const PORT_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{2,5})/g;
+// `(?=\D)` – only a port that is followed by a non-digit: a chunk boundary in the middle of "5173" must not report port 51
+const PORT_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{2,5})(?=\D)/g;
 function scanOutput(t, bytes) {
-  const s = new TextDecoder().decode(bytes); if (!s.includes("://")) return;
-  const clean = s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""); let m;
-  while ((m = PORT_RE.exec(clean))) bus.emit("port:detected", +m[1], t);
+  const s = new TextDecoder().decode(bytes); if (!s.includes("://") && !t.scanTail) return;
+  const clean = ((t.scanTail || "") + s).replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""); let m;
+  t.scanTail = clean.slice(-70);                       // an URL may be split across two output chunks
+  t.seenPorts ||= new Map(); const now = Date.now();
+  PORT_RE.lastIndex = 0;
+  while ((m = PORT_RE.exec(clean))) { const port = +m[1]; if (now - (t.seenPorts.get(port) || 0) < 15000) continue; t.seenPorts.set(port, now); bus.emit("port:detected", port, t); }
 }
 
 async function mount(t) {
@@ -185,7 +201,14 @@ export function sendKey(seq) {
 export async function pasteFromClipboard() { const t = get(); if (!t?.alive) return; try { const text = await N.sys.clipboardGet(); if (text) t.xt.paste(text); } catch { /* ignore */ } }
 
 function termMenu(t, x, y) {
+  const url = selectedUrl(t) || urlUnderPoint(t, x, y);
   contextMenu([
+    ...(url ? [
+      { label: "Open Link in Browser", icon: "link-external", run: () => openInBrowser(url) },
+      ...(isLocal(url) ? [{ label: "Open Link in Preview", icon: "preview", run: () => openInPreview(url) }] : []),
+      { label: "Copy Link", icon: "copy", run: () => N.sys.clipboardSet(url) },
+      { separator: true },
+    ] : []),
     { label: "Copy", icon: "copy", disabled: !t.xt.hasSelection(), run: () => N.sys.clipboardSet(t.xt.getSelection()) },
     { label: "Paste", icon: "clippy", run: pasteFromClipboard },
     { label: "Select All", run: () => t.xt.selectAll() },

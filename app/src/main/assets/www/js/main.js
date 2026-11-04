@@ -4,6 +4,7 @@ import { settings } from "./core/settings.js";
 import { bus } from "./core/events.js";
 import { h, icon, P, clamp, isMobile, isTouch, copyText } from "./core/util.js";
 import { toast, toastError, contextMenu, modal, prompt, confirm, busy, quickPick } from "./core/ui.js";
+import { openUrl } from "./core/links.js";
 import * as themes from "./features/themes.js";
 import * as icons from "./features/icons.js";
 import { ws } from "./ui/workspace.js";
@@ -197,8 +198,7 @@ function wireEvents() {
   bus.on("cmd:run", () => runMenu(innerWidth - 60, 48));
   bus.on("term:cmd", async (verb, arg) => {
     if (verb === "url") {   // xdg-open / $BROWSER / `open` / vite "press o"
-      if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(arg)) bus.emit("preview:url", arg.replace("//0.0.0.0", "//127.0.0.1"));
-      else if (/^https?:\/\//i.test(arg)) N.sys.openUrl(arg);
+      if (/^https?:\/\//i.test(arg)) openUrl(arg);   // default browser (or in-app preview, see Settings → Appearance → "Open links with")
       else if (arg.startsWith("/")) ed.openFile(arg);
       return;
     }

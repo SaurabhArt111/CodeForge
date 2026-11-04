@@ -5,6 +5,8 @@ import { settings } from "../core/settings.js";
 import { bus, Emitter } from "../core/events.js";
 import { h, icon, P, debounce, fmtBytes, uid, isMobile } from "../core/util.js";
 import { toast, toastError, confirm, contextMenu, longPress, modal } from "../core/ui.js";
+import { openUrl, openInBrowser, urlAt, isUrl } from "../core/links.js";
+import { showLinkChip, hideLinkChip } from "./linkchip.js";
 import * as themes from "../features/themes.js";
 import * as icons from "../features/icons.js";
 import { ws } from "./workspace.js";
@@ -45,6 +47,8 @@ export async function loadMonaco() {
   monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ allowComments: true, trailingCommas: "ignore", validate: true });
   icons.setLanguageResolver((name) => languageForPath("/" + name));
   monaco.editor.onDidChangeMarkers(() => bus.emit("markers"));
+  // Ctrl/Cmd+click on a link in the editor → default browser (or in-app preview, per setting)
+  try { monaco.editor.registerLinkOpener({ open: (uri) => { const u = uri.toString(true); if (!/^https?:/i.test(u)) return false; openUrl(u); return true; } }); } catch { /* older Monaco */ }
   import("../features/completions.js").then((m) => m.register(monaco)).catch((e) => console.warn("completions", e));
   return monaco;
 }
@@ -129,6 +133,12 @@ async function ensureDoc(path) {
 function updateDirty(d) {
   const dirty = d.model ? d.model.getAlternativeVersionId() !== d.savedVersion : false;
   if (dirty !== d.dirty) { d.dirty = dirty; refreshTabs(d.path); editorEvents.emit("dirty", d); bus.emit("dirty", d.path, dirty); }
+}
+/** URL that is selected, or that the (empty) cursor sits inside */
+function urlAtSelection(ed) {
+  const m = ed.getModel(), s = ed.getSelection(); if (!m || !s) return null;
+  if (!s.isEmpty()) { if (s.startLineNumber !== s.endLineNumber) return null; const t = m.getValueInRange(s).trim(); return isUrl(t) ? t : null; }
+  return urlAt(m.getLineContent(s.positionLineNumber), s.positionColumn - 1);
 }
 export const getDoc = (p) => docs.get(p);
 export const dirtyDocs = () => [...docs.values()].filter((d) => d.dirty);
@@ -219,7 +229,15 @@ class Group {
     ed.onDidChangeCursorPosition((e) => { if (activeGroup === this.idx) editorEvents.emit("cursor", e.position, ed); });
     ed.onDidFocusEditorText(() => setActiveGroup(this.idx));
     ed.onDidChangeModelLanguage?.(() => editorEvents.emit("language"));
-    ed.onDidChangeCursorSelection(() => { if (activeGroup === this.idx) editorEvents.emit("selection", ed); });
+    const urlKey = ed.createContextKey("cfUrlAtCursor", false);
+    ed.onDidChangeCursorSelection((e) => {
+      if (activeGroup === this.idx) editorEvents.emit("selection", ed);
+      const u = urlAtSelection(ed); urlKey.set(!!u);
+      // chip: a selected URL, or a tap/click that lands inside one (not while typing)
+      if (u && (!ed.getSelection().isEmpty() || e.source === "mouse")) showLinkChip(u); else hideLinkChip();
+    });
+    ed.onDidBlurEditorText(() => setTimeout(() => { if (!document.activeElement?.closest?.(".link-chip")) hideLinkChip(); }, 250));
+    ed.addAction({ id: "cf.openLink", label: "Open Link in Browser", precondition: "cfUrlAtCursor", contextMenuGroupId: "navigation", contextMenuOrder: 9, run: () => { const u = urlAtSelection(ed); if (u) openInBrowser(u); } });
     ed.onDidBlurEditorText(() => { if (settings.get("files.autoSave") === "onFocusChange") dirtyDocs().forEach((d) => save(d.path, { auto: true })); });
     ed.addAction({ id: "cf.save", label: "Save", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS], run: () => saveActive() });
     ed.addAction({ id: "cf.palette", label: "Command Palette", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP], run: () => bus.emit("cmd:palette") });

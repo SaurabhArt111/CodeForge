@@ -26,6 +26,9 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
   device biometrics/credential** (PBKDF2 PIN with lockout, 90 s unlock). Optional app lock and "hide from screenshots / recents".
 - **Touch-friendly workbench** – draggable sidebar/panel/split sashes with big touch targets, long-press context menus, pinch-to-zoom terminal, Undo/Redo
   buttons in the title bar, a Shift key on the key bar (sticky; extends selection in the editor), animated splash and loaders.
+- **Links** – vite/webpack `o` + Enter, `xdg-open`, `$BROWSER` and `open` open your **default Android browser** (node's spawn of those helpers is intercepted, so no
+  exec errors under proot). Selecting a URL in the terminal or editor (or long-pressing one in the terminal) offers *Open in browser / Preview / Copy*.
+  *Settings → Appearance → Open links with* can keep local URLs in the in-app preview instead.
 - **Web version** – `tools/web/build.sh` builds a static PWA from the same UI (see BUILD.md): IndexedDB file system, ZIP import/export,
   Monaco, Git over CORS-enabled hosts, extensions, AI, a mini shell. No real Linux, npm, live server or GitHub device flow in a browser.
 - **Plugins** – small JS plugins in sandboxed iframes with a permission model (editor, ui, commands, fs.read, fs.write, terminal, net:host).
