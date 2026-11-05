@@ -32,7 +32,7 @@ export async function wizard() {
   const checks = PRESETS.map((p) => ({ ...p, el: h("input", { type: "checkbox", checked: p.on }) }));
   const body = h("div",
     h("p.modal-text", s.installed ? "Alpine Linux is installed. Choose packages to install or refresh." : "Install a real Linux userland (Alpine, ~4 MB + packages) so the terminal can run node, npm, python, git and more."),
-    h("div", { style: { display: "grid", gap: "8px", margin: "8px 0" } }, ...checks.map((c) => h("label", { style: { display: "flex", gap: "10px", alignItems: "center", cursor: "pointer" } }, c.el, h("span", c.label, c.note ? h("span.muted", { style: { marginLeft: "8px", fontSize: "11px" } }, c.note) : null)))),
+    h("div", { style: { display: "grid", gap: "8px", margin: "8px 0" } }, ...checks.map((c) => h("label", { style: { display: "flex", gap: "10px", alignItems: "center", cursor: "pointer" } }, c.el, h("span", c.label, c.note ? h("span.muted", { style: { marginLeft: "8px", fontSize: "calc(11px * var(--fz))" } }, c.note) : null)))),
     h("p.modal-detail", "Needs an internet connection. Files live in the app's private storage; your projects stay in the workspace and are visible in the terminal at ~/ (the workspace folder)."));
   const r = await A.modal({ title: s.installed ? "Update Linux packages" : "Set up Linux environment", body, width: 520, buttons: [{ label: "Cancel", value: undefined }, { label: s.installed ? "Install packages" : "Install", primary: true, value: "go" }] });
   if (r !== "go") return false;

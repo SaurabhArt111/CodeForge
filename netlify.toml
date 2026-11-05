@@ -1,0 +1,20 @@
+# Netlify: build the whole site; no server needed.
+[build]
+  command = "sh tools/site/build-site.sh dist-site"
+  publish = "dist-site"
+[build.environment]
+  PYTHON_VERSION = "3.11"
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+[[headers]]
+  for = "/app/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/downloads/*.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Content-Disposition = "attachment"

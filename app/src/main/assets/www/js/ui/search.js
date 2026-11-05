@@ -17,7 +17,7 @@ export function init() {
   incIn = h("input.input", { placeholder: "files to include (e.g. src/**, *.js)", spellcheck: false, autocapitalize: "off" });
   excIn = h("input.input", { placeholder: "files to exclude", spellcheck: false, autocapitalize: "off", value: "node_modules, .git, dist, build, *.min.js, *.lock" });
   const tog = (k, ic, title) => { const b = h("button.icon-btn", { title, onclick: () => { opt[k] = !opt[k]; b.classList.toggle("on", opt[k]); run(); } }, icon(ic)); return b; };
-  summary = h("div.muted", { style: { padding: "4px 14px", fontSize: "12px" } });
+  summary = h("div.muted", { style: { padding: "4px 14px", fontSize: "calc(12px * var(--fz))" } });
   resBox = h("div.view-body");
   detailsEl = h("div", { class: "hidden", style: { display: "none" } }, incIn, excIn);
   replaceRow = h("div.srow", rIn, h("button.icon-btn", { title: "Replace All", onclick: replaceAll }, icon("replace-all")));
@@ -58,7 +58,7 @@ function show(r) {
     for (const m of ms) {
       const t = m.text; const s = Math.max(0, m.col - 1 - 20); const pre = t.slice(s, m.col - 1), hit = t.slice(m.col - 1, m.col - 1 + m.len), post = t.slice(m.col - 1 + m.len, m.col - 1 + m.len + 120);
       kids.append(h("div.row.mrow", { style: { paddingLeft: "34px" }, title: `${m.rel}:${m.line}`, onclick: () => { ed.openFile(m.path, { line: m.line, col: m.col, preview: true }); if (window.matchMedia("(max-width:760px)").matches) bus.emit("sidebar:close"); } },
-        h("span.label.mono", { style: { fontSize: "12px" } }, (s > 0 ? "…" : "") + pre.trimStart(), h("mark", hit), post), h("span.meta", String(m.line))));
+        h("span.label.mono", { style: { fontSize: "calc(12px * var(--fz))" } }, (s > 0 ? "…" : "") + pre.trimStart(), h("mark", hit), post), h("span.meta", String(m.line))));
     }
     resBox.append(head, kids);
   }

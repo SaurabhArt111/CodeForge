@@ -34,7 +34,7 @@ object LinuxEnv {
 
     /** Copies launcher scripts out of the APK so the shell can read them. */
     fun prepare() {
-        for (name in listOf("start-linux.sh", "setup-linux.sh", "host.rc", "node-patch.js")) {
+        for (name in listOf("start-linux.sh", "setup-linux.sh", "host.rc", "node-patch.js", "cf.sh")) {
             val out = File(Paths.env, name)
             Paths.app.assets.open("env/$name").use { ins -> FileOutputStream(out).use { ins.copyTo(it) } }
             out.setReadable(true, false)

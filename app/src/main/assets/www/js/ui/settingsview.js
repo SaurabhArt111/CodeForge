@@ -7,12 +7,13 @@ import * as ed from "./editor.js";
 import { N } from "../core/bridge.js";
 import { bus } from "../core/events.js";
 import * as security from "./security.js";
+import * as crashes from "./crashes.js";
 
 const FONTS = ["JetBrains Mono", "Cascadia Code", "Fira Code", "monospace"];
 const S = (key, label, type, extra = {}) => ({ key, label, type, ...extra });
 export const SCHEMA = [
   ["Appearance", [
-    S("ui.theme", "Color Theme", "theme"), S("ui.iconTheme", "File Icon Theme", "icontheme"), S("ui.mobileKeyBar", "Extra key row on touch keyboards", "bool"),
+    S("ui.fontScale", "Text size — everything (%)", "number", { min: 70, max: 170, step: 5, hint: "Scales menus, tabs, sidebar, panels, the editor and the terminal together. Editor/terminal size below are multiplied by this." }), S("ui.theme", "Color Theme", "theme"), S("ui.iconTheme", "File Icon Theme", "icontheme"), S("ui.mobileKeyBar", "Extra key row on touch keyboards", "bool"),
     S("ui.openUrlWith", "Open links (vite “o”, xdg-open, terminal/editor links) with", "select", { options: ["browser", "preview"], hint: "browser = your default Android browser; preview = in-app preview for local URLs" }),
   ]],
   ["Editor", [
@@ -34,18 +35,20 @@ export const SCHEMA = [
     S("terminal.scheme", "Color Scheme (Termux:Styling)", "scheme"), S("terminal.scrollback", "Scrollback lines", "number", { min: 500, max: 50000 }), S("terminal.cursorBlink", "Cursor Blink", "bool"), S("terminal.bell", "Vibrate on bell", "bool"),
   ]],
   ["Live Server", [
+    S("preview.mode", "Run / Live Preview opens in", "select", { options: ["auto", "window", "inline"], hint: "window = separate crash-proof window (own process) · inline = Preview panel · auto = window on Android" }),
     S("live.port", "Default Port", "number", { min: 1024, max: 65535 }), S("live.spa", "Single-page-app fallback (index.html)", "bool"), S("live.lan", "Allow access from other devices on the network", "bool"),
   ]],
   ["Git", [S("git.userName", "User name", "text"), S("git.userEmail", "User email", "text"), S("git.autoFetch", "Auto fetch", "bool")]],
   ["AI Assistant", [
     S("ai.provider", "Provider", "select", { options: ["anthropic", "openai", "github", "gemini", "openrouter", "ollama", "custom"] }), S("ai.model", "Model (blank = provider default)", "text"), S("ai.temperature", "Temperature", "number", { min: 0, max: 2, step: 0.1 }),
-    S("ai.agentConfirm", "Ask before the agent runs commands / writes files", "bool"), S("ai.endpoint.custom", "Custom OpenAI-compatible endpoint", "text"), S("ai.endpoint.ollama", "Ollama endpoint", "text"), S("ai.systemPrompt", "Extra system prompt", "textarea"),
+    S("ai.agentConfirm", "Ask before the agent runs commands / writes files", "bool"), S("ai.rules", "Use AGENTS.md / CLAUDE.md from the project as instructions", "bool"), S("ai.endpoint.custom", "Custom OpenAI-compatible endpoint", "text"), S("ai.endpoint.ollama", "Ollama endpoint", "text"), S("ai.systemPrompt", "Extra system prompt", "textarea"),
   ]],
   ["GitHub", [S("github.clientId", "OAuth App client ID (device flow)", "text", { hint: "Create an OAuth App on GitHub with Device Flow enabled. Leave blank to use the build-time value, or sign in with a token." })]],
   ["Extensions", [S("extensions.registry", "Extension registry (Open VSX compatible)", "text"), S("plugins.registry", "CodeForge plugin registry URL (JSON)", "text")]],
 ];
 
 export function open() {
+  bus.emit("sidebar:close");   // on phones the drawer would still cover the page that just opened
   return ed.openCustom("settings", "Settings", { iconName: "settings-gear", render: render });
 }
 
@@ -65,6 +68,9 @@ function render(el) {
   const keysSec = h("section.set-sec", h("h3", "API Keys"), h("p.muted.set-note", "Keys are encrypted with the Android Keystore. Viewing or copying a key needs your PIN or fingerprint / face."), h("div.set-keys"));
   const secSec = h("section.set-sec", h("h3", "Security"), h("div.set-secbody"));
   keysSec.dataset.search = "api keys secret token"; secSec.dataset.search = "security pin biometric fingerprint lock";
+  const diagSec = h("section.set-sec", h("h3", "Diagnostics"), h("div.set-diag"));
+  diagSec.dataset.search = "diagnostics crash reports logs memory";
+  body.append(diagSec); crashes.renderDiagnostics(diagSec.querySelector(".set-diag"));
   body.append(keysSec, secSec); security.renderKeyManager(keysSec.querySelector(".set-keys")); security.renderSecurity(secSec.querySelector(".set-secbody"));
   bus.on("security:changed", () => { if (secSec.isConnected) security.renderSecurity(secSec.querySelector(".set-secbody")); });
   body.append(extra);

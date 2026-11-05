@@ -137,7 +137,7 @@ async function startLive(o) {
       if (!st?.isFile()) { res.writeHead(404, { "content-type": "text/html" }); log(404); return res.end(`<h2>404</h2><script src="/__cf_live.js"></script>`); }
       const mime = mimeOf(f);
       if (mime.startsWith("text/html")) {
-        let html = await fsp.readFile(f, "utf8"); const tag = '<script src="/__cf_live.js"></script>'; const m = html.match(/<head(\s[^>]*)?>/i) || html.match(/<html(\s[^>]*)?>/i) || html.match(/<!doctype[^>]*>/i); const at = m ? m.index + m[0].length : 0;
+        let html = await fsp.readFile(f, "utf8"); const nb = html.match(/<script[^>]*\ssrc=["']([^"']+\.(?:jsx|tsx|ts|mts|vue|svelte))(?:\?[^"']*)?["']/i); const tag = '<script src="/__cf_live.js"' + (nb ? ` data-needs-build="${nb[1]}"` : "") + "></script>"; const m = html.match(/<head(\s[^>]*)?>/i) || html.match(/<html(\s[^>]*)?>/i) || html.match(/<!doctype[^>]*>/i); const at = m ? m.index + m[0].length : 0;
         html = html.slice(0, at) + tag + html.slice(at); res.writeHead(200, { "content-type": mime, "cache-control": "no-store" }); log(200); return res.end(html);
       }
       res.writeHead(200, { "content-type": mime, "cache-control": "no-store", "access-control-allow-origin": "*" }); log(200); fs.createReadStream(f).pipe(res);
@@ -178,6 +178,24 @@ const methods = {
   "sys.info": async () => ({ version: "8.0.0-devhost", pkg: "dev.codeforge.ide", sdk: 34, abi: "x86_64", device: "DevHost", githubClientId: process.env.CF_GITHUB_CLIENT_ID || "dev-client-id", allFiles: true, paths: P, linux: { installed: false, version: null, arch: "x86_64", setupDone: false, supported: true }, devhost: true }),
   "sys.hasAllFiles": async () => true, "sys.requestAllFiles": async () => true,
   "sys.openUrl": async (u) => { emit("devhost.openUrl", { url: u }); return true; },
+  // ---- crash recorder emulation (in memory; the Android app keeps these as files)
+  ...(() => {
+    const reports = []; const crumbs = [];
+    const meta = ({ text, ...m }) => ({ ...m, size: text.length });
+    const rec = (o, fatal = false) => { const ts = Date.now(), id = `${String(ts).padStart(13, "0")}-${(o.kind || "js-error")}-${crypto.randomBytes(2).toString("hex")}`; reports.push({ id, ts, kind: o.kind || "js-error", title: o.title || "Error", fatal: !!(o.fatal ?? fatal), process: "main", seen: false, text: `CodeForge report\nKind: ${o.kind}\n\n== ${o.title} ==\n${o.detail || ""}\n\n-- breadcrumbs --\n${crumbs.join("\n")}\n` }); return id; };
+    globalThis.__cfCrash = { reports, rec };
+    return {
+      "crash.list": async () => [...reports].reverse().map(meta), "crash.unseen": async () => reports.filter((r) => !r.seen).reverse().map(meta),
+      "crash.read": async (id) => reports.find((r) => r.id === id) || null,
+      "crash.delete": async (id) => { const i = reports.findIndex((r) => r.id === id); if (i >= 0) reports.splice(i, 1); return true; }, "crash.clear": async () => { reports.length = 0; return true; },
+      "crash.seen": async (ids) => { for (const r of reports) if (!ids || ids.includes(r.id)) r.seen = true; return true; },
+      "crash.report": async (o) => rec(o), "crash.crumbs": async (a) => { for (const l of a || []) crumbs.push("ui " + l); while (crumbs.length > 150) crumbs.shift(); return true; },
+      "crash.bundle": async (ids) => reports.filter((r) => !ids || ids.includes(r.id)).map((r) => "=".repeat(60) + "\n" + r.text).join("\n\n") || "No reports.",
+      "crash.diagnostics": async () => "DevHost diagnostics\n" + crumbs.slice(-60).join("\n"), "crash.takeRecovery": async () => globalThis.__cfRecovery ? (() => { const r = globalThis.__cfRecovery; globalThis.__cfRecovery = null; return r; })() : null,
+      "crash.testNative": async () => rec({ kind: "test", title: "Test report", detail: "Created from Settings → Diagnostics." }),
+      "preview.open": async (o) => { emit("devhost.preview", o); return true; }, "term.ack": async () => true,
+    };
+  })(),
   "sys.share": async () => true, "sys.takeIntent": async () => null,
   "sys.clipboardGet": async () => clip, "sys.clipboardSet": async (t) => { clip = t; return true; },
   "sys.notify": async () => true, "sys.vibrate": async () => true, "sys.toast": async () => true, "sys.keepAwake": async () => true, "sys.setStatusBar": async () => true,

@@ -31,7 +31,7 @@ export function init() {
     row.append(b);
   }
   bus.on("term:mods", (m) => row.querySelectorAll("[data-mod]").forEach((b) => b.classList.toggle("on", !!m[b.dataset.mod])));
-  document.addEventListener("focusin", (e) => { focusTarget = e.target.closest?.(".xterm") ? "terminal" : e.target.closest?.(".monaco-editor") ? "editor" : focusTarget; refresh(); });
+  document.addEventListener("focusin", (e) => { const t = e.target; focusTarget = t.closest?.(".xterm") ? "terminal" : t.closest?.(".monaco-editor") ? "editor" : (t.matches?.("input,textarea,select,[contenteditable]") ? "other" : focusTarget); refresh(); });  // tapping a button must not hide the bar: the layout would shift under the finger
   baseH = window.innerHeight;
   window.addEventListener("resize", () => { if (window.innerHeight > baseH) baseH = window.innerHeight; kbdOpen = window.innerHeight < baseH - 140; document.body.classList.toggle("kbd-open", kbdOpen); refresh(); });
   settings.on("change:ui.mobileKeyBar", refresh);
@@ -47,12 +47,12 @@ function attachRepeat(b, k, fn) {
 }
 
 function refresh() {
-  const show = isTouch() && settings.get("ui.mobileKeyBar") && (kbdOpen || (panel.isOpen() && panel.active() === "terminal" && document.activeElement?.closest?.(".xterm")));
+  const show = isTouch() && settings.get("ui.mobileKeyBar") && (kbdOpen || (panel.isShown("terminal") && focusTarget === "terminal"));
   root.classList.toggle("hidden", !show);
 }
 
 async function press(k, btn) {
-  const toTerm = focusTarget === "terminal" && panel.isOpen();
+  const toTerm = focusTarget === "terminal" && panel.isShown("terminal");
   if (k.mod) { term.setMod(k.mod, !term.modifiers[k.mod]); return; }
   const shift = term.modifiers.shift;
   if (toTerm) {

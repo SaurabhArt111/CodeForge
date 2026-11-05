@@ -160,8 +160,15 @@ export const N = {
       });
     },
     resize: (id, r, cl) => c("term.resize", id, r, cl), kill: (id) => c("term.kill", id), close: (id) => c("term.close", id),
+    ack: (id, n) => c("term.ack", id, n),   // flow control: bytes the terminal has finished rendering
     list: () => c("term.list"), attach: (id) => c("term.attach", id), rename: (id, t) => c("term.rename", id, t),
   },
+  crash: {
+    list: () => c("crash.list"), unseen: () => c("crash.unseen"), read: (id) => c("crash.read", id), delete: (id) => c("crash.delete", id), clear: () => c("crash.clear"),
+    seen: (ids) => c("crash.seen", ids ?? null), report: (o) => c("crash.report", o), crumbs: (a) => c("crash.crumbs", a), bundle: (ids) => c("crash.bundle", ids ?? null),
+    diagnostics: () => c("crash.diagnostics"), takeRecovery: () => c("crash.takeRecovery"), test: () => c("crash.testNative"),
+  },
+  preview: { open: (o) => c("preview.open", o) },
   env: { status: () => c("env.status"), install: () => c("env.install"), reset: () => c("env.reset") },
   proc: { exec: (o) => c("proc.exec", o) },
   on: (name, fn) => ev.on(name, fn),

@@ -6,19 +6,30 @@ import { settings } from "./settings.js";
 import { toast } from "./ui.js";
 
 export const URL_RE = /https?:\/\/[^\s<>"'`\\^{}|]+/gi;
-const LOCAL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)/i;
-export const isUrl = (s) => /^https?:\/\/[^\s]+$/i.test(String(s || "").trim());
-export const isLocal = (u) => LOCAL_RE.test(u);
-/** strip trailing punctuation that is almost never part of the link, and make 0.0.0.0 reachable */
+// "localhost:5173", "0.0.0.0:8000/api", "192.168.1.20:3000", "[::1]:4000" — servers often print these without "http://"
+const HOST_PORT = String.raw`(?:localhost|0\.0\.0\.0|\[::1?\]|(?:\d{1,3}\.){3}\d{1,3}):\d{2,5}(?![\w])(?:/[^\s<>"'` + "`" + String.raw`\\^{}|]*)?`;
+export const HOSTPORT_RE = new RegExp(String.raw`(?<![\w./:@\[-])` + HOST_PORT, "gi");
+const HOSTPORT_EXACT = new RegExp("^" + HOST_PORT + "$", "i");
+const LOCAL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)/i;
+export const isUrl = (s) => { s = String(s || "").trim(); return /^https?:\/\/[^\s]+$/i.test(s) || HOSTPORT_EXACT.test(s); };
+export const isLocal = (u) => LOCAL_RE.test(/^https?:/i.test(u) ? u : "http://" + u);
+/** strip trailing punctuation that is almost never part of the link, add a missing "http://", and make 0.0.0.0 / [::] reachable */
 export const normalize = (u) => {
   let s = String(u).trim();
   while (/[.,;:!?'"\]}]$/.test(s) || (s.endsWith(")") && !s.includes("("))) s = s.slice(0, -1);
-  return s.replace("//0.0.0.0", "//localhost");
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s) && HOSTPORT_EXACT.test(s)) s = "http://" + s;
+  return s.replace(/^(https?:\/\/)(?:0\.0\.0\.0|\[::1?\])(?=[:/]|$)/i, "$1localhost");
 };
+/** every link in `text`: scheme URLs and scheme-less host:port, in order, without overlaps */
+export function linksIn(text) {
+  const out = [];
+  for (const re of [URL_RE, HOSTPORT_RE]) { re.lastIndex = 0; let m; while ((m = re.exec(text))) out.push({ index: m.index, length: m[0].length, text: m[0] }); }
+  out.sort((a, b) => a.index - b.index);
+  return out.filter((l, i) => !i || l.index >= out[i - 1].index + out[i - 1].length);
+}
 /** URL in `text` covering 0-based column `col` (or null) */
 export function urlAt(text, col) {
-  URL_RE.lastIndex = 0; let m;
-  while ((m = URL_RE.exec(text))) { if (col >= m.index && col <= m.index + m[0].length) return normalize(m[0]); if (m.index > col) break; }
+  for (const l of linksIn(text)) { if (col >= l.index && col <= l.index + l.length) return normalize(l.text); if (l.index > col) break; }
   return null;
 }
 export function openInBrowser(u) { u = normalize(u); return N.sys.openUrl(u).catch((e) => toast(e.message || String(e), { kind: "error" })); }

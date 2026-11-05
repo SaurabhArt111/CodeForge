@@ -21,7 +21,7 @@ export async function browse({ mode = "folder", title = "Open Folder", start, ok
 
   const crumbs = h("div.ofd-crumbs"), list = h("div.ofd-list"), rootsEl = h("div.ofd-roots");
   const nameInput = mode === "save" ? h("input.input", { value: saveName, placeholder: "File name" }) : null;
-  const status = h("div.muted", { style: { fontSize: "12px", padding: "2px 0" } });
+  const status = h("div.muted", { style: { fontSize: "calc(12px * var(--fz))", padding: "2px 0" } });
   let closeFn;
 
   const banner = !hasAll ? h("div.ofd-banner", h("span", "Grant “All files access” to browse Downloads, Documents and SD card like a normal file manager."),

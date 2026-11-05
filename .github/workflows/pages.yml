@@ -1,0 +1,24 @@
+# Publishes the website (landing, /app web editor, /code browser, /download) to GitHub Pages on every push to main.
+# GitHub Pages is static, so the Git CORS proxy is not available there: set "proxy" in site/site-config.js to a deployed backend if you want cloning in the web editor.
+name: Website
+on:
+  push: { branches: [main] }
+  workflow_dispatch:
+permissions: { contents: read, pages: write, id-token: write }
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh tools/site/build-site.sh dist-site
+      - run: touch dist-site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist-site }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

@@ -37,7 +37,10 @@ exports.activate = (ctx) => {
   await page.waitForSelector(".tab:has-text('a.js')");
   const ex = await page.evaluate(async () => { const e = await import("/js/features/extensions.js"); const x = await e.installVsix("/tmp/cf-dev/shared/fixture.vsix", { silent: true }); return { name: x.name, desc: x.description, main: x.main }; });
   ok(ex.name === "Fixture Ext" && ex.desc === "A test extension", "NLS %placeholders% resolved: " + JSON.stringify(ex));
-  ok(await page.evaluate(async () => (await import("/js/ui/commands.js")).list().some((c) => c.id === "fix.hello" && c.title === "Say Hello")), "contributed command appears with NLS title");
+  await page.waitForFunction(async () => (await import("/js/ui/commands.js")).list().some((c) => c.id === "fix.hello"), null, { timeout: 8000 }).catch(() => {});
+  const fx = await page.evaluate(async () => (await import("/js/ui/commands.js")).list().filter((c) => /fix/.test(c.id)).map((c) => c.id + "=" + c.title));
+  console.log("   fixture commands:", fx.join("|"));
+  ok(fx.includes("fix.hello=Say Hello"), "contributed command appears with NLS title");
   // trust prompt on first run
   await page.evaluate(async () => { window.__r = (await import("/js/ui/commands.js")).run("fix.hello"); });
   await page.waitForSelector(".modal:has-text('Run extension code')", { timeout: 8000 }); ok(true, "trust prompt shown before extension code runs");

@@ -2,5 +2,6 @@
 alias ll='ls -la'
 code() { for p in "${@:-.}"; do printf '\033]7770;open;%s\007' "$(cd "$p" 2>/dev/null && pwd || echo "$p")"; done; }
 [ -f "$CF_ENV/node-patch.js" ] && export NODE_OPTIONS="--require $CF_ENV/node-patch.js ${NODE_OPTIONS:-}"
+cf() { sh "$CF_ENV/cf.sh" "$@"; }
 open() { for u in "$@"; do printf '\033]7770;url;%s\007' "$u"; done; }
-echo "CodeForge host shell (limited). Install the Linux environment from the Terminal menu for git, node, npm and more."
+echo "CodeForge host shell (limited). Type 'cf help' to control the IDE from here. Install the Linux environment from the Terminal menu for git, node, npm and more."

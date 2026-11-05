@@ -1,4 +1,6 @@
 // Terminal: xterm.js over native PTY sessions (host shell or proot Alpine), tabs, OSC-7770 "code" command, URL/port detection.
+import * as fontscale from "../core/fontscale.js";
+import * as lazy from "../core/lazy.js";
 import { N } from "../core/bridge.js";
 import { settings } from "../core/settings.js";
 import { bus } from "../core/events.js";
@@ -7,8 +9,9 @@ import { contextMenu, toast, toastError, longPress } from "../core/ui.js";
 import * as themes from "../features/themes.js";
 import * as panel from "./panel.js";
 import { ws } from "./workspace.js";
-import { openUrl, openInBrowser, openInPreview, urlAt, isUrl, isLocal } from "../core/links.js";
+import { openUrl, openInBrowser, openInPreview, urlAt, isUrl, isLocal, HOSTPORT_RE, normalize } from "../core/links.js";
 import { showLinkChip, hideLinkChip } from "./linkchip.js";
+import { crumb } from "../core/crash.js";
 
 const terms = new Map(); // id -> T
 let activeId = null, bar, bodies, tabsEl;
@@ -28,12 +31,16 @@ export function init() {
   pane.append(bar, bodies);
   panel.registerView("terminal", { onShow: () => { if (!terms.size && !creating) create(); else fitAll(); setTimeout(() => get()?.xt.focus(), 50); } });
   panel.panelEvents.on("resize", () => { clearTimeout(ptyResizeTimer); ptyResizeTimer = setTimeout(fitAll, 60); });
-  N.on("term.data", (d) => { const t = terms.get(d.id); if (t) { const bytes = b64ToBytes(d.b64); t.xt.write(bytes); scanOutput(t, bytes); } });
+  // Rendering is acknowledged to the native side (flow control): a program that floods the terminal is slowed down instead of
+  // queueing megabytes in the WebView, which is what used to freeze / crash the app with TUIs and noisy logs.
+  N.on("term.data", (d) => { const t = terms.get(d.id); if (t) { const bytes = b64ToBytes(d.b64); t.xt.write(bytes, () => ack(t, bytes.length)); scanOutput(t, bytes); } });
+  // output produced while the app was paused was kept natively: rebuild the screen from the replay buffer
+  N.on("term.resync", async (d) => { const t = terms.get(d.id); if (!t) return; try { const a = await N.term.attach(d.id); t.xt.reset(); if (a?.b64) t.xt.write(b64ToBytes(a.b64)); fitOne(t); } catch { /* ignore */ } });
   N.on("term.exit", (d) => { const t = terms.get(d.id); if (!t) return; t.alive = false; t.xt.write(`\r\n\x1b[2m[Process exited with code ${d.code}]  press any key to close\x1b[0m\r\n`); refreshTabs(); t.onExit?.(d.code); });
   // xterm measures glyph cells once: if the web font arrives later the rows overlap. Re-measure when fonts are ready.
   try { document.fonts.load(`14px "${settings.get("terminal.fontFamily")}"`).then(() => document.fonts.ready).then(() => applyTheme()); } catch { /* ignore */ }
   themes.themeEvents.on("change", applyTheme);
-  settings.on("change", (k) => { if (k.startsWith("terminal.")) applyTheme(); });
+  settings.on("change", (k) => { if (k.startsWith("terminal.") || k === "ui.fontScale") applyTheme(); });
   bus.on("terminal:at", (dir) => create({ cwd: dir }));
   restore();
 }
@@ -45,8 +52,19 @@ async function restore() {
   } catch { /* ignore */ }
 }
 
+function ack(t, n) {
+  t.unacked = (t.unacked || 0) + n;
+  const send = () => { clearTimeout(t.ackTimer); t.ackTimer = 0; const k = t.unacked; t.unacked = 0; if (k) N.term.ack(t.id, k).catch(() => {}); };
+  if (t.unacked >= 32768) send(); else if (!t.ackTimer) t.ackTimer = setTimeout(send, 40);
+}
+
+/** xterm measures glyphs on a <canvas>, whose font shorthand cannot contain var(): resolve --mono ourselves or it silently measures a 10px sans-serif (overlapping glyphs, wrong cell size). */
+function termFamily() {
+  const mono = (getComputedStyle(document.documentElement).getPropertyValue("--mono") || "").trim() || "ui-monospace, Menlo, Consolas, monospace";
+  return `"${settings.get("terminal.fontFamily")}", ${mono}, monospace`;
+}
 function xtermOptions() {
-  return { fontFamily: `"${settings.get("terminal.fontFamily")}", var(--mono), monospace`, fontSize: settings.get("terminal.fontSize"), lineHeight: settings.get("terminal.lineHeight"), letterSpacing: settings.get("terminal.letterSpacing"), fontWeight: "400", fontWeightBold: "700", minimumContrastRatio: 4.5, cursorBlink: settings.get("terminal.cursorBlink"), scrollback: settings.get("terminal.scrollback"), allowProposedApi: true, convertEol: false, macOptionIsMeta: true, rightClickSelectsWord: true, bellStyle: "none", smoothScrollDuration: 0, theme: currentTheme };
+  return { fontFamily: termFamily(), fontSize: fontscale.scaled(settings.get("terminal.fontSize")), lineHeight: settings.get("terminal.lineHeight"), letterSpacing: settings.get("terminal.letterSpacing"), fontWeight: "400", fontWeightBold: "700", minimumContrastRatio: 4.5, cursorBlink: settings.get("terminal.cursorBlink"), scrollback: settings.get("terminal.scrollback"), allowProposedApi: true, convertEol: false, macOptionIsMeta: true, rightClickSelectsWord: true, bellStyle: "none", smoothScrollDuration: 0, theme: currentTheme };
 }
 let currentTheme = {};
 async function computeTheme() {
@@ -56,7 +74,7 @@ async function computeTheme() {
 }
 async function applyTheme() {
   currentTheme = await computeTheme();
-  for (const t of terms.values()) { t.xt.options.theme = currentTheme; t.xt.options.fontSize = settings.get("terminal.fontSize"); t.xt.options.fontFamily = `"${settings.get("terminal.fontFamily")}", var(--mono), monospace`; t.xt.options.lineHeight = settings.get("terminal.lineHeight"); t.xt.options.letterSpacing = settings.get("terminal.letterSpacing"); t.xt.options.cursorBlink = settings.get("terminal.cursorBlink"); t.xt.options.scrollback = settings.get("terminal.scrollback"); }
+  for (const t of terms.values()) { t.xt.options.theme = currentTheme; t.xt.options.fontSize = fontscale.scaled(settings.get("terminal.fontSize")); t.xt.options.fontFamily = termFamily(); t.xt.options.lineHeight = settings.get("terminal.lineHeight"); t.xt.options.letterSpacing = settings.get("terminal.letterSpacing"); t.xt.options.cursorBlink = settings.get("terminal.cursorBlink"); t.xt.options.scrollback = settings.get("terminal.scrollback"); }
   bodies.style.background = currentTheme.background || ""; fitAll();
 }
 
@@ -64,6 +82,15 @@ function newXterm(t) {
   const xt = new Terminal(xtermOptions());
   const fit = new FitAddon.FitAddon(); xt.loadAddon(fit);
   try { xt.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => { e.preventDefault?.(); openLink(uri); })); } catch { /* optional */ }
+  // "localhost:5173", "0.0.0.0:8000", "192.168.1.20:3000" printed without "http://" are links too
+  try {
+    xt.registerLinkProvider({ provideLinks(y, cb) {
+      const line = xt.buffer.active.getLine(y - 1); if (!line) return cb(undefined);
+      const text = line.translateToString(true), out = []; HOSTPORT_RE.lastIndex = 0; let m;
+      while ((m = HOSTPORT_RE.exec(text))) out.push({ text: m[0], range: { start: { x: m.index + 1, y }, end: { x: m.index + m[0].length, y } }, decorations: { underline: true, pointerCursor: true }, activate: (_e, txt) => openLink(txt) });
+      cb(out.length ? out : undefined);
+    } });
+  } catch { /* optional */ }
   try { const u = new Unicode11Addon.Unicode11Addon(); xt.loadAddon(u); xt.unicode.activeVersion = "11"; } catch { /* optional */ }
   try { t.search = new SearchAddon.SearchAddon(); xt.loadAddon(t.search); } catch { /* optional */ }
   t.fit = fit;
@@ -87,7 +114,9 @@ function newXterm(t) {
   return xt;
 }
 
-function openLink(uri) { openUrl(uri); }
+// a tap fires both our tap handler and xterm's synthesized click: open a link once
+let lastLink = { u: "", t: 0 };
+function openLink(uri) { const u = normalize(uri), now = Date.now(); if (u === lastLink.u && now - lastLink.t < 900) return; lastLink = { u, t: now }; openUrl(uri); }
 /** URL under a screen point (handles links wrapped over several terminal rows) */
 function urlUnderPoint(t, x, y) {
   try {
@@ -102,20 +131,38 @@ function urlUnderPoint(t, x, y) {
 const selectedUrl = (t) => { const s = t.xt.hasSelection() ? t.xt.getSelection().replace(/\r?\n$/, "").trim() : ""; return isUrl(s) ? s : null; };
 
 // `(?=\D)` – only a port that is followed by a non-digit: a chunk boundary in the middle of "5173" must not report port 51
-const PORT_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{2,5})(?=\D)/g;
+const PORT_RES = [
+  /(?:https?:\/\/)?(?:localhost|0\.0\.0\.0|\[::1?\]|(?:127|10)(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}):(\d{2,5})(?=\D)/g,                  // http://localhost:5173, 0.0.0.0:3000, 192.168.1.5:8080
+  /\b(?:listening|serving|running|started|server|available|live)\b[^\n]{0,40}?\bport\s+(\d{4,5})(?=\D)/gi,           // "Serving HTTP on 0.0.0.0 port 8000", "listening on port 3000"
+];
+function hasUrl(b) { for (let i = 0, n = b.length - 2; i < n; i++) if (b[i] === 58 && b[i + 1] === 47 && b[i + 2] === 47) return true; return false; }
 function scanOutput(t, bytes) {
+  if (!t.scanTail && !hasUrl(bytes)) return;            // decoding every chunk of a flooding program is wasted work
   const s = new TextDecoder().decode(bytes); if (!s.includes("://") && !t.scanTail) return;
   const clean = ((t.scanTail || "") + s).replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""); let m;
   t.scanTail = clean.slice(-70);                       // an URL may be split across two output chunks
   t.seenPorts ||= new Map(); const now = Date.now();
-  PORT_RE.lastIndex = 0;
-  while ((m = PORT_RE.exec(clean))) { const port = +m[1]; if (now - (t.seenPorts.get(port) || 0) < 15000) continue; t.seenPorts.set(port, now); bus.emit("port:detected", port, t); }
+  for (const re of PORT_RES) {
+    re.lastIndex = 0;
+    while ((m = re.exec(clean))) {
+      const port = +m[1]; if (port < 80 || port > 65535 || /^\S*__live\//.test(clean.slice(m.index))) continue;   // our own in-browser server prints /__live/ URLs
+      if (now - (t.seenPorts.get(port) || 0) < 15000) continue; t.seenPorts.set(port, now); bus.emit("port:detected", port, t);
+    }
+  }
 }
 
 async function mount(t) {
+  await lazy.xterm();
   const el = h("div.term-body", { dataset: { id: t.id } }); t.el = el; bodies.append(el);
   t.xt = newXterm(t); t.xt.open(el);
   el.addEventListener("contextmenu", (e) => { e.preventDefault(); termMenu(t, e.clientX, e.clientY); });
+  // a plain tap on a link (touch / pen) opens it; xterm's own hover-based links need a mouse
+  let tap = null;
+  el.addEventListener("pointerdown", (e) => { tap = e.pointerType === "mouse" ? null : { x: e.clientX, y: e.clientY, t: Date.now() }; });
+  el.addEventListener("pointerup", (e) => {
+    const d = tap; tap = null; if (!d || Date.now() - d.t > 450 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || t.xt.hasSelection()) return;
+    const u = urlUnderPoint(t, e.clientX, e.clientY); if (u) { e.preventDefault(); openLink(u); }
+  });
   longPress(el, (x, y) => termMenu(t, x, y), 700);
   terms.set(t.id, t); select(t.id);
 }
@@ -125,7 +172,7 @@ export async function create(opts = {}) {
   try { return await createInner(opts); } finally { creating--; }
 }
 async function createInner({ cwd, mode, command, title, env, focus = true } = {}) {
-  if (!(panel.isOpen() && panel.active() === "terminal")) panel.show("terminal");
+  if (!panel.isShown("terminal")) panel.show("terminal");
   const m = mode || settings.get("terminal.mode");
   await new Promise((r) => requestAnimationFrame(r));
   let info;
@@ -136,6 +183,7 @@ async function createInner({ cwd, mode, command, title, env, focus = true } = {}
     toastError(e); return null;
   }
   const t = { id: info.id, title: info.title || "terminal", alive: true, mode: info.mode, cwd: info.cwd };
+  crumb("terminal create " + info.mode);
   await mount(t);
   currentTheme = currentTheme.foreground ? currentTheme : await computeTheme(); t.xt.options.theme = currentTheme; bodies.style.background = currentTheme.background;
   fitOne(t); if (focus) t.xt.focus();
@@ -170,8 +218,9 @@ function refreshTabs() {
 }
 export function closeTerm(id) {
   const t = terms.get(id); if (!t) return;
-  N.term.close(id).catch(() => {}); t.xt.dispose(); t.el.remove(); terms.delete(id);
-  if (activeId === id) { const n = [...terms.keys()].pop(); activeId = n || null; if (n) select(n); else panel.hide(); }
+  crumb("terminal close " + id);
+  N.term.close(id).catch(() => {}); clearTimeout(t.ackTimer); t.xt.dispose(); t.el.remove(); terms.delete(id);
+  if (activeId === id) { const n = [...terms.keys()].pop(); activeId = n || null; if (n) select(n); else panel.hide("terminal"); }
   refreshTabs();
 }
 function killActive() { const t = get(); if (t) closeTerm(t.id); }

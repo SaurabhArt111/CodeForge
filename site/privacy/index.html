@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy: CodeForge</title>
+<meta name="description" content="What CodeForge stores, what it sends and when.">
+<meta name="theme-color" content="#ECEFF3">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap">
+  <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="" width="26" height="26">CodeForge</a>
+  <nav aria-label="Main">
+    <a href="../index.html#features">Features</a>
+    <a href="../code/">Source code</a>
+    <a class="keep" href="../download/">Download</a>
+    <a class="cta" href="../app/">Open web editor</a>
+  </nav></div></header>
+<main id="main">
+
+<section class="page-head"><div class="wrap prose">
+  <h1>Privacy</h1>
+  <p class="sub" style="margin:0">Short version: CodeForge has no account and no analytics, and your code stays with you.</p>
+</div></section>
+<section style="padding-top:0"><div class="wrap prose">
+  <h2>What stays on your device</h2>
+  <p>Projects, settings, chat history and crash reports are stored on your device (Android app) or in your browser (web editor). CodeForge does not upload them to a CodeForge server, and this website does not run analytics.</p>
+  <h2>What leaves your device, and only when you ask</h2>
+  <ul>
+    <li><strong>AI features.</strong> When you send a message, the text and any files or selections you attach go to the AI provider you picked, using your own API key. Their privacy policy applies.</li>
+    <li><strong>Git, extensions and downloads.</strong> Cloning, pushing, searching Open VSX or installing packages contacts those services directly. In the web editor, Git can go through a CORS proxy you configure.</li>
+    <li><strong>Links you open</strong> in the browser or preview.</li>
+  </ul>
+  <h2>API keys</h2>
+  <p>The Android app keeps keys in the Android Keystore and adds them to requests natively. The web editor keeps them in your browser storage, which is less protected.</p>
+  <h2>Crash reports</h2>
+  <p>Reports contain error text, memory figures and recent in-app actions (such as file names). They are saved locally. You choose whether to copy or share one.</p>
+  <h2>Permissions (Android)</h2>
+  <p>Files access (optional) to open folders on your device, network access for the features above, and biometrics if you turn on the app lock.</p>
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a data-cf="email" hidden></a><span class="muted" id="no-email">add a contact address in <code>site-config.js</code>.</span></p>
+  <p class="note">This page describes how the software is designed. If you publish CodeForge or a modified version, review it against your own build and your jurisdiction's requirements.</p>
+</div></section>
+
+</main>
+<footer><div class="wrap">
+  <div>CodeForge <span data-cf="version"></span> · MIT licensed · Runs on Android and in your browser</div>
+  <nav aria-label="Footer"><a href="../app/">Web editor</a><a href="../download/">Download</a><a href="../code/">Source code</a><a href="../privacy/">Privacy</a><a data-cf="github" hidden>GitHub</a></nav>
+</div></footer>
+<script src="../site-config.js"></script>
+<script src="../js/site.js"></script>
+<script>if(window.CF_SITE&&CF_SITE.contactEmail){var n=document.getElementById("no-email");if(n)n.remove();}</script>
+</body>
+</html>

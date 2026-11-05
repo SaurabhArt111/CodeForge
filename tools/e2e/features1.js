@@ -14,6 +14,7 @@ fs.rmSync("/tmp/cf-dev/home/gt", { recursive: true, force: true }); fs.mkdirSync
   ok(true, "git view offers init");
   await page.click("#view-git button:has-text('Initialize Repository')");
   await page.waitForSelector("#view-git .scm-commit", { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll("#view-git .row.git-U").length === 2, null, { timeout: 8000 }).catch(() => {});
   ok(await page.locator("#view-git .row.git-U").count() === 2, "two untracked files listed");
   await page.click('#view-git .section-title:has-text("Changes") button[title="Stage all"]');
   await page.waitForSelector('#view-git .section-title:has-text("Staged Changes")', { timeout: 15000 });

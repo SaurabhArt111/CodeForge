@@ -81,7 +81,7 @@ async function render() {
   setTitle();
   const frag = document.createDocumentFragment();
   const rootRow = h("div.row.root.open", { onclick: () => toggleRoot(), oncontextmenu: (e) => { e.preventDefault(); rootMenu(e.clientX, e.clientY); } },
-    h("span.chev", icon("chevron-right")), h("span.label", { style: { fontWeight: 600, textTransform: "uppercase", fontSize: "11px", letterSpacing: ".4px" } }, ws.name),
+    h("span.chev", icon("chevron-right")), h("span.label", { style: { fontWeight: 600, textTransform: "uppercase", fontSize: "calc(11px * var(--fz))", letterSpacing: ".4px" } }, ws.name),
     h("span.actions", h("button.icon-btn", { title: "New File", onclick: (e) => { e.stopPropagation(); createEntry(ws.root, false); } }, icon("new-file")), h("button.icon-btn", { title: "New Folder", onclick: (e) => { e.stopPropagation(); createEntry(ws.root, true); } }, icon("new-folder"))));
   frag.append(rootRow);
   treeEl = h("div.tree");
@@ -247,7 +247,7 @@ async function paste(dir) {
 // ---------------------------------------------------------------- menus
 function emptyState() {
   return h("div.empty-state",
-    h("div", { style: { color: "var(--fg)", fontWeight: 600, fontSize: "14px" } }, "No folder opened"),
+    h("div", { style: { color: "var(--fg)", fontWeight: 600, fontSize: "calc(14px * var(--fz))" } }, "No folder opened"),
     h("div", "Open a project folder to start coding — like VS Code, with a real file system."),
     h("button.btn.primary.block", { onclick: () => handlers.openProjectMenu() }, icon("folder-opened"), "Open Folder…"),
     h("button.btn.block", { onclick: () => handlers.openZip() }, icon("file-zip"), "Open ZIP Project…"),

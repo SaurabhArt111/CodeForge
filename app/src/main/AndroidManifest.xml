@@ -64,6 +64,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Isolated preview window: own process, so a heavy / crashing page can never take the IDE down. Resizable → split-screen next to the editor. -->
+        <activity
+            android:name=".PreviewActivity"
+            android:exported="false"
+            android:process=":preview"
+            android:taskAffinity="${applicationId}.preview"
+            android:launchMode="singleTask"
+            android:label="Preview"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|fontScale|navigation|colorMode|layoutDirection"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Keeps terminals and dev servers alive while the app is in the background. -->
         <service
             android:name=".service.SessionService"

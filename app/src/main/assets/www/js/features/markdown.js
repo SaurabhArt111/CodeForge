@@ -1,7 +1,9 @@
 // Markdown preview (sandboxed iframe, live updates) and a simple hex viewer.
+import * as lazy from "../core/lazy.js";
 import { h, icon, P, b64ToBytes, debounce, esc } from "../core/util.js";
 let A;
 export async function init(api) {
+  await lazy.marked();
   A = api;
   A.cmd.register({ id: "md.preview", title: "Markdown: Open Preview to the Side", run: () => { const p = A.ed.activeTab()?.path; if (p && /\.(md|markdown|mdx)$/i.test(p)) return preview(p); A.toast("Open a Markdown file first"); } });
   A.cmd.register({ id: "hex.view", title: "Open as Hex Viewer", run: () => { const p = A.ed.activeTab()?.path; if (p) return hex(p); } });
@@ -40,7 +42,7 @@ export function preview(path) {
 export async function hex(path) {
   A.ed.openCustom("hex:" + path, "Hex " + P.base(path), { iconName: "file-binary",
     render(el) {
-      el.classList.add("selectable"); const pre = h("pre", { style: { margin: 0, padding: "12px", font: "12px/1.5 var(--mono)" } }); el.append(pre);
+      el.classList.add("selectable"); const pre = h("pre", { style: { margin: 0, padding: "12px", font: "calc(12px * var(--fz))/1.5 var(--mono)" } }); el.append(pre);
       let off = 0; const CH = 4096;
       const more = h("button.btn", { style: { margin: "8px 12px" }, onclick: load }, "Load more");
       async function load() {

@@ -1,4 +1,5 @@
 // Source control (isomorphic-git over the native bridge): status, stage, commit, branches, history, diff, clone/pull/push, gutter marks.
+import * as lazy from "../core/lazy.js";
 import { fs, makeHttp } from "./gitfs.js";
 import { h, icon, P, relTime, debounce, textDec, esc } from "../core/util.js";
 let A, G, dir = null, state = { repo: false, branch: null, changes: [], staged: [], busy: false, log: null, remotes: [] }, view, body, msgEl, signedIn = false;
@@ -7,7 +8,7 @@ const cache = {};
 const IGNORE_DIRS = /(^|\/)(node_modules|\.gradle|build\/intermediates|\.cache|__pycache__|\.next|\.venv|venv)(\/|$)/;
 
 export async function init(api) {
-  A = api; G = window.git;
+  A = api; await lazy.git(); G = window.git;
   if (!G) throw new Error("isomorphic-git not loaded");
   A.registerView("git", build);
   const refreshSoon = debounce(() => refresh(), 700);
@@ -101,7 +102,7 @@ function render() {
   if (!body) return;
   if (!A.ws.isOpen) return body.replaceChildren(h("div.empty-state", "Open a folder to use source control.", h("button.btn.primary", { onclick: () => A.cmd.run("file.openFolder") }, "Open Folder"), h("button.btn", { onclick: cloneDialog }, "Clone Repository")));
   if (!state.repo) return body.replaceChildren(h("div.empty-state", "The folder you opened is not a Git repository.",
-    h("button.btn.primary", { onclick: initRepo }, icon("repo"), " Initialize Repository"), h("button.btn", { onclick: cloneDialog }, icon("repo-clone"), " Clone Repository…"), h("div.muted", { style: { fontSize: "12px" } }, "Tip: you can also use `git` in the terminal after setting up Linux.")));
+    h("button.btn.primary", { onclick: initRepo }, icon("repo"), " Initialize Repository"), h("button.btn", { onclick: cloneDialog }, icon("repo-clone"), " Clone Repository…"), h("div.muted", { style: { fontSize: "calc(12px * var(--fz))" } }, "Tip: you can also use `git` in the terminal after setting up Linux.")));
   const m = (msgEl = h("textarea", { rows: 2, placeholder: `Message (commit on “${state.branch}”)`, value: msgEl?.value || "", spellcheck: true, onkeydown: (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") commit(); } }));
   const row = (c, staged) => {
     const r = h("div.row.git-" + c.s, { title: c.f, onclick: () => openDiff(c, staged) },
@@ -245,7 +246,7 @@ export async function cloneDialog() {
   const depth = h("select", {}, h("option", { value: "0" }, "Full history"), h("option", { value: "1", selected: true }, "Shallow (latest only, fastest)"), h("option", { value: "50" }, "Last 50 commits"));
   const repos = h("div", { style: { marginTop: "10px", maxHeight: "34vh", overflow: "auto" } });
   signedIn = await A.N.github.signedIn().catch(() => false);
-  const sec = h("div", signedIn ? h("div.section-title", { style: { padding: "6px 0" } }, "Your GitHub repositories") : h("div.muted", { style: { fontSize: "12px", marginTop: "8px" } }, "Sign in with GitHub (account button) to browse and clone private repositories."), repos);
+  const sec = h("div", signedIn ? h("div.section-title", { style: { padding: "6px 0" } }, "Your GitHub repositories") : h("div.muted", { style: { fontSize: "calc(12px * var(--fz))", marginTop: "8px" } }, "Sign in with GitHub (account button) to browse and clone private repositories."), repos);
   if (signedIn) loadRepos(repos, (r) => { url.value = r.clone_url; name.value = r.name; });
   const r = await A.modal({ title: "Clone repository", width: 560, body: h("div", url, h("div", { style: { display: "flex", gap: "8px", marginTop: "8px" } }, name, depth), sec), buttons: [{ label: "Cancel", value: undefined }, { label: "Clone", primary: true, value: "go", onClick: () => (url.value.trim() ? true : false) }] });
   if (r !== "go") return;

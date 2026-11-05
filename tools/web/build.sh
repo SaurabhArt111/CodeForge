@@ -6,7 +6,7 @@ set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${1:-$ROOT/web-dist}"
 SRC="$ROOT/app/src/main/assets/www"
 rm -rf "$OUT"; mkdir -p "$OUT"; cp -R "$SRC/." "$OUT/"
-cp -R "$ROOT/tools/web/icons" "$OUT/icons"; cp "$ROOT/tools/web/sw.js" "$OUT/sw.js"; cp "$ROOT/tools/web/manifest.webmanifest" "$OUT/manifest.webmanifest"
+cp -R "$ROOT/tools/web/icons" "$OUT/icons"; cp "$ROOT/tools/web/sw.js" "$OUT/sw.js"; cp "$ROOT/tools/web/live-sw.js" "$OUT/live-sw.js"; mkdir -p "$OUT/vendor/sucrase"; cp "$ROOT/tools/web/vendor/sucrase.min.js" "$OUT/vendor/sucrase/sucrase.min.js"; cp "$ROOT/tools/web/manifest.webmanifest" "$OUT/manifest.webmanifest"
 cp "$SRC/assets/logo.svg" "$OUT/icons/icon.svg"
 python3 - "$OUT/index.html" <<'PY'
 import sys
@@ -14,7 +14,7 @@ p = sys.argv[1]; s = open(p, encoding="utf-8").read()
 tag = '<script>window.__CF_WEB = true;</script>\n<link rel="manifest" href="manifest.webmanifest">\n<link rel="apple-touch-icon" href="icons/icon-192.png">\n'
 assert "<head>" in s
 s = s.replace("<head>", "<head>\n" + tag, 1)
-sw = '<script>if ("serviceWorker" in navigator && location.protocol === "https:" || location.hostname === "localhost") navigator.serviceWorker.register("sw.js").catch(function () {});</script>\n</body>'
+sw = '<script>if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js").catch(function () {});</script>\n</body>'
 assert "</body>" in s
 s = s.replace("</body>", sw, 1)
 open(p, "w", encoding="utf-8").write(s)

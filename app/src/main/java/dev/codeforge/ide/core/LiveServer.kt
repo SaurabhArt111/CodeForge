@@ -63,7 +63,7 @@ class LiveServer(
     fun broadcast(event: String, data: String) {
         val msg = "event: $event\ndata: ${data.replace("\n", " ")}\n\n".toByteArray()
         for (c in clients) {
-            try { synchronized(c) { c.write(msg); c.flush() } } catch (_: IOException) { clients.remove(c) }
+            try { synchronized(c) { c.write(msg); c.flush() } } catch (_: Throwable) { clients.remove(c) }
         }
     }
 
@@ -76,7 +76,8 @@ class LiveServer(
             try {
                 val sock = server.accept()
                 pool.execute { try { handle(sock) } catch (_: Throwable) { try { sock.close() } catch (_: IOException) {} } }
-            } catch (_: IOException) {
+            } catch (_: Throwable) {
+                // IOException on close, RejectedExecutionException racing stop(): either way never crash the app
                 if (!running) return
             }
         }
@@ -167,7 +168,7 @@ class LiveServer(
         }
 
         val mime = mimeOf(file.name)
-        if (mime.startsWith("text/html")) {
+        if (mime.startsWith("text/html") && file.length() <= 4L * 1024 * 1024) {   // very large "html" is served raw: reading it into memory could exhaust the heap
             val html = inject(file.readText())
             respond(out, 200, "OK", "text/html; charset=utf-8", html.toByteArray(), method)
         } else {
@@ -224,8 +225,12 @@ class LiveServer(
     private val doctypeRe = Regex("<!doctype[^>]*>", RegexOption.IGNORE_CASE)
 
     /** Injected as early as possible (right after <head>) so console output of inline scripts is captured too. */
+    private val buildRe = Regex("<script[^>]*\\ssrc=[\"']([^\"']+\\.(?:jsx|tsx|ts|mts|vue|svelte))(?:\\?[^\"']*)?[\"']", RegexOption.IGNORE_CASE)
+
     private fun inject(html: String): String {
-        val tag = "<script src=\"/__cf_live.js\"></script>"
+        // a page that loads .jsx/.tsx/.vue sources (Vite, React, Vue…) cannot run from a static server: tell the client script, it shows a hint
+        val needs = buildRe.find(html)?.groupValues?.get(1)
+        val tag = "<script src=\"/__cf_live.js\"" + (if (needs != null) " data-needs-build=\"${esc(needs)}\"" else "") + "></script>"
         val at = (headRe.find(html) ?: htmlRe.find(html) ?: doctypeRe.find(html))?.range?.last?.plus(1) ?: 0
         return html.substring(0, at) + tag + html.substring(at)
     }
@@ -251,7 +256,7 @@ class LiveServer(
         while (running) {
             try { Thread.sleep(20_000) } catch (_: InterruptedException) { return }
             for (c in clients) {
-                try { synchronized(c) { c.write(": ping\n\n".toByteArray()); c.flush() } } catch (_: IOException) { clients.remove(c) }
+                try { synchronized(c) { c.write(": ping\n\n".toByteArray()); c.flush() } } catch (_: Throwable) { clients.remove(c) }
             }
         }
     }
@@ -273,20 +278,22 @@ class LiveServer(
     }
 
     private fun watchLoop() {
-        var prev = snapshot()
+        var prev = try { snapshot() } catch (_: Throwable) { HashMap() }
         while (running) {
             try { Thread.sleep(700) } catch (_: InterruptedException) { return }
-            if (clients.isEmpty()) { prev = snapshot(); continue }
-            val cur = snapshot()
-            val changed = ArrayList<String>()
-            for ((p, v) in cur) if (prev[p] != v) changed.add(p)
-            for (p in prev.keys) if (!cur.containsKey(p)) changed.add(p)
-            prev = cur
-            if (changed.isNotEmpty()) {
-                try { Thread.sleep(120) } catch (_: InterruptedException) { return }
-                val cssOnly = changed.all { it.endsWith(".css") }
-                broadcast(if (cssOnly) "css" else "reload", changed.first())
-            }
+            try {
+                if (clients.isEmpty()) { prev = snapshot(); continue }
+                val cur = snapshot()
+                val changed = ArrayList<String>()
+                for ((p, v) in cur) if (prev[p] != v) changed.add(p)
+                for (p in prev.keys) if (!cur.containsKey(p)) changed.add(p)
+                prev = cur
+                if (changed.isNotEmpty()) {
+                    Thread.sleep(120)
+                    val cssOnly = changed.all { it.endsWith(".css") }
+                    broadcast(if (cssOnly) "css" else "reload", changed.first())
+                }
+            } catch (_: InterruptedException) { return } catch (_: Throwable) { /* a transient listing error must never kill the app */ }
         }
     }
 
@@ -315,7 +322,14 @@ class LiveServer(
             "ogg" -> "audio/ogg"
             "pdf" -> "application/pdf"
             "xml" -> "application/xml; charset=utf-8"
-            "txt", "md", "log", "ts", "tsx", "jsx", "py", "java", "kt", "c", "h", "cpp", "go", "rs", "sh", "yml", "yaml", "toml" -> "text/plain; charset=utf-8"
+            "webmanifest" -> "application/manifest+json; charset=utf-8"
+            "xhtml" -> "application/xhtml+xml; charset=utf-8"
+            "csv" -> "text/csv; charset=utf-8"
+            "bmp" -> "image/bmp"
+            "mov" -> "video/quicktime"
+            "m4a" -> "audio/mp4"
+            // sources a browser cannot run: served as text so "view" works; pages that load them get the "needs a dev server" banner
+            "txt", "md", "log", "ts", "tsx", "jsx", "mts", "vue", "svelte", "py", "java", "kt", "c", "h", "cpp", "go", "rs", "sh", "yml", "yaml", "toml", "php" -> "text/plain; charset=utf-8"
             "zip" -> "application/zip"
             else -> "application/octet-stream"
         }
@@ -339,11 +353,19 @@ class LiveServer(
         const val CLIENT_JS = """(function(){
 if(window.__cfLive)return;window.__cfLive=true;
 function post(m){try{m.__cf=1;parent.postMessage(m,'*');}catch(e){}}
-function fmt(x){try{if(typeof x==='string')return x;if(x instanceof Error)return x.stack||x.message;return JSON.stringify(x);}catch(e){return String(x);}}
-['log','info','warn','error','debug'].forEach(function(k){var o=console[k];console[k]=function(){var a=Array.prototype.slice.call(arguments).map(fmt);post({type:'console',level:k,args:a});return o.apply(console,arguments);};});
-window.addEventListener('error',function(e){post({type:'console',level:'error',args:[e.message+' ('+String(e.filename||'').split('/').pop()+':'+e.lineno+')']});});
-window.addEventListener('unhandledrejection',function(e){var r=e.reason;post({type:'console',level:'error',args:['Unhandled promise rejection: '+(r&&(r.stack||r.message)||r)]});});
+var budget=40,last=Date.now(),dropped=0;
+function ok(){var n=Date.now();budget=Math.min(40,budget+(n-last)/1000*25);last=n;if(budget<1){dropped++;return false;}if(dropped){var d=dropped;dropped=0;post({type:'console',level:'warn',args:['… '+d+' console messages dropped (too many per second)']});}budget--;return true;}
+function cut(s){s=String(s);return s.length>2000?s.slice(0,2000)+'… ('+s.length+' chars)':s;}
+function fmt(x){try{if(typeof x==='string')return cut(x);if(x instanceof Error)return cut(x.stack||x.message);return cut(JSON.stringify(x));}catch(e){return cut(x);}}
+['log','info','warn','error','debug'].forEach(function(k){var o=console[k];console[k]=function(){if(ok()){var a=Array.prototype.slice.call(arguments,0,8).map(fmt);post({type:'console',level:k,args:a});}return o.apply(console,arguments);};});
+window.addEventListener('error',function(e){if(ok())post({type:'console',level:'error',args:[cut(e.message)+' ('+String(e.filename||'').split('/').pop()+':'+e.lineno+')']});});
+window.addEventListener('unhandledrejection',function(e){if(!ok())return;var r=e.reason;post({type:'console',level:'error',args:['Unhandled promise rejection: '+cut(r&&(r.stack||r.message)||r)]});});
+document.addEventListener('webglcontextlost',function(){post({type:'console',level:'error',args:['WebGL context lost (GPU memory exhausted?) — reduce canvas size / textures']});},true);
 function nav(){post({type:'nav',url:location.href,title:document.title});}
+try{var cs=document.currentScript,nb=cs&&cs.getAttribute('data-needs-build');if(nb){post({type:'needsBuild',src:nb});
+document.addEventListener('DOMContentLoaded',function(){var b=document.createElement('div');b.setAttribute('style','position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#1e1e1e;color:#ddd;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 16px #0008');
+b.innerHTML='<b style="color:#f59e0b">This page needs a dev server.</b> It loads <code></code>, which a browser cannot run as it is. Run the dev server of the project (<code>npm run dev</code>) in the terminal and open the address it prints. <a href="#" style="color:#4fc1ff;margin-left:6px">Dismiss</a>';
+b.querySelector('code').textContent=nb;b.querySelector('a').onclick=function(e){e.preventDefault();b.remove();};document.body.appendChild(b);});}}catch(e){}
 window.addEventListener('load',nav);window.addEventListener('popstate',nav);window.addEventListener('hashchange',nav);
 try{var es=new EventSource('/__cf_live');
 es.addEventListener('reload',function(){location.reload();});

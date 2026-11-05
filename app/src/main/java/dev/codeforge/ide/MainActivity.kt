@@ -37,6 +37,7 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import dev.codeforge.ide.bridge.Bridge
+import dev.codeforge.ide.core.CrashRecorder
 import dev.codeforge.ide.core.FsOps
 import dev.codeforge.ide.core.Paths
 import org.json.JSONArray
@@ -55,6 +56,10 @@ class MainActivity : Activity(), Bridge.Host {
     private lateinit var web: WebView
     private var pick: Pair<String, CompletableFuture<JSONObject?>>? = null
     private var fileChooser: ValueCallback<Array<Uri>>? = null
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
+    private val heartbeat = object : Runnable {
+        override fun run() { CrashRecorder.crumb(CrashRecorder.memoryLine()); ui.postDelayed(this, 30_000) }
+    }
 
     // ------------------------------------------------------------------ lifecycle
 
@@ -71,6 +76,7 @@ class MainActivity : Activity(), Bridge.Host {
             return
         }
         Bridge.host = this
+        CrashRecorder.crumb("MainActivity.onCreate" + if (savedInstanceState != null) " (restored)" else "")
         buildWebView()
         setContentView(web)
         requestNotificationPermission()
@@ -88,13 +94,34 @@ class MainActivity : Activity(), Bridge.Host {
         super.onResume()
         if (::web.isInitialized) {
             web.onResume()
+            Bridge.setUiActive(true)
             Bridge.emit("app.resume", JSONObject().put("allFiles", hasAllFiles()))
         }
+        CrashRecorder.foreground = true
+        CrashRecorder.crumb("resume")
+        ui.removeCallbacks(heartbeat); ui.postDelayed(heartbeat, 30_000)
     }
 
     override fun onPause() {
-        if (::web.isInitialized) { Bridge.emit("app.pause", JSONObject()); web.onPause() }
+        if (::web.isInitialized) { Bridge.emit("app.pause", JSONObject()); web.onPause(); Bridge.setUiActive(false) }
+        CrashRecorder.crumb("pause")
+        ui.removeCallbacks(heartbeat)
         super.onPause()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Memory is getting short: let the UI drop the inline preview and other heavy things BEFORE Android kills the process.
+        if (level >= TRIM_MEMORY_RUNNING_LOW && ::web.isInitialized) {
+            CrashRecorder.crumb("trimMemory level=$level ${CrashRecorder.memoryLine()}")
+            Bridge.emit("app.memory", JSONObject().put("level", level))
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        CrashRecorder.crumb("onLowMemory ${CrashRecorder.memoryLine()}")
+        if (::web.isInitialized) Bridge.emit("app.memory", JSONObject().put("level", 15))
     }
 
     override fun onDestroy() {
@@ -156,8 +183,13 @@ class MainActivity : Activity(), Bridge.Host {
             }
 
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
-                // Renderer crashed or was killed to free memory: rebuild the view; terminals keep running.
-                runOnUiThread { recreate() }
+                // The WebView's renderer crashed or was killed for memory. Without this override the whole app would die.
+                // Rebuild the view instead; terminals, dev servers and files are untouched.
+                val crashed = detail.didCrash()
+                CrashRecorder.record("renderer", if (crashed) "Editor view crashed (WebView renderer)" else "Editor view killed to free memory",
+                    "didCrash=$crashed\n" + CrashRecorder.memoryLine(), fatal = false, withLogcat = true)
+                Bridge.recovery = JSONObject().put("kind", "renderer").put("crashed", crashed).put("at", System.currentTimeMillis())
+                runOnUiThread { try { recreate() } catch (_: Throwable) { } }
                 return true
             }
         }
@@ -386,9 +418,29 @@ class MainActivity : Activity(), Bridge.Host {
         }
     }
 
+    override fun openPreview(url: String, title: String) {
+        runOnUiThread {
+            try {
+                val i = Intent(this, PreviewActivity::class.java).putExtra(PreviewActivity.EXTRA_URL, url).putExtra(PreviewActivity.EXTRA_TITLE, title)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
+                CrashRecorder.crumb("open isolated preview ${url.take(100)}")
+                startActivity(i)
+            } catch (e: Throwable) {
+                CrashRecorder.crumb("open isolated preview failed: ${e.message}")
+            }
+        }
+    }
+
     override fun openUrl(url: String) {
         runOnUiThread {
-            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            val uri = Uri.parse(url)
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) {
+                // no default browser set (or it refused): let the user pick, and as a last resort show the page in the built-in preview window
+                try { startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW, uri), "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                catch (_: Exception) { openPreview(url, "Preview") }
+            }
         }
     }
 

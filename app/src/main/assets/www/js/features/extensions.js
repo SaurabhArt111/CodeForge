@@ -2,6 +2,7 @@
 // declarative parts of VS Code extensions: colour themes, file-icon themes, snippets, language configuration.
 // Extension code (`browser`/`main`) runs in the sandboxed "lite" extension host (exthost.js) — a best-effort subset of the VS Code API;
 // extensions that need Node.js, webviews, language servers or debuggers cannot run, and the UI says so.
+import * as lazy from "../core/lazy.js";
 import { h, icon, P, fmtBytes, parseJsonc, debounce, esc } from "../core/util.js";
 import * as host from "./exthost.js";
 let A, root, view, listEl, searchIn, filter = "installed", market = { q: "", items: [], total: 0, offset: 0, loading: false };
@@ -164,11 +165,11 @@ function render() {
   if (filter === "plugins") { A.feat("plugins").then((pl) => pl.renderInto(listEl)); return; }
   if (filter === "installed") {
     const q = searchIn?.value.toLowerCase(); const items = list().filter((e) => !q || (e.name + e.id).toLowerCase().includes(q));
-    listEl.replaceChildren(...(items.length ? items.map(installedRow) : [h("div.empty-state", "No extensions installed.", h("div", { style: { fontSize: "12px" } }, "Themes, icon themes, snippets and language configurations from Open VSX are supported."), h("button.btn.primary", { onclick: () => setFilter("market") }, "Browse marketplace"), h("button.btn", { onclick: installFromFile }, "Install from VSIX…"))]));
+    listEl.replaceChildren(...(items.length ? items.map(installedRow) : [h("div.empty-state", "No extensions installed.", h("div", { style: { fontSize: "calc(12px * var(--fz))" } }, "Themes, icon themes, snippets and language configurations from Open VSX are supported."), h("button.btn.primary", { onclick: () => setFilter("market") }, "Browse marketplace"), h("button.btn", { onclick: installFromFile }, "Install from VSIX…"))]));
     return;
   }
   const kids = market.items.filter(matchesFilter).map(marketRow);
-  if (market.error) kids.unshift(h("div.empty-state", icon("warning"), market.error, h("div", { style: { fontSize: "12px" } }, `Registry: ${registry()}`), h("button.btn", { onclick: () => searchMarket(true) }, "Retry")));
+  if (market.error) kids.unshift(h("div.empty-state", icon("warning"), market.error, h("div", { style: { fontSize: "calc(12px * var(--fz))" } }, `Registry: ${registry()}`), h("button.btn", { onclick: () => searchMarket(true) }, "Retry")));
   if (market.loading) kids.push(h("div.empty-state", h("div.spinner")));
   else if (market.items.length < market.total) kids.push(h("div.empty-state", h("button.btn", { onclick: () => searchMarket(false) }, "Load more")));
   listEl.replaceChildren(...kids);
@@ -180,13 +181,13 @@ function installedRow(e) {
   let iconEl = h("div.ext-icon.ph", icon("extensions")); if (e.manifest.icon) { iconEl = extIcon(""); A.N.fs.url(P.join(e.base, e.manifest.icon)).then((u) => (iconEl.src = u)); }
   const st = host.status(e.id); const warn = st === "error" || st === "denied" || e.contributes.some((k) => !SUPPORTED.includes(k)); const good = e.contributes.filter((k) => SUPPORTED.includes(k));
   return h("div.ext-row" + (e.enabled ? "" : ".off"), { onclick: () => details(e) }, iconEl,
-    h("div.ext-info", h("div.ext-name", e.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "11px" } }, e.version)), h("div.ext-desc", e.description), h("div.ext-pub", e.publisher, " · ", good.length ? good.join(", ") : "no supported contributions", warn ? h("span", { title: st === "error" ? "Extension code failed to start" : st === "denied" ? "Extension code is not allowed to run" : "Parts of this extension can't run here" }, " ⚠") : null, e.main && st === "running" ? h("span", { title: "Extension code is running" }, " ●") : null)),
+    h("div.ext-info", h("div.ext-name", e.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "calc(11px * var(--fz))" } }, e.version)), h("div.ext-desc", e.description), h("div.ext-pub", e.publisher, " · ", good.length ? good.join(", ") : "no supported contributions", warn ? h("span", { title: st === "error" ? "Extension code failed to start" : st === "denied" ? "Extension code is not allowed to run" : "Parts of this extension can't run here" }, " ⚠") : null, e.main && st === "running" ? h("span", { title: "Extension code is running" }, " ●") : null)),
     h("div.ext-actions", h("button.btn.small", { onclick: (ev) => { ev.stopPropagation(); setEnabled(e, !e.enabled); } }, e.enabled ? "Disable" : "Enable"), h("button.icon-btn", { title: "Uninstall", onclick: (ev) => { ev.stopPropagation(); uninstall(e); } }, icon("trash"))));
 }
 function marketRow(x) {
   const id = `${x.namespace}.${x.name}`.toLowerCase(); const have = installed.get(id);
   return h("div.ext-row", { onclick: () => marketDetails(x) }, extIcon(x.files?.icon),
-    h("div.ext-info", h("div.ext-name", x.displayName || x.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "11px" } }, x.version)), h("div.ext-desc", x.description || ""), h("div.ext-pub", x.namespace, x.downloadCount != null ? ` · ↓${fmtK(x.downloadCount)}` : "", x.averageRating ? ` · ★${x.averageRating.toFixed(1)}` : "")),
+    h("div.ext-info", h("div.ext-name", x.displayName || x.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "calc(11px * var(--fz))" } }, x.version)), h("div.ext-desc", x.description || ""), h("div.ext-pub", x.namespace, x.downloadCount != null ? ` · ↓${fmtK(x.downloadCount)}` : "", x.averageRating ? ` · ★${x.averageRating.toFixed(1)}` : "")),
     h("div.ext-actions", have ? h("span.chip", "Installed") : h("button.btn.small.primary", { onclick: (ev) => { ev.stopPropagation(); installRemote(x); } }, "Install")));
 }
 const fmtK = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
@@ -212,6 +213,7 @@ function frame(html, tall = "52vh") {
   fr.srcdoc = themedDoc(html); return fr;
 }
 async function renderMd(text, resolve) {
+  await lazy.marked();
   let html = window.marked ? window.marked.parse(text) : `<pre>${esc(text)}</pre>`;
   html = html.replace(/<script[\s\S]*?<\/script>/gi, ""); // iframe is sandboxed + CSP'd anyway; belt and braces
   return resolve ? resolveImages(html, resolve) : html;
@@ -238,7 +240,7 @@ function compat(contributes, main, ext) {
   const stText = { running: "Extension code is running", idle: "Extension code starts when needed (command / language)", starting: "Starting…", denied: "Extension code was not allowed to run", error: "Extension code failed to start", off: "" }[st];
   return h("div.ext-compat", h("div", icon("pass"), " Supported here: ", sup.length ? sup.join(", ") : "—"),
     main ? h("div", icon(st === "error" ? "error" : "info"), " ", stText || "Has extension code: runs in CodeForge's lite extension host (a subset of the VS Code API; no Node.js)") : null,
-    un.length ? h("div", icon("warning"), " Not supported: ", un.join(", "), h("div.muted", { style: { fontSize: "11px" } }, un.map((k) => SUPPORT_NOTES[k]).filter(Boolean).join(" · "))) : null);
+    un.length ? h("div", icon("warning"), " Not supported: ", un.join(", "), h("div.muted", { style: { fontSize: "calc(11px * var(--fz))" } }, un.map((k) => SUPPORT_NOTES[k]).filter(Boolean).join(" · "))) : null);
 }
 
 // ---------------------------------------------------------------- extension settings (contributes.configuration)

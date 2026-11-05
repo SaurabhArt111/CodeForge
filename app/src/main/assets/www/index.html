@@ -62,26 +62,34 @@
     <div id="side-backdrop"></div>
 
     <main id="workbench">
+      <!-- TOP sheet: stays visible above the keyboard – handy for a terminal while you type code -->
+      <section id="sheet-top" class="sheet top hidden" data-sheet="top">
+        <div class="sheet-head">
+          <div class="sheet-tabs"></div><div class="spacer"></div><div class="sheet-actions"></div>
+          <button class="icon-btn sheet-add" title="Add a view to this sheet"><i class="codicon codicon-add"></i></button>
+          <button class="icon-btn sheet-more" title="Sheet options"><i class="codicon codicon-ellipsis"></i></button>
+          <button class="icon-btn sheet-max" title="Maximize"><i class="codicon codicon-screen-full"></i></button>
+          <button class="icon-btn sheet-close" title="Close sheet"><i class="codicon codicon-close"></i></button>
+        </div>
+        <div class="sheet-body"></div>
+      </section>
+      <div id="sash-top" class="sash h hidden"></div>
       <div id="editor-area">
         <div class="group" id="group-0"><div class="tabs-row"><div class="tabs"></div></div><div class="group-body"></div></div>
         <div class="sash v hidden" id="sash-split"></div>
         <div class="group hidden" id="group-1"><div class="tabs-row"><div class="tabs"></div></div><div class="group-body"></div></div>
       </div>
       <div id="sash-h" class="sash h hidden"></div>
-      <section id="panel" class="hidden">
-        <div id="panel-head">
-          <div id="panel-tabs">
-            <button class="ptab" data-panel="terminal">Terminal</button>
-            <button class="ptab" data-panel="preview">Preview</button>
-            <button class="ptab" data-panel="output">Output</button>
-            <button class="ptab" data-panel="problems">Problems<span class="count hidden" id="problems-count"></span></button>
-          </div>
-          <div class="spacer"></div>
-          <div id="panel-actions"></div>
-          <button class="icon-btn" id="panel-max" title="Maximize"><i class="codicon codicon-screen-full"></i></button>
-          <button class="icon-btn" id="panel-close" title="Close panel"><i class="codicon codicon-close"></i></button>
+      <!-- BOTTOM sheet (id kept for older code) -->
+      <section id="panel" class="sheet bottom hidden" data-sheet="bottom">
+        <div class="sheet-head">
+          <div class="sheet-tabs"></div><div class="spacer"></div><div class="sheet-actions"></div>
+          <button class="icon-btn sheet-add" title="Add a view to this sheet"><i class="codicon codicon-add"></i></button>
+          <button class="icon-btn sheet-more" title="Sheet options"><i class="codicon codicon-ellipsis"></i></button>
+          <button class="icon-btn sheet-max" title="Maximize"><i class="codicon codicon-screen-full"></i></button>
+          <button class="icon-btn sheet-close" title="Close sheet"><i class="codicon codicon-close"></i></button>
         </div>
-        <div id="panel-body">
+        <div class="sheet-body">
           <div class="pane" id="pane-terminal"></div>
           <div class="pane" id="pane-preview"></div>
           <div class="pane" id="pane-output"></div>
@@ -110,15 +118,6 @@
 <div id="overlay"></div>
 <div id="toasts"></div>
 
-<script src="vendor/xterm/xterm.js"></script>
-<script src="vendor/xterm/addon-fit.js"></script>
-<script src="vendor/xterm/addon-web-links.js"></script>
-<script src="vendor/xterm/addon-search.js"></script>
-<script src="vendor/xterm/addon-unicode11.js"></script>
-<script src="vendor/jszip/jszip.min.js"></script>
-<script src="vendor/buffer/buffer.js"></script>
-<script src="vendor/isomorphic-git/isomorphic-git.min.js"></script>
-<script src="vendor/marked/marked.umd.js"></script>
 <script src="vendor/monaco/vs/loader.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>

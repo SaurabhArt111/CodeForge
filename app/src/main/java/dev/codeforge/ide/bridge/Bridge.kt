@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.webkit.JavaScriptReplyProxy
 import dev.codeforge.ide.BuildConfig
 import dev.codeforge.ide.core.Auth
+import dev.codeforge.ide.core.CrashRecorder
 import dev.codeforge.ide.core.FsOps
 import dev.codeforge.ide.core.GitHubAuth
 import dev.codeforge.ide.core.LinuxEnv
@@ -64,10 +65,17 @@ object Bridge {
         fun authenticate(title: String, subtitle: String): JSONObject
         fun authStatus(): JSONObject
         fun setSecure(on: Boolean)
+        /** Opens [url] in the isolated preview window (separate process). */
+        fun openPreview(url: String, title: String)
     }
 
     @Volatile var host: Host? = null
     @Volatile var pendingIntent: JSONObject? = null
+    /** Set by MainActivity when the WebView had to be rebuilt after its renderer died; the UI reads it once on start. */
+    @Volatile var recovery: JSONObject? = null
+    /** False while the activity is paused: the WebView is frozen then, so terminal output is not streamed into it. */
+    @Volatile var uiActive = false
+        private set
     val fsToken: String = UUID.randomUUID().toString().replace("-", "")
 
     @Volatile private var reply: JavaScriptReplyProxy? = null
@@ -125,9 +133,23 @@ object Bridge {
     private class Pending { val buf = ByteArrayOutputStream(); var scheduled = false }
     private val pending = ConcurrentHashMap<String, Pending>()
 
+    private val missed = ConcurrentHashMap.newKeySet<String>()
+
+    /** Called by MainActivity on resume / pause. */
+    fun setUiActive(active: Boolean) {
+        uiActive = active
+        CrashRecorder.foreground = active
+        for (s in SessionManager.all()) { s.throttling = active; s.resetFlow() }
+        if (active) {
+            // output produced while the WebView was frozen was kept in each session's replay buffer: ask the terminals to resync
+            for (id in missed.toList()) { missed.remove(id); emit("term.resync", JSONObject().put("id", id)) }
+        }
+    }
+
     private fun flush(id: String) {
         val p = pending[id] ?: return
         val bytes = synchronized(p) { p.scheduled = false; val b = p.buf.toByteArray(); p.buf.reset(); b }
+        if (!uiActive) { missed.add(id); return }
         var off = 0
         while (off < bytes.size) {
             val n = minOf(64 * 1024, bytes.size - off)
@@ -143,7 +165,7 @@ object Bridge {
                 p.buf.write(data, 0, len)
                 if (!p.scheduled) {
                     p.scheduled = true
-                    flusher.schedule({ flush(s.id) }, 8, TimeUnit.MILLISECONDS)
+                    flusher.schedule({ try { flush(s.id) } catch (_: Throwable) {} }, 16, TimeUnit.MILLISECONDS)
                 }
             }
         }
@@ -261,6 +283,23 @@ object Bridge {
         "sys.setSecure" -> { host?.setSecure(a.optBoolean(0, false)); true }
         "auth.lock" -> { Auth.revoke(); true }
 
+        // ---------------- crash recorder / diagnostics / isolated preview
+        "crash.list" -> CrashRecorder.list()
+        "crash.unseen" -> CrashRecorder.unseen()
+        "crash.read" -> CrashRecorder.read(a.str(0)) ?: JSONObject.NULL
+        "crash.delete" -> { CrashRecorder.delete(a.str(0)); true }
+        "crash.clear" -> { CrashRecorder.clear(); true }
+        "crash.seen" -> { CrashRecorder.markSeen(if (a.isNull(0)) null else (0 until a.getJSONArray(0).length()).map { a.getJSONArray(0).getString(it) }); true }
+        "crash.report" -> a.obj(0).let { o ->
+            CrashRecorder.record(o.optString("kind", "js-error").take(24), o.optString("title", "Error"), o.optString("detail", ""), o.optBoolean("fatal", false), withLogcat = o.optBoolean("logcat", false))
+        }
+        "crash.crumbs" -> { val arr = a.optJSONArray(0); if (arr != null) for (i in 0 until minOf(arr.length(), 50)) CrashRecorder.crumb("ui " + arr.getString(i)); true }
+        "crash.bundle" -> CrashRecorder.bundle(if (a.isNull(0)) null else (0 until a.getJSONArray(0).length()).map { a.getJSONArray(0).getString(it) })
+        "crash.diagnostics" -> CrashRecorder.diagnostics()
+        "crash.takeRecovery" -> { val r = recovery; recovery = null; r ?: JSONObject.NULL }
+        "crash.testNative" -> { CrashRecorder.record("test", "Test report", "Created from Settings → Diagnostics.\n" + CrashRecorder.memoryLine(), false, withLogcat = true); true }
+        "preview.open" -> a.obj(0).let { o -> host?.openPreview(o.getString("url"), o.optString("title", "Preview")); true }
+
         // ---------------- github
         "github.deviceStart" -> GitHubAuth.deviceStart(a.str(0).ifBlank { BuildConfig.GITHUB_CLIENT_ID }, a.optString(1, "repo read:user user:email workflow gist read:org"))
         "github.devicePoll" -> GitHubAuth.devicePoll(a.str(0).ifBlank { BuildConfig.GITHUB_CLIENT_ID }, a.str(1))
@@ -289,8 +328,10 @@ object Bridge {
         "term.close" -> { SessionManager.get(a.str(0))?.let { if (it.alive) it.kill() }; SessionManager.remove(a.str(0)); pending.remove(a.str(0)); true }
         "term.list" -> JSONArray().also { arr -> SessionManager.all().forEach { arr.put(termInfo(it)) } }
         "term.attach" -> SessionManager.get(a.str(0))?.let { s ->
+            s.resetFlow()
             termInfo(s).put("b64", Net.b64(s.replay.snapshot()))
         } ?: JSONObject.NULL
+        "term.ack" -> { SessionManager.get(a.str(0))?.ack(a.optLong(1, 0)); true }
         "term.rename" -> { SessionManager.get(a.str(0))?.title = a.str(1); true }
 
         // ---------------- linux environment
@@ -316,6 +357,7 @@ object Bridge {
             .put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
             .put("githubClientId", BuildConfig.GITHUB_CLIENT_ID)
             .put("allFiles", hasAllFiles())
+            .put("features", JSONObject().put("isolatedPreview", true).put("crashRecorder", true).put("termFlow", true))
             .put("paths", JSONObject()
                 .put("home", Paths.home.path).put("files", Paths.files.path).put("data", Paths.data.path)
                 .put("env", Paths.env.path).put("rootfs", Paths.rootfs.path).put("native", Paths.nativeDir.path)

@@ -1,5 +1,6 @@
 // Editor: Monaco (AMD) bootstrap, two editor groups with tabs, text models, save / auto-save, external-change detection,
 // image / binary / markdown / diff / custom tabs.
+import * as fontscale from "../core/fontscale.js";
 import { N } from "../core/bridge.js";
 import { settings } from "../core/settings.js";
 import { bus, Emitter } from "../core/events.js";
@@ -27,7 +28,7 @@ const AV_EXT = { mp3: "audio", wav: "audio", ogg: "audio", m4a: "audio", flac: "
 // ------------------------------------------------------------------------------------ monaco bootstrap
 export async function loadMonaco() {
   if (monaco) return monaco;
-  const base = location.origin + "/vendor/monaco/";
+  const base = new URL("vendor/monaco/", document.baseURI).href;
   window.MonacoEnvironment = {
     getWorkerUrl() {
       const code = `self.MonacoEnvironment={baseUrl:${JSON.stringify(base)}};importScripts(${JSON.stringify(base + "vs/base/worker/workerMain.js")});`;
@@ -83,7 +84,7 @@ export function editorOptions() {
   const mobile = isMobile();
   const auto = s("editor.autoClosing") ? "languageDefined" : "never";
   return {
-    fontSize: s("editor.fontSize"), fontFamily: `"${s("editor.fontFamily")}", var(--mono), monospace`, fontLigatures: s("editor.ligatures"), lineHeight: s("editor.lineHeight") || 0,
+    fontSize: fontscale.scaled(s("editor.fontSize")), fontFamily: `"${s("editor.fontFamily")}", var(--mono), monospace`, fontLigatures: s("editor.ligatures"), lineHeight: s("editor.lineHeight") || 0,
     tabSize: s("editor.tabSize"), insertSpaces: s("editor.insertSpaces"), wordWrap: s("editor.wordWrap"), minimap: { enabled: s("editor.minimap") && !mobile },
     lineNumbers: s("editor.lineNumbers"), renderWhitespace: s("editor.renderWhitespace"), bracketPairColorization: { enabled: s("editor.bracketPairColors") },
     smoothScrolling: s("editor.smoothScrolling"), cursorBlinking: s("editor.cursorBlinking"), stickyScroll: { enabled: s("editor.stickyScroll") },
@@ -277,7 +278,7 @@ export function initEditor() {
     apply: (px) => { const w = area.getBoundingClientRect().width, f = px / w; groups[0].el.style.flex = `${f} 1 0`; groups[1].el.style.flex = `${1 - f} 1 0`; },
     reset: () => { groups[0].el.style.flex = ""; groups[1].el.style.flex = ""; },
   });
-  settings.on("change", (k) => { if (k.startsWith("editor.") && monaco) { const o = editorOptions(); groups.forEach((g) => g?.editor?.updateOptions(o)); monaco.editor.getModels().forEach((m) => m.updateOptions({ tabSize: o.tabSize, insertSpaces: o.insertSpaces })); } });
+  settings.on("change", (k) => { if ((k.startsWith("editor.") || k === "ui.fontScale") && monaco) { const o = editorOptions(); groups.forEach((g) => g?.editor?.updateOptions(o)); monaco.editor.getModels().forEach((m) => m.updateOptions({ tabSize: o.tabSize, insertSpaces: o.insertSpaces })); } });
   settings.on("change:files.autoSave", () => { if (settings.get("files.autoSave") === "afterDelay") dirtyDocs().forEach(scheduleAutoSave); });
   document.addEventListener("visibilitychange", () => { if (document.hidden) { if (settings.get("files.autoSave") !== "off") dirtyDocs().forEach((d) => save(d.path, { auto: true })); } else checkExternal(); });
   window.addEventListener("focus", () => checkExternal());
@@ -395,7 +396,7 @@ function emptyGroupHint(g) {
   if (g.tabs.length) { g.body.querySelector(".group-empty")?.remove(); return; }
   if (!g.body.querySelector(".group-empty") && g.idx === 0) {
     const hint = h("div.surface.group-empty.on", { style: { display: "grid", placeItems: "center", color: "var(--muted)" } }, h("div", { style: { textAlign: "center", lineHeight: "2" } },
-      h("i.codicon.codicon-code", { style: { fontSize: "64px", opacity: ".25", display: "block" } }),
+      h("i.codicon.codicon-code", { style: { fontSize: "calc(64px * var(--fz))", opacity: ".25", display: "block" } }),
       h("div", "Open a file from the Explorer"), h("div.muted", "or press the search bar for the command palette")));
     g.body.append(hint);
   }

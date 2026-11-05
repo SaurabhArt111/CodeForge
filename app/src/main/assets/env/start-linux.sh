@@ -68,6 +68,8 @@ done
 SHIM
   chmod 755 "$CF_ROOTFS/usr/local/bin/$n" 2>/dev/null
 done
+# `cf`: control the IDE from the terminal (open / preview / ai / install coding CLIs …)
+if [ -f "$CF_ENV/cf.sh" ]; then cp "$CF_ENV/cf.sh" "$CF_ROOTFS/usr/local/bin/cf" 2>/dev/null && chmod 755 "$CF_ROOTFS/usr/local/bin/cf" 2>/dev/null; fi
 cat > "$CF_ROOTFS/etc/profile.d/20-codeforge-env.sh" <<'PROF'
 export BROWSER=/usr/local/bin/cf-open-url
 export CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING:-1}

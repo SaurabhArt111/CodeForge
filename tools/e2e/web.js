@@ -20,8 +20,8 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); 
   ok(await page.evaluate(async () => (await import("/js/core/bridge.js")).N.fs.exists("/home/restored/proj/src/app.js")), "zip / unzip round trip");
   // terminal mini shell
   await page.click("#btn-term"); await page.waitForSelector(".term-body.on .xterm-screen"); await page.waitForTimeout(800); await page.click(".term-body.on .xterm-screen");
-  await page.keyboard.type("ls\r"); await page.waitForTimeout(500); await page.keyboard.type("node src/app.js\r"); await page.waitForTimeout(1200); await page.keyboard.type("echo hello && npm -v\r"); await page.waitForTimeout(500); await page.keyboard.type("npm run dev\r"); await page.waitForTimeout(500);
-  const t = await page.locator(".term-body.on .xterm-rows").innerText(); console.log(t.slice(-360).replace(/\n+/g, " | "));
+  await page.keyboard.type("ls\r"); await page.waitForTimeout(500); await page.keyboard.type("node src/app.js\r"); await page.waitForTimeout(1200); await page.keyboard.type("echo hello && npm -v\r"); await page.waitForTimeout(500); await page.keyboard.type("git status\r"); await page.waitForTimeout(500);
+  const t = await page.evaluate(async () => { const b = (await import("/js/ui/terminal.js")).get().xt.buffer.active; let o = []; for (let i = 0; i < b.length; i++) o.push(b.getLine(i)?.translateToString(true) || ""); return o.join("\n"); }); console.log(t.slice(-360).replace(/\n+/g, " | "));
   ok(/index\.html/.test(t) && /web ok/.test(t), "mini shell: ls + node run file"); ok(/not available in the web version/.test(t), "mini shell: npm explains it is unavailable");
   await page.screenshot({ path: "/tmp/cf-dev/w1.png" });
   // secrets + PIN gating
@@ -37,7 +37,7 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); 
   ok(await page.evaluate(async () => (await import("/js/core/settings.js")).settings.get("editor.fontSize")) === 19, "settings persist after reload (web)");
   ok((await page.evaluate(async () => (await import("/js/core/bridge.js")).N.secret.names())).includes("ai.test"), "secrets persist after reload");
   // unsupported features fail gracefully
-  const live = await page.evaluate(async () => { try { await (await import("/js/core/bridge.js")).N.live.start({ root: "/home/proj", port: 5500 }); return "started"; } catch (e) { return e.message; } }); ok(/Android app/.test(live), "live server explains it needs Android");
+  const live = await page.evaluate(async () => { try { await (await import("/js/core/bridge.js")).N.live.start({ root: "/home/proj", port: 5500 }); return "started"; } catch (e) { return e.message; } }); ok(live === "started", "live server starts in the browser (service worker): " + live);
   const real = logs.filter((l) => !/favicon|DevTools|serviceWorker|sandbox attribute/.test(l)); console.log("console:", real.slice(0, 8));
   await browser.close(); console.log(fails ? `${fails} FAILED` : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });

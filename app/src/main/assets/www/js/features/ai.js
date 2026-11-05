@@ -1,10 +1,13 @@
 // AI assistant: multi-provider chat with streaming, workspace context (@files, selection), code-apply actions and an agent mode with
 // tools (read/list/search/write/edit/run).  API keys live in the native keystore (AES-GCM) and are injected into requests natively.
+import * as lazy from "../core/lazy.js";
 import { h, icon, P, uid, debounce, esc, shellQuote, fmtBytes, textDec } from "../core/util.js";
 let A, view, msgsEl, inputEl, sendBtn, ctxEl, headEl, session = null, streaming = null;
 const chat = { id: uid(), title: "New chat", messages: [], created: Date.now() };
 const ctx = { activeFile: true, selection: true, files: [] };
 let mode = "chat";
+let sessionAllow = false;   // "Allow all for this chat" in the agent approval dialog
+let rules = { root: null, text: "", at: 0 };   // AGENTS.md / CLAUDE.md of the open project
 
 // ---------------------------------------------------------------- providers
 export const PROVIDERS = {
@@ -29,16 +32,39 @@ const CLIS = [
   { id: "codex", name: "OpenAI Codex CLI", pkg: "@openai/codex", bin: "codex", note: "OpenAI's coding agent (ChatGPT sign-in or API key)" },
   { id: "copilot", name: "GitHub Copilot CLI", pkg: "@github/copilot", bin: "copilot", note: "Requires a GitHub Copilot subscription" },
   { id: "gemini", name: "Gemini CLI", pkg: "@google/gemini-cli", bin: "gemini", note: "Google's Gemini in the terminal" },
+  { id: "opencode", name: "opencode", pkg: "opencode-ai", bin: "opencode", note: "Open-source terminal coding agent (any provider)" },
+  { id: "qwen", name: "Qwen Code", pkg: "@qwen-code/qwen-code", bin: "qwen", note: "Alibaba's Qwen coding agent" },
   { id: "aider", name: "Aider", pip: "aider-chat", bin: "aider", note: "AI pair programming (pip)" },
 ];
 
 export async function init(api) {
-  A = api; A.registerView("ai", build);
+  await lazy.marked(); A = api; A.registerView("ai", build);
   A.bus.on("ai:selection", (kind) => selectionAction(kind));
   A.cmd.register({ id: "ai.new", title: "AI: New Chat", run: () => { A.showView("ai"); newChat(); } }); A.cmd.register({ id: "ai.focus", title: "AI: Focus Chat Input", run: () => { A.showView("ai"); inputEl?.focus(); } });
   A.cmd.register({ id: "ai.key", title: "AI: Set API Key…", run: () => setKey() }); A.cmd.register({ id: "ai.provider", title: "AI: Select Provider / Model…", run: pickProvider });
   A.cmd.register({ id: "ai.cli", title: "AI: Open Coding CLI (Claude Code, Codex, Copilot…)", run: cliMenu });
   A.cmd.register({ id: "ai.agent", title: "AI: Toggle Agent Mode", run: () => setMode(mode === "agent" ? "chat" : "agent") });
+  A.cmd.register({ id: "ai.export", title: "AI: Copy Chat as Markdown", run: exportChat });
+  A.cmd.register({ id: "ai.clearHistory", title: "AI: Delete All Saved Chats", run: clearHistory });
+  A.cmd.register({ id: "ai.fixProblems", title: "AI: Fix Problems in This File (Agent)", run: () => { A.showView("ai"); setMode("agent"); send("Check the problems (get_problems) reported for the open file and fix them. Re-check when done."); } });
+}
+
+/** Entry point for `cf ai …` in a terminal: prefill (or send) a prompt, optionally in agent mode. */
+export async function external(text, { send: go = false, agent = false } = {}) {
+  A.showView("ai"); await new Promise((r) => setTimeout(r, 60));
+  if (agent) setMode("agent");
+  if (!inputEl) return;
+  inputEl.value = text; onInput();
+  if (go) send(); else inputEl.focus();
+}
+function chatMarkdown() {
+  return chat.messages.filter((m) => !m.error && (m.text || m.toolCalls?.length)).map((m) => (m.role === "user" ? "## You\n\n" + m.text : "## AI\n\n" + (m.text || "") + (m.toolCalls?.length ? "\n\n" + m.toolCalls.map((t) => `> tool: ${t.name} ${summarizeArgs(t.input)}`).join("\n") : ""))).join("\n\n");
+}
+async function exportChat() { if (!chat.messages.length) return A.toast("Nothing to copy yet"); await A.N.sys.clipboardSet(`# ${chat.title}\n\n` + chatMarkdown()); A.toast("Chat copied as Markdown", { kind: "success" }); }
+async function clearHistory() {
+  if (!(await A.confirm("Delete all saved AI chats on this device?", { okLabel: "Delete", danger: true }))) return;
+  const dir = await chatDir(); let n = 0; for (const f of await A.N.fs.list(dir).catch(() => [])) if (f.n.endsWith(".json")) { await A.N.fs.rm(P.join(dir, f.n)).catch(() => {}); n++; }
+  A.toast(`Deleted ${n} chat${n === 1 ? "" : "s"}`);
 }
 
 // ---------------------------------------------------------------- UI
@@ -58,6 +84,9 @@ function renderHead() {
   const p = curProvider();
   headEl.replaceChildren(
     h("button.chip.ai-pill", { onclick: pickProvider, title: "Change provider / model" }, icon("sparkle"), ` ${p.label.split(" (")[0]} · ${curModel() || "model?"}`),
+    h("button.icon-btn.ai-more", { title: "More", onclick: (e) => A.contextMenu([
+      { label: "New chat", icon: "add", run: newChat }, { label: "History…", icon: "history", run: history }, { label: "Coding CLIs…", icon: "terminal", run: cliMenu },
+      { label: "Provider & key…", icon: "settings-gear", run: pickProvider }, { label: "Copy chat as Markdown", icon: "copy", run: exportChat }], e.clientX, e.clientY) }, icon("kebab-horizontal")),
     h("div.ai-modes", ...[["chat", "Chat"], ["agent", "Agent"]].map(([m, l]) => h("button.chip" + (mode === m ? ".on" : ""), { onclick: () => setMode(m), title: m === "agent" ? "The AI can read, edit files and run commands in your project (asks before changing things)" : "Ask questions with your code as context" }, l))));
 }
 function setMode(m) { mode = m; renderHead(); A.toast(m === "agent" ? "Agent mode: the AI can use tools in your project" : "Chat mode", { timeout: 1500 }); }
@@ -116,7 +145,7 @@ async function history() {
   items.sort((a, b) => b.m - a.m); if (!items.length) return A.toast("No saved chats yet");
   const r = await A.quickPick(items, { placeholder: "Open previous chat" }); if (r) { Object.assign(chat, r); renderMsgs(); }
 }
-function newChat() { if (streaming) stop(); Object.assign(chat, { id: uid(), title: "New chat", messages: [], created: Date.now() }); renderMsgs(); inputEl?.focus(); }
+function newChat() { if (streaming) stop(); sessionAllow = false; Object.assign(chat, { id: uid(), title: "New chat", messages: [], created: Date.now() }); renderMsgs(); inputEl?.focus(); }
 
 // ---------------------------------------------------------------- rendering
 function sanitize(html) {
@@ -134,6 +163,7 @@ function renderMarkdown(text, host) {
     pre.classList.add("ai-code");
     pre.prepend(h("div.ai-code-bar", h("span.muted", lang || "code"), h("span", { style: { flex: 1 } }),
       h("button.icon-btn", { title: "Copy", onclick: () => { A.N.sys.clipboardSet(src); A.toast("Copied", { timeout: 900 }); } }, icon("copy")),
+      /^(sh|bash|shell|zsh|console)$/i.test(lang) ? h("button.icon-btn", { title: "Run in terminal", onclick: () => A.term.run(src.replace(/^\$ /gm, ""), { cwd: A.ws.root || undefined, title: "ai", reuse: false }) }, icon("play")) : null,
       h("button.icon-btn", { title: "Insert at cursor", onclick: () => A.ed.insertText(src) }, icon("insert")),
       h("button.icon-btn", { title: "Apply…", onclick: (e) => applyMenu(src, lang, e.clientX, e.clientY) }, icon("diff"))));
   });
@@ -156,16 +186,26 @@ function renderMsgs() {
 }
 function welcome() {
   const p = curProvider();
-  return h("div.ai-welcome", icon("sparkle", "big"), h("div", { style: { fontWeight: 600, fontSize: "14px" } }, "CodeForge AI"), h("div.muted", `Using ${p.label} · ${curModel() || "no model"}`),
+  return h("div.ai-welcome", icon("sparkle", "big"), h("div", { style: { fontWeight: 600, fontSize: "calc(14px * var(--fz))" } }, "CodeForge AI"), h("div.muted", `Using ${p.label} · ${curModel() || "no model"}`),
     h("div.ai-suggest", ...["Explain this file", "Find bugs in the selection", "Write unit tests", "Add comments and docs", "Refactor for readability"].map((t) => h("button.chip", { onclick: () => { inputEl.value = t; send(); } }, t))),
-    h("div.muted", { style: { fontSize: "12px" } }, "Agent mode lets the AI read, edit files and run commands. Add an API key via ⚙ — keys stay in the Android Keystore."));
+    h("div.muted", { style: { fontSize: "calc(12px * var(--fz))" } }, "Agent mode lets the AI read, edit files and run commands. Add an API key via ⚙ — keys stay in the Android Keystore."));
 }
 function addBubble(m) {
   if (m.role === "tool") return null;
   const el = h("div.ai-msg." + m.role);
   if (m.role === "user") { el.append(h("div.ai-text", m.text)); if (m.ctx?.length) el.append(h("div.ai-ctxline", ...m.ctx.map((c) => h("span.chip", c)))); }
-  else { const body = h("div.ai-md"); renderMarkdown(m.text || "", body); el.append(body); for (const tc of m.toolCalls || []) el.append(toolCard(tc)); }
+  else { const body = h("div.ai-md"); renderMarkdown(m.text || "", body); el.append(body); for (const tc of m.toolCalls || []) el.append(toolCard(tc)); if (!m.error) el.append(msgActions(m)); }
   msgsEl.append(el); m.el = el; return el;
+}
+function msgActions(m) {
+  return h("div.ai-actions",
+    h("button.icon-btn", { title: "Copy reply", onclick: () => { A.N.sys.clipboardSet(m.text || ""); A.toast("Copied", { timeout: 900 }); } }, icon("copy")),
+    h("button.icon-btn", { title: "Regenerate", onclick: () => regenerate(m) }, icon("refresh")));
+}
+async function regenerate(m) {
+  if (streaming) return; const i = chat.messages.indexOf(m); if (i < 0) return;
+  // drop this reply (and anything after it) and ask again
+  chat.messages.splice(i); renderMsgs(); await runTurn();
 }
 function toolCard(tc) {
   const el = h("div.ai-tool", { dataset: { id: tc.id } }, icon("tools"), h("span.ai-tool-name", tc.name), h("span.muted.ai-tool-args", summarizeArgs(tc.input)), h("span.ai-tool-status", tc.result ? (tc.result.isError ? "✗" : "✓") : "…"));
@@ -175,6 +215,15 @@ function toolCard(tc) {
 const summarizeArgs = (i) => Object.values(i || {}).map((v) => String(v).replace(/\s+/g, " ").slice(0, 40)).join(", ").slice(0, 70);
 
 // ---------------------------------------------------------------- context & sending
+async function loadRules() {
+  if (!A.ws.isOpen || !A.settings.get("ai.rules")) { rules = { root: null, text: "", at: 0 }; return; }
+  if (rules.root === A.ws.root && Date.now() - rules.at < 30000) return;
+  let text = "";
+  for (const n of ["AGENTS.md", "CLAUDE.md", ".codeforge/rules.md", ".github/copilot-instructions.md"]) {
+    try { const f = P.join(A.ws.root, n); if (await A.N.fs.exists(f)) { const r = await A.N.fs.readText(f, { max: 40000 }); if (r.text) text += `\n\n# ${n}\n${r.text.slice(0, 6000)}`; } } catch { /* unreadable → skip */ }
+  }
+  rules = { root: A.ws.root, text: text.slice(0, 12000), at: Date.now() };
+}
 async function buildContext() {
   const parts = [], labels = []; let budget = 120_000;
   const add = (path, text, label) => { if (budget <= 0) return; const t = text.length > 40_000 ? text.slice(0, 40_000) + "\n… [truncated]" : text; budget -= t.length; parts.push(`<file path="${A.ws.isOpen && P.inside(A.ws.root, path) ? P.rel(A.ws.root, path) : path}">\n${t}\n</file>`); labels.push(label); };
@@ -187,8 +236,9 @@ async function buildContext() {
 const SLASH = { "/explain": "Explain the code clearly, step by step.", "/fix": "Find and fix the bug(s). Show the corrected code and explain the cause.", "/tests": "Write thorough unit tests for this code using the project's test framework (or a sensible default).", "/docs": "Add concise documentation comments to this code.", "/refactor": "Refactor this code for readability and maintainability without changing behaviour.", "/optimize": "Suggest and apply performance optimizations." };
 function systemPrompt() {
   const base = `You are CodeForge AI, an expert programming assistant built into an Android code editor (Monaco editor, a terminal with Alpine Linux, live preview, git).\nBe concise and practical. When you output code, use fenced code blocks with a language tag. Prefer minimal diffs: only show changed parts unless asked for the full file.\n${A.ws.isOpen ? `The open project is "${A.ws.name}".` : "No project is open."}\nCurrent date: ${new Date().toDateString()}.`;
-  const agent = mode === "agent" ? `\n\nYou are in AGENT mode with tools to read, search, create and edit files in the project and run shell commands. Work step by step: inspect before editing, make focused edits with edit_file (exact string replacement) or write_file, and verify by running commands when useful. Paths are relative to the project root. Stop and give a short summary when the task is done.` : "";
-  return base + agent + (A.settings.get("ai.systemPrompt") ? "\n\n" + A.settings.get("ai.systemPrompt") : "");
+  const agent = mode === "agent" ? `\n\nYou are in AGENT mode with tools to read, search, create and edit files in the project and run shell commands. Work step by step: find files with find_files/search, read before editing, make focused edits with edit_file (exact string replacement) or write_file, then verify with get_problems and by running the project's checks/tests when useful. You may call several read-only tools at once. Paths are relative to the project root. Stop and give a short summary when the task is done.` : "";
+  const proj = rules.text ? `\n\nProject instructions found in the repository (follow them):${rules.text}` : "";
+  return base + agent + proj + (A.settings.get("ai.systemPrompt") ? "\n\n" + A.settings.get("ai.systemPrompt") : "");
 }
 
 async function send(textOverride) {
@@ -197,7 +247,10 @@ async function send(textOverride) {
   const p = curProvider(); const k = await keyFor(p);
   if (!k) { if (await A.confirm(`No API key for ${p.label}. Add one now?`, { okLabel: "Add key" })) { await setKey(A.settings.get("ai.provider")); } return; }
   if (!curModel()) { await pickModel(); if (!curModel()) return; }
-  const first = text.split(/\s/)[0]; if (SLASH[first]) text = SLASH[first] + text.slice(first.length);
+  const first = text.split(/\s/)[0];
+  if (first === "/agent" || first === "/chat") { inputEl.value = ""; setMode(first.slice(1)); const rest = text.slice(first.length).trim(); if (!rest) return; text = rest; }
+  else if (SLASH[first]) text = SLASH[first] + text.slice(first.length);
+  await loadRules();
   if (first === "/clear") { inputEl.value = ""; return newChat(); }
   const c = await buildContext();
   const user = { role: "user", text, apiText: (c.text ? c.text + "\n\n" : "") + text, ctx: c.labels };
@@ -217,13 +270,17 @@ async function runTurn() {
       for (const tc of asst.toolCalls) el.append(toolCard(tc));
       if (streaming.cancelled) break;
       if (!asst.toolCalls.length) break;
-      for (const tc of asst.toolCalls) { tc.result = await runTool(tc); if (tc.el) { tc.el.querySelector(".ai-tool-status").textContent = tc.result.isError ? "✗" : "✓"; } if (streaming.cancelled) break; }
+      let pending = [];                                  // consecutive read-only tools run at the same time, writes/commands one by one in order
+      const exec = async (tc) => { tc.result = await runTool(tc); const st = tc.el?.querySelector(".ai-tool-status"); if (st) st.textContent = tc.result.isError ? "✗" : "✓"; };
+      for (const tc of asst.toolCalls) { if (streaming.cancelled) break; if (READONLY.has(tc.name)) pending.push(exec(tc)); else { await Promise.all(pending); pending = []; await exec(tc); } }
+      await Promise.all(pending);
       if (streaming.cancelled) break;
       void done;
     }
   } catch (e) { if (!streaming?.cancelled) { const err = { role: "assistant", text: "⚠️ " + (e.message || e), error: true }; chat.messages.push(err); addBubble(err); } }
   finally { streaming = null; setBusy(false); saveChat(); msgsEl.scrollTop = msgsEl.scrollHeight; }
 }
+const note = (t) => { let n = msgsEl?.querySelector(".ai-note"); if (!t) return n?.remove(); if (!n) { n = h("div.ai-note.muted"); msgsEl.append(n); } n.textContent = t; msgsEl.scrollTop = msgsEl.scrollHeight; };
 function setBusy(b) { sendBtn.replaceChildren(icon(b ? "debug-stop" : "send")); sendBtn.title = b ? "Stop" : "Send"; }
 function stop() { if (!streaming) return; streaming.cancelled = true; streaming.abort?.(); }
 
@@ -232,26 +289,45 @@ const TOOLS = [
   { name: "list_dir", description: "List files and folders in a directory of the project (relative path, '.' for root).", props: { path: { type: "string" } }, req: ["path"] },
   { name: "read_file", description: "Read a text file from the project.", props: { path: { type: "string" } }, req: ["path"] },
   { name: "search", description: "Search the project for a text string or regex. Returns matching lines with file and line number.", props: { query: { type: "string" }, regex: { type: "boolean" } }, req: ["query"] },
+  { name: "find_files", description: "Find files by name. Accepts a substring or a glob like 'src/**/*.test.js'. Returns project-relative paths.", props: { pattern: { type: "string" } }, req: ["pattern"] },
+  { name: "get_problems", description: "List the current errors and warnings (diagnostics) of open files, or of one file if path is given.", props: { path: { type: "string" } }, req: [] },
+  { name: "open_file", description: "Show a file in the editor for the user, optionally at a line.", props: { path: { type: "string" }, line: { type: "number" } }, req: ["path"] },
+  { name: "delete_file", description: "Delete a file or folder (asks the user first).", props: { path: { type: "string" } }, req: ["path"] },
   { name: "write_file", description: "Create or overwrite a file with the given full content.", props: { path: { type: "string" }, content: { type: "string" } }, req: ["path", "content"] },
-  { name: "edit_file", description: "Replace one exact occurrence of old_string with new_string in a file. old_string must match exactly (including whitespace) and be unique.", props: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" } }, req: ["path", "old_string", "new_string"] },
+  { name: "edit_file", description: "Replace one exact occurrence of old_string with new_string in a file. old_string must match exactly (including whitespace) and be unique.", props: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, req: ["path", "old_string", "new_string"] },
   { name: "run_command", description: "Run a shell command in the project root (Linux environment if installed, else Android sh). Returns exit code and output (truncated).", props: { command: { type: "string" } }, req: ["command"] },
 ];
+/** glob → RegExp: ** = any depth, * = within a folder, ? = one character */
+function globRe(g) {
+  let o = "";
+  for (let k = 0; k < g.length; k++) {
+    const c = g[k];
+    if (c === "*") { if (g[k + 1] === "*") { k++; if (g[k + 1] === "/") { k++; o += "(?:.*/)?"; } else o += ".*"; } else o += "[^/]*"; }
+    else if (c === "?") o += "[^/]";
+    else o += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp("^" + o + "$", "i");
+}
+const READONLY = new Set(["list_dir", "read_file", "search", "find_files", "get_problems", "open_file"]);
 const schema = (t) => ({ type: "object", properties: t.props, required: t.req });
 const toolsFor = (p) => (mode !== "agent" ? undefined : p.kind === "anthropic" ? TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: schema(t) })) : TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: schema(t) } })));
 
 function toApi(p) {
   const out = []; const msgs = chat.messages.filter((m) => !m.error);
+  // keep long agent runs inside the model's context window: old tool output and old attached files are shortened
+  const lastUsers = new Set(msgs.filter((m) => m.role === "user").slice(-2)); const recentTools = new Set(msgs.flatMap((m) => m.toolCalls || []).slice(-8));
+  const toolOut = (tc) => { if (!tc.result) return "(cancelled)"; const o = String(tc.result.output); return recentTools.has(tc) || o.length <= 1500 ? o : o.slice(0, 1500) + "\n…[older tool output trimmed]"; };
   for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i];
-    if (m.role === "user") { out.push({ role: "user", content: m.apiText ?? m.text }); continue; }
+    if (m.role === "user") { out.push({ role: "user", content: lastUsers.has(m) ? (m.apiText ?? m.text) : m.text }); continue; }
     if (!m.text && !m.toolCalls?.length) continue;
     if (p.kind === "anthropic") {
       const blocks = []; if (m.text) blocks.push({ type: "text", text: m.text }); for (const tc of m.toolCalls || []) blocks.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input || {} });
       out.push({ role: "assistant", content: blocks });
-      if (m.toolCalls?.length) out.push({ role: "user", content: m.toolCalls.map((tc) => ({ type: "tool_result", tool_use_id: tc.id, content: tc.result ? String(tc.result.output) : "(cancelled)", is_error: !!tc.result?.isError })) });
+      if (m.toolCalls?.length) out.push({ role: "user", content: m.toolCalls.map((tc) => ({ type: "tool_result", tool_use_id: tc.id, content: toolOut(tc), is_error: !!tc.result?.isError })) });
     } else {
       const o = { role: "assistant", content: m.text || null }; if (m.toolCalls?.length) o.tool_calls = m.toolCalls.map((tc) => ({ id: tc.id, type: "function", function: { name: tc.name, arguments: JSON.stringify(tc.input || {}) } }));
-      out.push(o); for (const tc of m.toolCalls || []) out.push({ role: "tool", tool_call_id: tc.id, content: tc.result ? String(tc.result.output) : "(cancelled)" });
+      out.push(o); for (const tc of m.toolCalls || []) out.push({ role: "tool", tool_call_id: tc.id, content: toolOut(tc) });
     }
   }
   return out;
@@ -272,9 +348,19 @@ async function streamOnce(p, asst, onText) {
   let url, body;
   if (p.kind === "anthropic") { url = baseOf(p) + "/v1/messages"; body = { model: curModel(), max_tokens: 8192, stream: true, system: systemPrompt(), messages, temperature: temp, ...(tools ? { tools } : {}) }; }
   else { url = baseOf(p) + "/chat/completions"; body = { model: curModel(), stream: true, messages: [{ role: "system", content: systemPrompt() }, ...messages], temperature: temp, ...(tools ? { tools } : {}) }; if (A.settings.get("ai.provider") === "openai" && /^(o\d|gpt-5)/.test(curModel())) delete body.temperature; }
-  const s = A.N.net.stream({ url, method: "POST", headers: hd, body: JSON.stringify(body), timeoutMs: 15 * 60_000 }); streaming.abort = () => s.abort();
-  const head = await s.head;
-  if (head.status >= 400) { let t = ""; for await (const c of s.body) t += textDec.decode(c); let msg = t; try { const j = JSON.parse(t); msg = j.error?.message || j.message || t; } catch { /* raw */ } throw new Error(`${head.status}: ${String(msg).slice(0, 400)}`); }
+  let s, head;
+  for (let attempt = 0; ; attempt++) {                       // transient failures (rate limit, overloaded, flaky mobile network) are retried with backoff
+    s = A.N.net.stream({ url, method: "POST", headers: hd, body: JSON.stringify(body), timeoutMs: 15 * 60_000 }); streaming.abort = () => s.abort();
+    let err = null; try { head = await s.head; } catch (e) { err = e; }
+    if (streaming.cancelled) throw new Error("cancelled");
+    if (!err && head.status < 400) break;
+    const status = err ? 0 : head.status; const transient = err || status === 429 || status === 408 || status >= 500;
+    let t = ""; if (!err) { try { for await (const c of s.body) t += textDec.decode(c); } catch { /* ignore */ } }
+    if (transient && attempt < 3) { const wait = [1500, 4000, 9000][attempt]; note(`${status ? "Server busy (" + status + ")" : "Connection problem"} — retrying in ${Math.round(wait / 1000)}s…`); await new Promise((r) => setTimeout(r, wait)); if (streaming.cancelled) throw new Error("cancelled"); continue; }
+    let msg = err ? err.message : t; try { const j = JSON.parse(t); msg = j.error?.message || j.message || t; } catch { /* raw */ }
+    throw new Error(`${status || "network"}: ${String(msg).slice(0, 400)}`);
+  }
+  note("");
   let text = ""; const tcs = new Map();
   for await (const data of sse(s)) {
     if (streaming.cancelled) break; if (data === "[DONE]") break; let j; try { j = JSON.parse(data); } catch { continue; }
@@ -296,9 +382,17 @@ async function streamOnce(p, asst, onText) {
 
 // ---------------------------------------------------------------- agent tools
 const rel = (p) => { if (!A.ws.isOpen) throw new Error("No project open"); const full = P.norm(String(p).startsWith("/") ? p : P.join(A.ws.root, p || ".")); if (!P.inside(A.ws.root, full)) throw new Error("Path outside the project: " + p); return full; };
-async function approve(title, detail) {
-  if (!A.settings.get("ai.agentConfirm")) return true;
-  const r = await A.modal({ title, width: 560, body: h("pre.selectable", { style: { whiteSpace: "pre-wrap", maxHeight: "50vh", overflow: "auto", font: "12px var(--mono)", margin: 0 } }, detail), buttons: [{ label: "Reject", value: false, danger: true }, { label: "Allow", value: true, primary: true }] });
+function diffView(oldS, newS) {
+  const box = h("div.ai-diff.selectable");
+  for (const l of String(oldS).split("\n").slice(0, 60)) box.append(h("div.del", "- " + l));
+  for (const l of String(newS).split("\n").slice(0, 60)) box.append(h("div.add", "+ " + l));
+  return box;
+}
+async function approve(title, detail, { diff } = {}) {
+  if (!A.settings.get("ai.agentConfirm") || sessionAllow) return true;
+  const body = diff ? diffView(diff.old, diff.new) : h("pre.selectable", { style: { whiteSpace: "pre-wrap", maxHeight: "50vh", overflow: "auto", font: "calc(12px * var(--fz)) var(--mono)", margin: 0 } }, detail);
+  const r = await A.modal({ title, width: 600, className: "tall", body, buttons: [{ label: "Reject", value: false, danger: true }, { label: "Allow all in this chat", value: "all" }, { label: "Allow", value: true, primary: true }] });
+  if (r === "all") { sessionAllow = true; return true; }
   return r === true;
 }
 async function runTool(tc) {
@@ -308,11 +402,23 @@ async function runTool(tc) {
       case "list_dir": { const items = await A.N.fs.list(rel(i.path)); return ok(items.filter((x) => x.n !== ".git" && x.n !== "node_modules").sort((a, b) => a.n.localeCompare(b.n)).map((x) => (x.t === "d" ? x.n + "/" : x.n)).join("\n") || "(empty)"); }
       case "read_file": { const r = await A.N.fs.readText(rel(i.path), { max: 400_000 }); if (r.binary) return bad("binary file"); if (r.tooLarge) return bad("file too large"); return ok(r.text.length > 60_000 ? r.text.slice(0, 60_000) + "\n…[truncated]" : r.text); }
       case "search": { const r = await A.N.search.text({ id: uid(), root: A.ws.root, query: String(i.query), regex: !!i.regex, caseSensitive: false, wholeWord: false, include: [], exclude: ["node_modules", ".git", "dist", "build"], max: 60 }); return ok(r.results.map((m) => `${m.rel}:${m.line}: ${m.text.trim().slice(0, 160)}`).join("\n") || "no matches"); }
+      case "find_files": {
+        const files = await A.ws.fileIndex(); const q = String(i.pattern || "").trim(); if (!q) return bad("empty pattern");
+        const re = /[*?]/.test(q) ? globRe(q) : null;
+        const hit = files.filter((f) => (re ? re.test(f) : f.toLowerCase().includes(q.toLowerCase()))).slice(0, 200); return ok(hit.join("\n") || "no files match");
+      }
+      case "get_problems": {
+        const mon = A.ed.monaco; if (!mon) return ok("editor not ready"); const want = i.path ? rel(i.path) : null;
+        const ms = mon.editor.getModelMarkers({}).filter((m) => m.severity >= 4 && (!want || m.resource.path === want || m.resource.fsPath === want));
+        return ok(ms.slice(0, 80).map((m) => `${P.rel(A.ws.root, m.resource.path)}:${m.startLineNumber}:${m.startColumn} ${m.severity >= 8 ? "error" : "warning"}: ${m.message}`).join("\n") || "no problems");
+      }
+      case "open_file": { const full = rel(i.path); await A.ed.openFile(full, { line: i.line || undefined }); return ok("Opened " + P.rel(A.ws.root, full)); }
+      case "delete_file": { const full = rel(i.path); if (full === A.ws.root) return bad("refusing to delete the project root"); if (!(await approve(`Delete ${P.rel(A.ws.root, full)}?`, "This cannot be undone."))) return bad("Rejected by user"); await A.N.fs.rm(full); A.ws.emit("changed", new Set([P.dir(full)])); return ok("Deleted " + P.rel(A.ws.root, full)); }
       case "write_file": { const full = rel(i.path); const exists = await A.N.fs.exists(full); if (!(await approve(`${exists ? "Overwrite" : "Create"} ${P.rel(A.ws.root, full)}?`, String(i.content).slice(0, 4000)))) return bad("Rejected by user"); await A.N.fs.writeText(full, String(i.content)); A.ws.emit("changed", new Set([P.dir(full)])); if (A.ed.getDoc(full)) A.ed.reload(full, true); return ok(`Wrote ${P.rel(A.ws.root, full)} (${String(i.content).length} chars)`); }
-      case "edit_file": { const full = rel(i.path); const r = await A.N.fs.readText(full); if (r.text == null) return bad("cannot read file"); const n = r.text.split(i.old_string).length - 1; if (n === 0) return bad("old_string not found (must match exactly)"); if (n > 1) return bad(`old_string occurs ${n} times; make it unique`);
-        if (!(await approve(`Edit ${P.rel(A.ws.root, full)}?`, `--- old\n${i.old_string}\n+++ new\n${i.new_string}`))) return bad("Rejected by user");
+      case "edit_file": { const full = rel(i.path); const r = await A.N.fs.readText(full); if (r.text == null) return bad("cannot read file"); const n = r.text.split(i.old_string).length - 1; if (n === 0) return bad("old_string not found (must match exactly)"); if (n > 1 && !i.replace_all) return bad(`old_string occurs ${n} times; make it unique or pass replace_all`);
+        if (!(await approve(`Edit ${P.rel(A.ws.root, full)}?`, "", { diff: { old: i.old_string, new: i.new_string } }))) return bad("Rejected by user");
         const doc = A.ed.getDoc(full); if (doc?.model && doc.dirty) await A.ed.save(full);
-        await A.N.fs.writeText(full, r.text.replace(i.old_string, () => i.new_string), { bom: r.bom }); if (doc) A.ed.reload(full, true); return ok("Edited " + P.rel(A.ws.root, full)); }
+        await A.N.fs.writeText(full, (i.replace_all ? r.text.split(i.old_string).join(i.new_string) : r.text.replace(i.old_string, () => i.new_string)), { bom: r.bom }); if (doc) A.ed.reload(full, true); return ok("Edited " + P.rel(A.ws.root, full)); }
       case "run_command": { if (!(await approve("Run command?", String(i.command)))) return bad("Rejected by user"); const r = await A.N.proc.exec({ line: String(i.command), cwd: A.ws.root, timeoutMs: 120_000 }); const out = r.out.length > 8000 ? "…" + r.out.slice(-8000) : r.out; A.ws.invalidate(); return { output: `exit code ${r.code}${r.timedOut ? " (timed out)" : ""}\n${out}`, isError: r.code !== 0 }; }
       default: return bad("unknown tool " + tc.name);
     }

@@ -4,7 +4,8 @@
 //   network  → fetch() (subject to CORS), streaming via ReadableStream
 //   terminal → a small built-in shell (ls, cd, cat, node, …) — no real processes in a browser
 //   secrets  → AES-GCM with a non-extractable WebCrypto key (protects against casual inspection only), PIN via PBKDF2
-// Not available: Linux/proot, npm/git CLI, live server (local ports), GitHub device-flow (CORS) — paste a token instead.
+// Not available: Linux/proot, npm/git CLI, GitHub device-flow (CORS) — paste a token instead. The live server is emulated by the service worker (tools/web/live-sw.js).
+import * as lazy from "./lazy.js";
 import { b64ToBytes, bytesToB64 } from "./util.js";
 
 const HOME = "/home", DATA = "/data", SHARED = "/shared";
@@ -58,6 +59,7 @@ function searchText(o) {
   return { results, files: nfiles, scanned, truncated };
 }
 async function zipOut(srcs, base) {
+  await lazy.jszip();
   const zip = new window.JSZip(); let count = 0;
   for (const s of srcs) for (const k of underPrefix(abs(s)).sort()) { const rel = k.slice(abs(base || dirOf(s)).length).replace(/^\//, ""); if (!rel) continue; const r = files.get(k); if (r.t === "d") zip.folder(rel); else { zip.file(rel, r.d); count++; } }
   return { bytes: await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }), count };
@@ -98,6 +100,29 @@ const corsProxy = () => { try { return localStorage.getItem("cf.corsProxy") || "
 const viaProxy = (url) => { const p = corsProxy(); return p && /^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\//.test(url) ? p.replace(/\/$/, "") + "/" + url.replace(/^https?:\/\//, "") : url; };
 const reqInit = (o, extra = {}) => ({ method: o.method || "GET", headers: o.headers || {}, body: o.bodyB64 ? b64ToBytes(o.bodyB64) : o.body ?? undefined, ...extra });
 
+// ------------------------------------------------------------------------------------------ live server (service worker)
+// The real server is tools/web/live-sw.js: it answers <scope>__live/<port>/… from the IndexedDB filesystem, compiles JSX/TS and maps npm
+// packages to esm.sh. Here we only register which folder is served on which "port".
+let liveServers = null, liveBc = null;
+async function liveMap() { if (!liveServers) { liveServers = new Map(); try { const o = (await kvGet("live")) || {}; for (const [p, v] of Object.entries(o)) liveServers.set(+p, { port: +p, root: v.root, spa: v.spa !== false }); } catch { /* none */ } } return liveServers; }
+const liveSave = async () => kvSet("live", Object.fromEntries([...(await liveMap()).values()].map((v) => [v.port, { root: v.root, spa: v.spa }])));
+let swScope = "";
+const liveInfo = (v) => ({ port: v.port, root: v.root, spa: v.spa, lan: false, clients: 0, url: new URL(`__live/${v.port}/`, swScope || document.baseURI).href });
+async function liveStart(o) {
+  if (!("serviceWorker" in navigator) || !window.isSecureContext) throw new Error("The in-browser live server needs a secure page (https:// or localhost). Open this site over HTTPS.");
+  let reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) throw new Error("The service worker is not registered yet. Reload the page once and try again.");
+  const ready = await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 8000))]);
+  if (!ready) throw new Error("The service worker is still starting. Wait a moment and try again.");
+  swScope = ready.scope;
+  const root = abs(o.root); if (files.get(root)?.t !== "d") throw new Error("Not a folder: " + root);
+  const map = await liveMap(); const spa = o.spa !== false;
+  const same = [...map.values()].find((v) => v.root === root); if (same) { if (same.spa !== spa) { same.spa = spa; await liveSave(); } return liveInfo(same); }
+  let port = +o.port || 5500; while (map.has(port)) port++;
+  map.set(port, { port, root, spa }); await liveSave();
+  return liveInfo(map.get(port));
+}
+
 // ------------------------------------------------------------------------------------------ mini shell (terminal)
 const shells = new Map(); let termSeq = 1;
 const CRLF = (s) => s.replace(/\r?\n/g, "\r\n");
@@ -110,7 +135,7 @@ Promise.resolve().then(()=>new Promise(r=>setTimeout(r,50))).then(()=>postMessag
     w.onmessage = (e) => { clearTimeout(t); w.terminate(); res(e.data); }; w.onerror = (e) => { clearTimeout(t); w.terminate(); res({ out: "", err: e.message }); };
   });
 }
-function createShell(emit, id, cwd) {
+function createShell(emit, id, cwd, startLive) {
   const sh = { id, cwd, line: "", hist: [], hi: -1, busy: false, title: "web shell" };
   const w = (s) => emit("term.data", { id, b64: bytesToB64(enc.encode(s)) });
   const prompt = () => w(`\x1b[1;32mweb\x1b[0m:\x1b[1;34m${sh.cwd === HOME ? "~" : sh.cwd}\x1b[0m$ `);
@@ -132,7 +157,14 @@ function createShell(emit, id, cwd) {
   async function exec(line) {
     const a = argv(line.trim()); if (!a.length) return; const c = a.shift();
     if (cmds[c]) { try { await cmds[c](a); } catch (x) { e(`${c}: ${x.message}`); } }
-    else if (["npm", "npx", "git", "python", "python3", "pip", "bash", "sh", "yarn", "pnpm", "vite", "tsc"].includes(c)) e(`\x1b[33m${c}: not available in the web version.\x1b[0m Install the CodeForge Android app for a real Linux environment.`);
+    else if (["npm", "npx", "yarn", "pnpm", "bun", "vite"].includes(c) && (c === "vite" || /(^|\s)(dev|start|serve|preview|vite)(\s|$)/.test(a.join(" ")))) {
+      try {
+        const s = await startLive({ root: sh.cwd, port: 5173, spa: true });
+        e(`\x1b[1m  CodeForge in-browser dev server\x1b[0m\n\n  \x1b[32m➜\x1b[0m  Local:   ${s.url}\n\nServes HTML/CSS/JS, compiles JSX and TypeScript, loads npm packages from esm.sh. No Node.js here: server code and build steps need the Android app.`);
+        w(`\x1b]7770;preview;${s.url}\x07`);
+      } catch (x) { e(`\x1b[31m${x.message}\x1b[0m`); }
+    }
+    else if (["npm", "npx", "git", "python", "python3", "pip", "bash", "sh", "yarn", "pnpm", "bun", "vite", "tsc"].includes(c)) e(`\x1b[33m${c}: not available in the web version.\x1b[0m Install the CodeForge Android app for a real Linux environment.`);
     else e(`${c}: command not found (type \`help\`)`);
   }
   sh.input = async (s) => {
@@ -154,6 +186,7 @@ function createShell(emit, id, cwd) {
 // ------------------------------------------------------------------------------------------ dispatcher
 export function create(emit) {
   const ready = openDb();
+  const crumbs = [];
   const H = {
     "sys.info": async () => ({ version: "web", pkg: "dev.codeforge.web", sdk: 0, abi: "web", device: "Browser", githubClientId: "", allFiles: true, paths: { home: HOME, files: "/", data: DATA, env: "/env", rootfs: "/rootfs", native: "", shared: SHARED, extensions: DATA + "/extensions", plugins: DATA + "/plugins" }, linux: { installed: false, supported: false }, web: true }),
     "sys.storageRoots": async () => [{ id: "workspace", label: "Workspace (this browser)", path: HOME, free: 0, total: 0 }, { id: "shared", label: "Shared", path: SHARED, free: 0, total: 0 }],
@@ -182,8 +215,8 @@ export function create(emit) {
     "fs.symlink": async () => { throw new Error("Symlinks are not supported in the web version"); }, "fs.readlink": async () => { throw new Error("Not a symlink"); },
     "search.text": async (o) => searchText(o), "search.cancel": async () => true,
     "archive.zip": async (o) => { const z = await zipOut(o.src, o.base); await put(abs(o.dest), z.bytes); return { count: z.count }; },
-    "archive.unzip": async (o) => { const zip = await window.JSZip.loadAsync(need(o.src).d); let count = 0; const root = abs(o.dest); for (const [name, e] of Object.entries(zip.files)) { const out = norm(root + "/" + name); if (out !== root && !out.startsWith(root + "/")) throw new Error("Blocked unsafe path in archive: " + name); if (e.dir) await mkdirp(out); else { await put(out, await e.async("uint8array")); count++; } } return { count }; },
-    "archive.listZip": async (p) => { const zip = await window.JSZip.loadAsync(need(p).d); return Object.values(zip.files).map((e) => ({ name: e.name, size: 0, dir: e.dir })); },
+    "archive.unzip": async (o) => { await lazy.jszip(); const zip = await window.JSZip.loadAsync(need(o.src).d); let count = 0; const root = abs(o.dest); for (const [name, e] of Object.entries(zip.files)) { const out = norm(root + "/" + name); if (out !== root && !out.startsWith(root + "/")) throw new Error("Blocked unsafe path in archive: " + name); if (e.dir) await mkdirp(out); else { await put(out, await e.async("uint8array")); count++; } } return { count }; },
+    "archive.listZip": async (p) => { await lazy.jszip(); const zip = await window.JSZip.loadAsync(need(p).d); return Object.values(zip.files).map((e) => ({ name: e.name, size: 0, dir: e.dir })); },
     "archive.untar": async () => { throw new Error("tar archives are not supported in the web version"); },
 
     "net.request": async (o) => { const url = viaProxy(o.url); const r = await fetch(url, reqInit(o, { signal: o.timeoutMs ? AbortSignal.timeout(o.timeoutMs) : undefined })); const hs = {}; r.headers.forEach((v, k) => (hs[k] = v)); const buf = new Uint8Array(await r.arrayBuffer()); return { status: r.status, statusText: r.statusText, url: r.url, headers: hs, ...(o.as === "b64" ? { b64: bytesToB64(buf) } : { text: dec.decode(buf) }) }; },
@@ -204,11 +237,26 @@ export function create(emit) {
     "github.user": async () => { const t = (await secrets())["github.token"]; const r = await fetch("https://api.github.com/user", { headers: { Authorization: "Bearer " + t, Accept: "application/vnd.github+json" } }); if (!r.ok) throw new Error("GitHub token rejected (HTTP " + r.status + ")"); return r.json(); },
     "github.deviceStart": async () => { throw new Error("GitHub device sign-in isn't available in the web version (GitHub blocks it from browsers). Paste a personal access token instead."); },
     "github.configureGit": async () => true,
-    "live.list": async () => [], "live.stop": async () => true, "live.reload": async () => true,
-    "live.start": async () => { throw new Error("The live server needs the Android app (a browser can't open local ports). Use “Open preview” on a single HTML file instead."); },
+    // ---- crash recorder (web): JS errors only, kept in this browser's IndexedDB key-value store
+    "crash.list": async () => ((await kvGet("crashes")) || []).map(({ text, ...m }) => ({ ...m, size: text.length })).reverse(),
+    "crash.unseen": async () => ((await kvGet("crashes")) || []).filter((c) => !c.seen).map(({ text, ...m }) => ({ ...m, size: text.length })).reverse(),
+    "crash.read": async (id) => ((await kvGet("crashes")) || []).find((c) => c.id === id) || null,
+    "crash.delete": async (id) => { await kvSet("crashes", ((await kvGet("crashes")) || []).filter((c) => c.id !== id)); return true; },
+    "crash.clear": async () => { await kvSet("crashes", []); return true; },
+    "crash.seen": async (ids) => { await kvSet("crashes", ((await kvGet("crashes")) || []).map((c) => (!ids || ids.includes(c.id) ? { ...c, seen: true } : c))); return true; },
+    "crash.report": async (o) => { const ts = Date.now(), id = ts + "-" + (o.kind || "js-error") + "-" + Math.floor(Math.random() * 65535).toString(16); const text = `CodeForge web report\nTime: ${new Date(ts).toISOString()}\nKind: ${o.kind}\nBrowser: ${navigator.userAgent}\n\n== ${o.title} ==\n${o.detail || ""}\n\n-- breadcrumbs --\n${crumbs.join("\n")}\n`; const all = ((await kvGet("crashes")) || []).concat([{ id, ts, kind: o.kind || "js-error", title: o.title, fatal: !!o.fatal, process: "web", seen: false, text }]).slice(-40); await kvSet("crashes", all); return id; },
+    "crash.crumbs": async (a) => { for (const l of a || []) { crumbs.push(new Date().toISOString().slice(11, 23) + " ui " + l); if (crumbs.length > 120) crumbs.shift(); } return true; },
+    "crash.bundle": async (ids) => ((await kvGet("crashes")) || []).filter((c) => !ids || ids.includes(c.id)).map((c) => "=".repeat(60) + "\n" + c.text).join("\n\n") || "No reports.",
+    "crash.diagnostics": async () => `CodeForge web\n${navigator.userAgent}\n\n-- breadcrumbs --\n${crumbs.slice(-60).join("\n")}`,
+    "crash.takeRecovery": async () => null, "crash.testNative": async () => H["crash.report"]({ kind: "test", title: "Test report", detail: "Created from Settings → Diagnostics." }),
+    "preview.open": async (o) => { window.open(o.url, "_blank", "noopener,noreferrer"); return true; },
+    "term.ack": async () => true,
+    "live.list": async () => [...(await liveMap()).values()].map(liveInfo), "live.stop": async (port) => { (await liveMap()).delete(+port); await liveSave(); return true; },
+    "live.reload": async (port, rel) => { try { (liveBc ||= new BroadcastChannel("cf-live")).postMessage({ port: port == null ? null : +port, rel: rel || "" }); } catch { /* no BroadcastChannel */ } return true; },
+    "live.start": async (o) => liveStart(o),
     "env.status": async () => ({ installed: false, supported: false }), "env.install": async () => { throw new Error("The Linux environment is only available in the Android app"); }, "env.reset": async () => true,
     "proc.exec": async () => { throw new Error("Running programs isn't possible in the web version"); },
-    "term.create": async (o) => { const id = "w" + termSeq++; const sh = createShell(emit, id, o?.cwd && files.get(o.cwd)?.t === "d" ? o.cwd : HOME); shells.set(id, sh); return { id, title: "web shell", mode: "host", cwd: sh.cwd }; },
+    "term.create": async (o) => { const id = "w" + termSeq++; const sh = createShell(emit, id, o?.cwd && files.get(o.cwd)?.t === "d" ? o.cwd : HOME, liveStart); shells.set(id, sh); return { id, title: "web shell", mode: "host", cwd: sh.cwd }; },
     "term.write": async (id, b64) => { shells.get(id)?.input(dec.decode(b64ToBytes(b64))); return true; }, "term.resize": async () => true, "term.kill": async (id) => { shells.delete(id); emit("term.exit", { id, code: 0 }); return true; }, "term.close": async (id) => { shells.delete(id); return true; },
     "term.list": async () => [...shells.values()].map((s) => ({ id: s.id, title: s.title, mode: "host", cwd: s.cwd, alive: true })), "term.attach": async () => ({ replay: "" }), "term.rename": async (id, t) => { const s = shells.get(id); if (s) s.title = t; return true; },
   };

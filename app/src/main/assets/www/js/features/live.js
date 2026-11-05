@@ -1,5 +1,7 @@
 // Live Server + in-app Preview panel (iframe with URL bar, device presets, console capture, hot reload).
 import { h, icon, P, copyText, isMobile } from "../core/util.js";
+import { crumb } from "../core/crash.js";
+let isolatedOk = false;
 let A, frame, urlIn, consoleEl, deviceSel, stage, scaleBox, state = { history: [], idx: -1, url: "", device: "responsive", landscape: false, consoleOpen: false };
 const servers = new Map(); // port -> {port,root,url,lanUrl}
 const detected = new Set();
@@ -9,7 +11,10 @@ const DEVICES = [["responsive", "Responsive", 0, 0], ["iphone-se", "iPhone SE", 
 export async function init(api) {
   A = api;
   buildPane();
-  A.panel.registerView("preview", { onShow: (actions) => { actions.append(h("button.icon-btn", { title: "Open in browser", onclick: () => state.url && A.N.sys.openUrl(state.url) }, icon("link-external"))); } });
+  A.panel.registerView("preview", { onShow: (actions) => { actions.append(h("button.icon-btn", { title: "Open in separate window (crash-proof)", onclick: () => state.url && openIsolated(state.url) }, icon("multiple-windows")), h("button.icon-btn", { title: "Open in browser", onclick: () => state.url && A.N.sys.openUrl(state.url) }, icon("link-external"))); } });
+  A.N.sys.info().then((i) => { isolatedOk = !!i.features?.isolatedPreview; }).catch(() => {});
+  // Android says memory is running low: unload the in-app page before the system kills the whole app
+  A.N.on("app.memory", (d) => { if (d.level >= 10 && A.settings.get("preview.pauseOnLowMemory") && state.url && frame?.getAttribute("src") && frame.src !== "about:blank") pauseForMemory(); });
   A.N.on("live.log", (d) => A.output.append("Live Server", `[${d.port}] ${d.line}\n`));
   window.addEventListener("message", onMessage);
   A.bus.on("saved", (p) => { for (const s of servers.values()) if (A.ws.isOpen && P.inside(s.root, p)) A.N.live.reload(s.port, P.rel(s.root, p)).catch(() => {}); });
@@ -40,26 +45,39 @@ function liveMenu(x, y) {
   ]).concat([{ separator: true }, { label: "Stop all", icon: "debug-stop", danger: true, run: stopAll }]), x, y);
 }
 
-export async function serve(dir, { open = true, file = "" } = {}) {
+/** The in-browser server runs project scripts on the editor's own origin: ask once. */
+async function webTrust() {
+  if (A.N.mode() !== "web") return true;
+  try { if (localStorage.getItem("cf.webLiveOk") === "1") return true; } catch { /* ask every time */ }
+  const yes = await A.confirm("The live server in the browser runs this project's scripts on the same site as the editor, so they can read your saved files and API keys. Only run projects you trust.", { title: "Run this project?", okLabel: "Run" });
+  if (yes) try { localStorage.setItem("cf.webLiveOk", "1"); } catch { /* ignore */ }
+  return yes;
+}
+export async function serve(dir, { open = true, file = "", inline = false } = {}) {
   if (!dir) return A.toast("Open a folder first");
+  if (!(await webTrust())) return;
   try {
     const s = await A.N.live.start({ root: dir, port: A.settings.get("live.port"), spa: A.settings.get("live.spa"), lan: A.settings.get("live.lan") });
     await refresh();
-    if (open) openPreview(s.url + file.replace(/^\//, ""));
+    if (open) openPreview(s.url + file.replace(/^\//, ""), { inline });
     A.toast(`Live Server on :${s.port}` + (s.lanUrl ? ` · ${s.lanUrl}` : ""), { kind: "success" });
     return s;
   } catch (e) { A.toastError(e); }
 }
-export async function previewFile(file) {
+export async function previewFile(file, { inline = false } = {}) {
   const root = A.ws.isOpen && P.inside(A.ws.root, file) ? A.ws.root : P.dir(file);
   if (A.ed.getDoc(file)?.dirty) await A.ed.save(file);
-  return serve(root, { file: P.rel(root, file).split("/").map(encodeURIComponent).join("/") });
+  return serve(root, { file: P.rel(root, file).split("/").map(encodeURIComponent).join("/"), inline });
 }
 export async function stopAll() { for (const s of [...servers.values()]) await A.N.live.stop(s.port).catch(() => {}); await refresh(); A.toast("Live Server stopped"); }
 export async function stop(port) { await A.N.live.stop(port); await refresh(); }
 
-function onPort(port) {
+let autoOpenUntil = 0;
+/** "Run" started a dev server (vite, next, react-scripts…): open the first address it prints, in the browser (or the in-app preview, per Settings). */
+export function autoOpenNext(ms = 180000) { autoOpenUntil = Date.now() + ms; }
+async function onPort(port) {
   if (detected.has(port) || servers.has(port)) return; detected.add(port); A.bus.emit("ports:changed", [...detected]);
+  if (Date.now() < autoOpenUntil) { autoOpenUntil = 0; const { openUrl } = await import("../core/links.js"); return openUrl(`http://localhost:${port}/`); }
   A.toast(`Server detected on port ${port}`, { action: { label: "Preview", run: () => openPreview(`http://127.0.0.1:${port}/`) }, timeout: 9000 });
 }
 export const ports = () => [...detected];
@@ -86,12 +104,26 @@ function buildPane() {
 }
 function normalize(u) { u = u.trim(); if (!u) return ""; if (/^\d{2,5}$/.test(u)) return `http://127.0.0.1:${u}/`; if (/^(localhost|127\.|0\.0\.0\.0|\[::1\]|\d+\.\d+\.\d+\.\d+)/.test(u)) return "http://" + u.replace(/^0\.0\.0\.0/, "127.0.0.1"); if (!/^[a-z]+:\/\//i.test(u)) return "https://" + u; return u; }
 
-export function openPreview(url) {
+/** "auto" = a separate-process window on Android (a heavy page can't take the IDE down); inline panel elsewhere. */
+export const previewMode = () => { const m = A.settings.get("preview.mode"); return m === "auto" ? (isolatedOk ? "window" : "inline") : m; };
+export function openIsolated(url) {
+  if (!isolatedOk && A.N.mode() !== "web" && A.N.mode() !== "devhost") return openPreview(url, { inline: true });
+  crumb("preview window " + url.slice(0, 100));
+  return A.N.preview.open({ url, title: "Preview" }).catch((e) => { A.toastError(e); openPreview(url, { inline: true }); });
+}
+export function openPreview(url, { inline = false } = {}) {
+  if (!inline && previewMode() === "window") return openIsolated(url);
+  crumb("preview inline " + url.slice(0, 100));
   A.panel.show("preview"); navigate(url);
+}
+let pausedUrl = null;
+function pauseForMemory() {
+  pausedUrl = state.url; frame.src = "about:blank"; consoleEl.replaceChildren(); crumb("preview paused: low memory");
+  A.toast("Preview paused: the device is low on memory", { kind: "warn", timeout: 12000, action: { label: "Separate window", run: () => { openIsolated(pausedUrl); } } });
 }
 function navigate(url, push = true) {
   if (!url) return;
-  try { if (new URL(url, location.href).origin === location.origin) return A.toast("Refusing to preview the IDE's own origin", { kind: "error" }); } catch { return A.toast("Invalid URL", { kind: "error" }); }
+  try { const u = new URL(url, location.href); if (u.origin === location.origin && !u.pathname.includes("/__live/")) return A.toast("Refusing to preview the IDE's own origin", { kind: "error" }); } catch { return A.toast("Invalid URL", { kind: "error" }); }
   if (push) { state.history = state.history.slice(0, state.idx + 1); state.history.push(url); state.idx = state.history.length - 1; }
   state.url = url; urlIn.value = url; state.empty?.remove(); state.empty = null; frame.src = url;
   consoleEl.replaceChildren();
@@ -105,12 +137,16 @@ function layoutFrame() {
   const k = Math.min(1, (sw - 16) / w, (sh - 16) / hh);
   scaleBox.style.cssText = `width:${w}px;height:${hh}px;transform:scale(${k});transform-origin:top center;margin:8px auto;box-shadow:0 0 0 1px var(--border),0 8px 30px #0006;background:#fff`;
 }
+let scrollQueued = false;
 function onMessage(e) {
   const m = e.data; if (!m || !m.__cf || e.source !== frame?.contentWindow) return;
+  if (m.type === "needsBuild") { A.toast(`This page loads ${m.src}, which needs a dev server`, { kind: "warn", timeout: 12000, action: { label: "Run dev server", run: async () => (await A.feat("run")).runDevServer?.() } }); return; }
   if (m.type === "nav") { if (m.url !== state.url) { state.url = m.url; urlIn.value = m.url; if (state.history[state.idx] !== m.url) { state.history = state.history.slice(0, state.idx + 1); state.history.push(m.url); state.idx++; } } }
   else if (m.type === "console") {
-    const line = h("div.pv-line." + m.level, h("span.pv-time", new Date().toLocaleTimeString()), h("span", m.args.join(" ")));
-    consoleEl.append(line); consoleEl.parentElement.scrollTop = consoleEl.parentElement.scrollHeight;
+    const line = h("div.pv-line." + m.level, h("span.pv-time", new Date().toLocaleTimeString()), h("span", String(m.args.join(" ")).slice(0, 4000)));
+    consoleEl.append(line);
+    while (consoleEl.childElementCount > 400) consoleEl.firstElementChild.remove();   // a page logging every frame must not grow the DOM forever
+    if (!scrollQueued) { scrollQueued = true; requestAnimationFrame(() => { scrollQueued = false; consoleEl.parentElement.scrollTop = consoleEl.parentElement.scrollHeight; }); }
     if (m.level === "error" && !state.consoleOpen) { const b = document.querySelector('.ptab[data-panel="preview"]'); b?.classList.add("alert"); setTimeout(() => b?.classList.remove("alert"), 3000); }
   }
 }

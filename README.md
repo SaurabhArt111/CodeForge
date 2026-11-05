@@ -12,6 +12,8 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
   Prettier formatting (JS/TS/CSS/HTML/JSON/MD/YAML), themes (VS Code defaults + Termux:Styling schemes), Seti file icons.
 - **Terminal** – native PTY sessions (JNI). Android shell by default; optionally a full **Alpine Linux via proot** (apt-style `apk`,
   `git`, `node`, `npm`, `python`, `gcc`, …). Extra-keys bar for phones. The `code <path>` command opens files/folders in the editor.
+- **Links** – `localhost:5173`, `0.0.0.0:8000`, `192.168.x.x:3000` (with or without `http://`) are clickable and tappable in the terminal and open in the browser (0.0.0.0 becomes localhost); ports printed by servers are detected.
+  *Run* on the `index.html` of a Vite/React/Next project starts the project's dev server and opens it automatically.
 - **Run & Preview** – run files by extension, `package.json` scripts, `tasks.json`; a **live server** (hot reload via SSE, SPA mode, console
   forwarding, optional LAN access) and an **in-app preview** with device-size presets and a console.
 - **Git** – isomorphic-git (clone, stage, commit, branches, log, diff, pull, push) with gutter decorations. `git@github.com:` URLs are mapped to HTTPS.
@@ -30,18 +32,42 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
   exec errors under proot). Selecting a URL in the terminal or editor (or long-pressing one in the terminal) offers *Open in browser / Preview / Copy*.
   *Settings → Appearance → Open links with* can keep local URLs in the in-app preview instead.
 - **Web version** – `tools/web/build.sh` builds a static PWA from the same UI (see BUILD.md): IndexedDB file system, ZIP import/export,
-  Monaco, Git over CORS-enabled hosts, extensions, AI, a mini shell. No real Linux, npm, live server or GitHub device flow in a browser.
+  Monaco, Git over CORS-enabled hosts, extensions, AI, a mini shell, and an **in-browser live server** (service worker, `tools/web/live-sw.js`): HTML/CSS/JS, JSX/TSX/TS compiled on the fly (Sucrase),
+  npm packages from `package.json` mapped to esm.sh, live reload, console capture; `npm run dev` / `vite` in the mini shell start it. No real Linux, Node, server code or GitHub device flow in a browser.
+- **Crash recorder** – uncaught Kotlin/JS errors, renderer deaths, out-of-memory and Android's own "why was I killed" history (`ApplicationExitInfo`) are saved on the
+  device with the stack, memory state, logcat tail and the last actions (breadcrumbs). *Settings → Diagnostics → View reports* (or the notice shown after a crash) lets you
+  copy / share them. `cf crashes` opens the list.
+- **Crash-proof previews** – *Run ▸ Live Preview / Preview HTML* open the page in a **separate process** (`:preview`), so a heavy WebGL page, an infinite loop or a
+  renderer crash can only close that window, not the editor. The live server throttles console forwarding, the terminal uses flow control (a program that floods
+  the screen is slowed down instead of freezing the app) and the in-app preview is paused when Android reports low memory. *Settings → Live Server → Run / Live Preview
+  opens in* picks window / in-app panel.
+- **Top and bottom sheets** – two dockable sheets, each holding any views: Terminal, Preview, Output, Problems, AI, Search, Git, Run, Extensions. Use the **+** in a
+  sheet's header (or long-press a tab) to add, move or close views; the layout is remembered. Palette: *Move Terminal to Top Sheet*, *Reset Sheets Layout* …
+- **Text size everywhere** – *Settings → Appearance → Text size* (70–170 %) scales the whole UI, the editor and the terminal together; editor and terminal sizes stay
+  adjustable on top. `View: Increase Text Size (whole app)` in the palette.
+- **`cf` command** – in any terminal: `cf open file:line`, `cf preview index.html`, `cf serve`, `cf ai "explain this"` / `git diff | cf ai -s review`, `cf install claude|codex|gemini|opencode|copilot|qwen|aider`,
+  `cf run <cli>`, `cf settings`, `cf toast`. Works in the Linux environment and the Android shell (`cf help`).
 - **Plugins** – small JS plugins in sandboxed iframes with a permission model (editor, ui, commands, fs.read, fs.write, terminal, net:host).
-- **AI** – chat and an agent mode (read/search/edit files, run commands with confirmation) with **Anthropic**, **OpenAI**, **GitHub Models**, Gemini,
+- **AI** – chat and an agent mode (find/read/search/edit/delete files, diagnostics, run commands; edits are shown as a diff and can be allowed for the whole chat;
+  read-only tools run in parallel, transient errors are retried, long runs trim old tool output, `AGENTS.md` / `CLAUDE.md` of the project are used as instructions, replies can be regenerated, shell blocks run in the terminal) with **Anthropic**, **OpenAI**, **GitHub Models**, Gemini,
   OpenRouter, Groq, Mistral, DeepSeek, xAI, Ollama or any OpenAI-compatible endpoint. One-tap helpers install and run the CLIs
-  (Claude Code, Codex, Copilot CLI, Gemini CLI, aider) inside the Linux terminal.
+  (Claude Code, Codex, Copilot CLI, Gemini CLI, opencode, Qwen Code, aider) inside the Linux terminal.
 
 ## Build
 See **BUILD.md**. Short version: `./gradlew assembleDebug`.
 
+## Website (landing page, web editor, code browser, download page)
+```sh
+sh tools/site/build-site.sh      # -> ./dist-site   (Python 3 only)
+node backend/server.js           # http://localhost:8080  (Node 18+, optional: also serves the Git proxy)
+```
+Pages: `/` landing, `/app/` web editor, `/code/` source browser, `/download/` APK + Google Play (set `playStoreUrl` in `site/site-config.js` or `PLAY_STORE_URL` when you have the link), `/privacy/`.
+See **DEPLOY.md** for static hosting, Docker, environment variables and the Git proxy. Tests: `tools/e2e/site.js`.
+
 ## Honest limitations
 - This source drop has **not been compiled into an APK or run on a device by its author's tooling** (the build sandbox had no Android SDK / Maven access).
-  The Kotlin was type-checked against the Android 34 API, and the whole web UI was tested end-to-end in headless Chromium against the dev host
+  The Kotlin of earlier versions was type-checked against the Android 34 API; the **crash recorder, `:preview` process, PTY flow control and live-server changes of this
+  version were only parse-checked and reviewed** (no Android jar was available) — expect to fix small compile errors on first build. The whole web UI was tested end-to-end in headless Chromium against the dev host
   (`tools/devhost`), which emulates the native bridge. Expect to fix small compile/runtime issues on first build.
 - The proot Linux environment, PTY, DocumentsProvider and GitHub device flow are untested on real hardware.
 - GitHub Copilot's private chat API is not implemented; use **GitHub Models** (free tier with a PAT) or the **Copilot CLI** helper.
@@ -61,5 +87,6 @@ app/src/main/assets/www/               the IDE UI (ES modules, vendored libs in 
 app/src/main/assets/env/               Linux setup scripts
 tools/devhost, tools/e2e               Node dev host + Playwright tests
 tools/web                              build script, PWA manifest and service worker for the web version
+site/, backend/, tools/site            website sources, optional Node server (static files + Git CORS proxy), site build scripts
 ```
 Licenses: MIT (see LICENSE); third-party in THIRD_PARTY_NOTICES.md.

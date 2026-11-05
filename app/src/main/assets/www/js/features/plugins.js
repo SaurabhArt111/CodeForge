@@ -144,13 +144,13 @@ export async function createTemplate() {
 
 export function renderInto(el) {
   const rows = list().map((p) => h("div.ext-row" + (p.enabled ? "" : ".off"), {},
-    h("div.ext-icon.ph", icon("plug")), h("div.ext-info", h("div.ext-name", p.manifest.name || p.id, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "11px" } }, p.manifest.version || "")), h("div.ext-desc", p.manifest.description || ""), h("div.ext-pub", (p.manifest.permissions || []).join(", ") || "no permissions")),
+    h("div.ext-icon.ph", icon("plug")), h("div.ext-info", h("div.ext-name", p.manifest.name || p.id, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "calc(11px * var(--fz))" } }, p.manifest.version || "")), h("div.ext-desc", p.manifest.description || ""), h("div.ext-pub", (p.manifest.permissions || []).join(", ") || "no permissions")),
     h("div.ext-actions", h("button.btn.small", { onclick: async () => { const d = new Set(A.settings.state.pluginsDisabled || []); p.enabled ? d.add(p.id) : d.delete(p.id); A.settings.state.pluginsDisabled = [...d]; A.settings.saveState(); await loadAll(); } }, p.enabled ? "Disable" : "Enable"),
       h("button.icon-btn", { title: "Edit", onclick: () => A.ed.openFile(P.join(p.dir, p.manifest.main || "index.js")) }, icon("edit")),
       h("button.icon-btn", { title: "Remove", onclick: async () => { if (await A.confirm(`Remove plugin “${p.id}”?`, { danger: true, okLabel: "Remove" })) { unload(p); await A.N.fs.rm(p.dir); await loadAll(); } } }, icon("trash")))));
   const reg = h("div", { style: { padding: "0 12px 10px", display: "flex", gap: "6px", flexWrap: "wrap" } },
     h("button.btn.small.primary", { onclick: createTemplate }, icon("add"), " New plugin"), h("button.btn.small", { onclick: () => installZip() }, icon("package"), " Install ZIP…"), h("button.btn.small", { onclick: () => browseRegistry(el) }, icon("cloud-download"), " Registry"));
-  el.replaceChildren(reg, ...(rows.length ? rows : [h("div.empty-state", "No plugins installed.", h("div", { style: { fontSize: "12px" } }, "Plugins are small sandboxed JavaScript add-ons (commands, editor transforms, panels). Create one from a template to get started.")) ]));
+  el.replaceChildren(reg, ...(rows.length ? rows : [h("div.empty-state", "No plugins installed.", h("div", { style: { fontSize: "calc(12px * var(--fz))" } }, "Plugins are small sandboxed JavaScript add-ons (commands, editor transforms, panels). Create one from a template to get started.")) ]));
 }
 async function browseRegistry(el) {
   const url = A.settings.get("plugins.registry"); if (!url) return A.toast("Set “Plugin registry URL” in Settings first (a JSON list of plugins)", { kind: "warn" });

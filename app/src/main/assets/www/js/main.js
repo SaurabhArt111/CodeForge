@@ -1,4 +1,6 @@
 // CodeForge bootstrap: wires the core modules, layout, activity bar, mobile navigation, commands, and optional feature modules.
+import * as lazy from "./core/lazy.js";
+import * as fontscale from "./core/fontscale.js";
 import { N, mode as bridgeMode } from "./core/bridge.js";
 import { settings } from "./core/settings.js";
 import { bus } from "./core/events.js";
@@ -21,6 +23,10 @@ import * as of from "./ui/openfolder.js";
 import * as output from "./ui/output.js";
 import { makeSash } from "./ui/sash.js";
 import * as security from "./ui/security.js";
+import * as crash from "./core/crash.js";
+import * as crashes from "./ui/crashes.js";
+
+crash.install();   // JS errors + breadcrumbs go to the crash recorder from the very first line
 
 const $ = (s) => document.querySelector(s);
 const bootMsg = (m) => ($("#boot-msg").textContent = m);
@@ -30,7 +36,8 @@ let info;
 const features = {};
 async function loadFeature(name) {
   if (features[name] !== undefined) return features[name];
-  try { features[name] = await import(`./features/${name}.js`); if (features[name].init) await features[name].init(api); }
+  const t0 = performance.now();
+  try { features[name] = await import(`./features/${name}.js`); if (features[name].init) await features[name].init(api); crash.crumb(`feature ${name} ${Math.round(performance.now() - t0)}ms`); }
   catch (e) { console.error("feature", name, e); features[name] = null; if (!/Failed to fetch|Cannot find|404/.test(String(e.message))) toast(`Feature “${name}” failed: ${e.message}`, { kind: "error" }); }
   return features[name];
 }
@@ -46,7 +53,9 @@ window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); 
 async function boot() {
   try {
     bootMsg("Connecting to native host…");
-    info = await settings.init();
+    info = await settings.init(); fontscale.init();
+    const monacoReady = ed.loadMonaco();   // the biggest download: overlap it with themes, icons and the workspace
+    monacoReady.catch(() => {});
     security.init(); await security.gateStartup();   // optional app lock (PIN / biometrics) before anything is shown
     await ws.init(info); of.setInfo(info);
     bootMsg("Loading themes…");
@@ -54,11 +63,16 @@ async function boot() {
     await themes.apply(settings.get("ui.theme")); icons.use(settings.get("ui.iconTheme"));
     $("#app").classList.remove("hidden");
     bootMsg("Loading editor…");
-    await ed.loadMonaco(); themes.attachMonaco(ed.monaco); await themes.apply(settings.get("ui.theme"));
-    ed.initEditor(); panel.init(); output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); cmd.initKeys();
+    await monacoReady; themes.attachMonaco(ed.monaco); await themes.apply(settings.get("ui.theme"));
+    ed.initEditor(); panel.init(); panel.setViewBuilder(ensureView);
+    panel.setDockHandler((name, to) => {
+      if (name === "*") { showView("explorer", { silent: true }); return; }
+      if (to !== "sidebar" && name === currentView) showView("explorer", { silent: true });   // the view just left the sidebar
+    });
+    output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); cmd.initKeys();
     layout(); registerCommands(); wireEvents();
     // keep the splash on screen long enough for its animation to play, then fade it out
-    setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 1500 - performance.now()));
+    setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 900 - performance.now()));
     // restore last project
     const last = settings.state.lastWorkspace;
     if (last && (await N.fs.exists(last))) { await openFolder(last, { restore: true }); }
@@ -67,9 +81,13 @@ async function boot() {
     if (!last) showWelcome();
     await handleIntent(await N.sys.takeIntent().catch(() => null));
     // heavier optional features after first paint
-    for (const f of ["env", "live", "git", "github", "run", "extensions", "plugins", "ai", "snippets", "format", "markdown"]) await loadFeature(f);
+    await Promise.all(["env", "live", "git", "github", "run", "extensions", "plugins", "ai", "snippets", "format", "markdown"].map(loadFeature));
     window.__cfReady = true;
+    lazy.idle(() => lazy.xterm().catch(() => {}), 4000);   // so the first terminal opens instantly
+    crash.crumb("boot complete");
+    crashes.startupCheck();   // "CodeForge stopped last time" notice (does not block anything)
   } catch (e) {
+    crash.report("js-error", "Startup failed: " + (e.message || e), String(e.stack || e));
     console.error(e);
     $("#boot-msg").textContent = "Failed to start"; $("#boot-err").textContent = (e.stack || e.message || String(e));
     window.__cfError = String(e.stack || e);
@@ -78,8 +96,18 @@ async function boot() {
 
 // ---------------------------------------------------------------------------------------------- layout
 let currentView = null;
+function ensureView(name) {
+  const el = document.getElementById("view-" + name);
+  if (el && views.has(name) && !el.dataset.ready) { el.dataset.ready = "1"; views.get(name)(el); }
+}
 export function showView(name, { silent = false, toggle = false } = {}) {
-  if (views.has(name) && !document.getElementById("view-" + name).dataset.ready) { document.getElementById("view-" + name).dataset.ready = "1"; views.get(name)(document.getElementById("view-" + name)); }
+  if (panel.sheetOf(name)) {                       // this view lives in a top / bottom sheet
+    if (silent) { if (name !== "explorer" && !panel.sheetOf("explorer")) return showView("explorer", { silent: true }); return; }
+    if (toggle) panel.toggle(name); else panel.show(name);
+    if (isMobile()) closeDrawer();
+    return;
+  }
+  ensureView(name);
   const sb = $("#sidebar");
   if (toggle && currentView === name && !isMobile()) { sb.classList.toggle("collapsed"); }
   else { sb.classList.remove("collapsed"); }
@@ -144,7 +172,7 @@ function layout() {
   window.__cfBack = () => {
     if (document.querySelector(".modal-wrap,.qp-wrap,.ctx")) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); document.querySelector(".ctx-back")?.click(); return true; }
     if ($("#sidebar").classList.contains("open")) { closeDrawer(); return true; }
-    if (panel.isOpen()) { panel.hide(); return true; }
+    if (panel.closeLast()) return true;
     const t = ed.activeTab(); if (t && ed.allTabs().length) { ed.closeTab(t); return true; }
     return false;
   };
@@ -172,6 +200,8 @@ const handlers = {
   openTerminalAt: (dir) => term.create({ cwd: dir }),
   liveServe: async (dir) => (await feat("live")).serve(dir),
   livePreview: async (file) => (await feat("live")).previewFile(file),
+  livePreviewInline: async (file) => (await feat("live")).previewFile(file, { inline: true }),
+  livePreviewWindow: async (file) => { const l = await feat("live"); const r = await l.previewFile(file, { inline: false }); return r; },
   markdownPreview: async (file) => (await feat("markdown")).preview(file),
   runFile: async (file) => (await feat("run")).runFile(file),
   openArchiveAsProject: async (z) => { const d = await of.openZipAsProject(z); if (d) openFolder(d); },
@@ -196,30 +226,51 @@ function wireEvents() {
   bus.on("cmd:openfolder", () => handlers.openProjectMenu());
   bus.on("cmd:newfile", () => explorer.explorer.newFile());
   bus.on("cmd:run", () => runMenu(innerWidth - 60, 48));
-  bus.on("term:cmd", async (verb, arg) => {
-    if (verb === "url") {   // xdg-open / $BROWSER / `open` / vite "press o"
-      if (/^https?:\/\//i.test(arg)) openUrl(arg);   // default browser (or in-app preview, see Settings → Appearance → "Open links with")
-      else if (arg.startsWith("/")) ed.openFile(arg);
-      return;
-    }
-    if (verb !== "open") return;
-    const st = await N.fs.stat(arg).catch(() => null);
-    if (!st) return toast(`code: no such file or folder: ${arg}`, { kind: "error" });
-    if (st.t === "d") { if (await confirm(`Open folder “${P.base(arg) || arg}” as the project?`, { okLabel: "Open" })) openFolder(arg); }
-    else { ed.openFile(arg); if (isMobile()) panel.hide(); }
+  bus.on("term:cmd", async (verb, arg) => {          // OSC 7770 from the `cf` / `code` / `xdg-open` commands inside a terminal
+    try {
+      if (verb === "url") {   // xdg-open / $BROWSER / `open` / vite "press o"
+        if (/^https?:\/\//i.test(arg)) openUrl(arg);   // default browser (or in-app preview, see Settings → Appearance → "Open links with")
+        else if (arg.startsWith("/")) ed.openFile(arg);
+        return;
+      }
+      if (verb === "open") {
+        let path = arg, line, col; const m = /^(.*?):(\d+)(?::(\d+))?$/.exec(arg);
+        let st = await N.fs.stat(path).catch(() => null);
+        if (!st && m) { path = m[1]; line = +m[2]; col = m[3] ? +m[3] : undefined; st = await N.fs.stat(path).catch(() => null); }
+        if (!st) return toast(`cf: no such file or folder: ${arg}`, { kind: "error" });
+        if (st.t === "d") { if (await confirm(`Open folder “${P.base(path) || path}” as the project?`, { okLabel: "Open" })) openFolder(path); }
+        else { ed.openFile(path, { line, col }); if (isMobile()) panel.hide(); }
+        return;
+      }
+      if (verb === "preview") { const l = await feat("live"); if (/^https?:\/\//i.test(arg)) l.openPreview(arg); else l.previewFile(arg); return; }
+      if (verb === "serve") { const l = await feat("live"); await l.serve(arg); return; }
+      if (verb === "ai") {
+        const [send, agent, b64] = [arg.slice(0, arg.indexOf(",")), arg.slice(arg.indexOf(",") + 1, arg.indexOf(",", arg.indexOf(",") + 1)), arg.slice(arg.indexOf(",", arg.indexOf(",") + 1) + 1)];
+        const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+        const a = await feat("ai"); a.external(text, { send: send === "1", agent: agent === "1" }); return;
+      }
+      if (verb === "settings") { sv.open(); return; }
+      if (verb === "crashes") { crashes.openReports(); return; }
+      if (verb === "toast") { toast(arg || "cf"); return; }
+    } catch (e) { toastError(e); }
   });
   bus.on("env:needed", async () => { try { (await feat("env")).wizard(); } catch (e) { toastError(e); } });
   bus.on("preview:url", async (url) => { try { (await feat("live")).openPreview(url); } catch (e) { toastError(e); } });
   bus.on("panel:output", () => panel.show("output"));
   bus.on("hex", async (p) => { try { (await feat("markdown")).hex(p); } catch (e) { toastError(e); } });
   ws.on("created", () => {});
+  bus.on("workspace:opened", (p) => crash.crumb("workspace " + P.base(p)));
+  ed.editorEvents.on("active", () => { const t = ed.activeTab(); if (t?.path) crash.crumb("file " + P.base(t.path)); });
+  bus.on("panel", (n) => crash.crumb("panel " + n));
 }
 
 // ---------------------------------------------------------------------------------------------- menus
 function runMenu(x, y) {
   const t = ed.activeTab(); const p = t?.path; const items = [];
   if (p) items.push({ label: `Run ${P.base(p)}`, icon: "play", keys: "F5", run: () => handlers.runFile(p) });
-  if (p && /\.(html?|svg|md|markdown)$/i.test(p)) items.push({ label: "Preview in App (Live)", icon: "browser", run: () => (/\.(md|markdown)$/i.test(p) ? handlers.markdownPreview(p) : handlers.livePreview(p)) });
+  if (p && /\.(html?|svg)$/i.test(p)) items.push({ label: "Live Preview (" + (settings.get("preview.mode") === "inline" ? "panel" : "separate window") + ")", icon: "browser", run: () => handlers.livePreview(p) },
+    { label: settings.get("preview.mode") === "inline" ? "Live Preview in separate window" : "Live Preview in panel", icon: "preview", run: async () => { const l = await feat("live"); const inline = settings.get("preview.mode") !== "inline"; l.previewFile(p, { inline }); } });
+  if (p && /\.(md|markdown)$/i.test(p)) items.push({ label: "Preview Markdown", icon: "browser", run: () => handlers.markdownPreview(p) });
   items.push({ label: "Start Live Server (project)", icon: "broadcast", run: () => handlers.liveServe(ws.root) }, { label: "Stop Live Server", icon: "debug-stop", run: async () => (await feat("live")).stopAll() }, { separator: true },
     { label: "Run npm script…", icon: "package", run: async () => (await feat("run")).npmScripts() }, { label: "Run Task…", icon: "tasklist", run: async () => (await feat("run")).tasks() }, { label: "Open Preview panel", icon: "preview", run: () => panel.show("preview") });
   contextMenu(items, x, y);
@@ -229,6 +280,7 @@ function settingsMenu(x, y) {
   contextMenu([
     { label: "Settings", icon: "settings-gear", run: sv.open }, { label: "Color Theme…", icon: "symbol-color", run: pickTheme }, { label: "File Icon Theme…", icon: "file", run: pickIconTheme },
     { label: "Command Palette…", icon: "terminal", keys: "Ctrl+Shift+P", run: () => cmd.palette() }, { separator: true },
+    { label: "Crash Reports…", icon: "bug", run: () => crashes.openReports() },
     { label: "Linux Environment…", icon: "server-environment", run: async () => (await feat("env")).wizard() }, { label: "Check All-Files Access", icon: "shield", run: checkAllFiles }, { separator: true },
     { label: "About CodeForge", icon: "info", run: about },
   ], x, y);
@@ -298,6 +350,13 @@ function registerCommands() {
   R("view.ai", "Show AI Assistant", () => showView("ai"), { category: "View" });
   R("view.terminal", "Toggle Terminal", () => panel.toggle("terminal"), { category: "View", keys: "Ctrl+`" });
   R("view.preview", "Show Preview", () => panel.show("preview"), { category: "View" });
+  R("sheet.terminalTop", "Move Terminal to Top Sheet", () => { panel.move("terminal", "top"); panel.show("terminal"); }, { category: "View" });
+  R("sheet.terminalBottom", "Move Terminal to Bottom Sheet", () => { panel.move("terminal", "bottom"); panel.show("terminal"); }, { category: "View" });
+  R("sheet.aiBottom", "Move AI Assistant to Bottom Sheet", () => { panel.move("ai", "bottom"); panel.show("ai"); }, { category: "View" });
+  R("sheet.aiTop", "Move AI Assistant to Top Sheet", () => { panel.move("ai", "top"); panel.show("ai"); }, { category: "View" });
+  R("sheet.aiSidebar", "Move AI Assistant back to Sidebar", () => { panel.move("ai", "sidebar"); showView("ai"); }, { category: "View" });
+  R("sheet.top", "Toggle Top Sheet", () => { const l = panel.layout(); const n = l.top[0]; if (n) panel.toggle(n); else { panel.move("terminal", "top"); panel.show("terminal"); } }, { category: "View" });
+  R("sheet.reset", "Reset Top / Bottom Sheets Layout", () => panel.resetLayout(), { category: "View" });
   R("view.problems", "Show Problems", () => panel.show("problems"), { category: "View" });
   R("view.split", "Split Editor", () => ed.toggleSplit(), { category: "View", keys: "Ctrl+\\" });
   R("view.sidebar", "Toggle Sidebar", () => bus.emit("cmd:sidebar"), { category: "View", keys: "Ctrl+B" });
@@ -305,6 +364,9 @@ function registerCommands() {
   R("view.iconTheme", "File Icon Theme…", pickIconTheme, { category: "Preferences" });
   R("view.settings", "Open Settings", () => sv.open(), { category: "Preferences" });
   R("view.settingsJson", "Open Settings (JSON)", () => ed.openFile(settings.settingsFile), { category: "Preferences" });
+  R("view.textBigger", "Increase Text Size (whole app)", () => fontscale.bump(10), { category: "View" });
+  R("view.textSmaller", "Decrease Text Size (whole app)", () => fontscale.bump(-10), { category: "View" });
+  R("view.textReset", "Reset Text Size", () => fontscale.reset(), { category: "View" });
   R("view.zoomIn", "Increase Font Size", () => settings.set("editor.fontSize", Math.min(40, settings.get("editor.fontSize") + 1)), { category: "View" });
   R("view.zoomOut", "Decrease Font Size", () => settings.set("editor.fontSize", Math.max(8, settings.get("editor.fontSize") - 1)), { category: "View" });
   R("view.wordWrap", "Toggle Word Wrap", () => settings.set("editor.wordWrap", settings.get("editor.wordWrap") === "off" ? "on" : "off"), { category: "View" });
@@ -324,6 +386,9 @@ function registerCommands() {
   R("run.stop", "Stop Live Server", async () => (await feat("live")).stopAll(), { category: "Live Server" });
   R("run.npm", "Run npm Script…", async () => (await feat("run")).npmScripts(), { category: "Run" });
   R("sys.files", "Grant All-Files Access", checkAllFiles, { category: "System" });
+  R("sys.crashes", "View Crash Reports", () => crashes.openReports(), { category: "Developer" });
+  R("sys.diagnostics", "Copy Diagnostics", async () => { await copyText(await N.crash.diagnostics()); toast("Diagnostics copied"); }, { category: "Developer" });
+  R("view.previewWindow", "Open Preview in Separate Window", async () => { const p = ed.activeTab()?.path; if (!p) return; const l = await feat("live"); const root = ws.isOpen && P.inside(ws.root, p) ? ws.root : P.dir(p); const s = await l.serve(root, { open: false }); if (s) l.openIsolated(s.url + P.rel(root, p).split("/").map(encodeURIComponent).join("/")); }, { category: "Live Server" });
   R("sys.reload", "Reload Window", () => location.reload(), { category: "Developer" });
   R("sys.exit", "Quit CodeForge (stop all sessions)", async () => { if (await confirm("Stop all terminals and servers and quit?", { okLabel: "Quit", danger: true })) N.sys.exit(); }, { category: "System" });
 }

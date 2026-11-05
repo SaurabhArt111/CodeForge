@@ -99,7 +99,7 @@ async function setupEmmet() {
         if (syntax === "markup-jsx" && !/^[.#a-zA-Z]/.test(abbr)) return { suggestions: [] };
         if (syntax === "markup-jsx") { if (!/[.#>*+]/.test(abbr) && !/^(div|span|p|ul|li|a|button|section|h[1-6]|header|footer|nav|main|form|input|img)$/.test(abbr)) return { suggestions: [] }; }
         try {
-          emmet ||= await import("/vendor/emmet/emmet.es.js");
+          emmet ||= await import("../../vendor/emmet/emmet.es.js");
           const type = syntax === "stylesheet" ? "stylesheet" : "markup";
           const out = emmet.default ? emmet.default(abbr, { type, syntax: syntax === "markup-jsx" ? "jsx" : syntax === "stylesheet" ? "css" : "html", options: { "output.field": (i, ph) => `\${${i}${ph ? ":" + ph : ""}}`, "output.selfClosingStyle": syntax === "markup-jsx" ? "xhtml" : "html" } }) : emmet.expand(abbr, { type, syntax: syntax === "markup-jsx" ? "jsx" : syntax === "stylesheet" ? "css" : "html", options: { "output.field": (i, ph) => `\${${i}${ph ? ":" + ph : ""}}` } });
           if (!out || out === abbr) return { suggestions: [] };

@@ -26,9 +26,28 @@ async function ensureLinuxFor(what) {
   return null;
 }
 
+/** package.json "dev"/"start" script of a framework project (vite, next, react-scripts…), or null for plain HTML projects */
+const FRAMEWORKS = /^(vite|react-scripts|next|nuxt|astro|@sveltejs\/kit|@angular\/cli|parcel|webpack-dev-server|@vue\/cli-service|snowpack|gatsby|@remix-run\/dev|solid-start|@rsbuild\/core|rspack)$/;
+async function devScript() {
+  const pkg = await readPkg(); if (!pkg) return null;
+  if (!Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).some((d) => FRAMEWORKS.test(d))) return null;
+  return ["dev", "start", "serve"].find((k) => pkg.scripts?.[k]) || null;
+}
+/** Start the project's dev server and open it as soon as it prints an address. In the web version the in-browser server does the same job. */
+export async function runDevServer() {
+  const live = await A.feat("live");
+  if (A.N.mode() === "web") return live.serve(A.ws.root);
+  const sc = await devScript(); if (!sc) return live.serve(A.ws.root);
+  live.autoOpenNext(); return runScript(sc);
+}
+
 export async function runFile(file) {
   const ext = P.ext(file);
-  if (/^(html?|svg)$/.test(ext)) return (await A.feat("live")).previewFile(file);
+  if (/^(html?|svg)$/.test(ext)) {
+    // an index.html at the root of a Vite / React / Next… project cannot work as a static file: run the project's dev server instead
+    if (/^html?$/.test(ext) && A.N.mode() !== "web" && A.ws.isOpen && P.dir(file) === A.ws.root && (await devScript())) return runDevServer();
+    return (await A.feat("live")).previewFile(file);
+  }
   if (/^(md|markdown)$/.test(ext)) return (await A.feat("markdown")).preview(file);
   const mk = RUNNERS[ext];
   if (!mk) return A.toast(`Don't know how to run .${ext} files`, { kind: "warn" });
@@ -51,6 +70,7 @@ async function pkgManager() {
   return "npm";
 }
 export async function runScript(name) {
+  if (A.N.mode() === "web") return (await A.feat("live")).serve(A.ws.root);   // no Node in a browser: the in-browser dev server previews the project
   const mode = await ensureLinuxFor("npm scripts"); if (!mode) return;
   const pm = await pkgManager(); const hasMods = await A.N.fs.exists(P.join(A.ws.root, "node_modules"));
   const line = (hasMods ? "" : `${pm} install && `) + (pm === "npm" ? `npm run ${name}` : `${pm} ${name}`);
@@ -61,7 +81,7 @@ export async function npmScripts() {
   const r = await A.quickPick(Object.entries(pkg.scripts).map(([k, v]) => ({ label: k, description: v, value: k })), { placeholder: "Run npm script" });
   if (r) runScript(r);
 }
-export async function installDeps() { const mode = await ensureLinuxFor("npm install"); if (!mode) return; const pm = await pkgManager(); await A.term.run(`${pm} install`, { cwd: A.ws.root, title: `${pm} install`, mode, reuse: false }); }
+export async function installDeps() { if (A.N.mode() === "web") return A.toast("Nothing to install in the browser: npm packages load from esm.sh when the page runs"); const mode = await ensureLinuxFor("npm install"); if (!mode) return; const pm = await pkgManager(); await A.term.run(`${pm} install`, { cwd: A.ws.root, title: `${pm} install`, mode, reuse: false }); }
 
 async function readTasks() {
   if (!A.ws.isOpen) return [];

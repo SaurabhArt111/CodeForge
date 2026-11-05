@@ -1,0 +1,6 @@
+dist-site
+web-dist
+.git
+.gradle
+**/build
+node_modules
