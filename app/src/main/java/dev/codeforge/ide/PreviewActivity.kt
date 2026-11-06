@@ -70,10 +70,13 @@ class PreviewActivity : Activity() {
         handle(intent)
     }
 
+    private val triedHosts = HashSet<String>()
+
     private fun handle(i: Intent?) {
         val url = i?.getStringExtra(EXTRA_URL) ?: return
         currentUrl = url
         title = i.getStringExtra(EXTRA_TITLE) ?: "Preview"
+        triedHosts.clear()
         errors = 0; lines.clear(); consoleText.text = ""; updateConsoleBtn()
         crashBanner.visibility = View.GONE
         ensureWeb().loadUrl(url)
@@ -217,8 +220,25 @@ class PreviewActivity : Activity() {
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (!request.isForMainFrame) return
+                // "localhost", "127.0.0.1" and "[::1]" are different sockets: a dev server that listens on only one of them refuses the others.
+                // Try the other two before giving up.
+                val host = request.url.host ?: ""
+                if (error.errorCode == WebViewClient.ERROR_CONNECT && host in LOOPBACK) {
+                    triedHosts.add(host)
+                    val next = LOOPBACK.firstOrNull { it !in triedHosts }
+                    if (next != null) {
+                        val port = if (request.url.port > 0) ":${request.url.port}" else ""
+                        val u = request.url.buildUpon().encodedAuthority(next + port).build().toString()
+                        CrashRecorder.crumb("preview retry ${host} -> ${next}")
+                        view.post { view.loadUrl(u) }
+                        return
+                    }
+                }
+                val shown = currentUrl.ifEmpty { request.url.toString() }
                 val html = "<meta name=viewport content='width=device-width,initial-scale=1'><body style=\"font:15px system-ui;background:#1e1e1e;color:#ddd;padding:28px\"><h3>Can't reach the page</h3>" +
-                    "<p>${error.description}</p><p style='color:#999'>${request.url}</p><p>Is the Live Server still running? Start it again in CodeForge, then reload.</p>"
+                    "<p>${error.description}</p><p style='color:#999'>${shown}</p>" +
+                    "<p>Nothing is listening on that address. Start the server again in CodeForge (Run, or <code>npm run dev</code> in the terminal), then " +
+                    "<a style='color:#4fc1ff' href=\"${shown}\">try again</a>.</p>"
                 view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -268,6 +288,7 @@ class PreviewActivity : Activity() {
     }
 
     companion object {
+        private val LOOPBACK = listOf("localhost", "127.0.0.1", "[::1]")
         const val EXTRA_URL = "url"
         const val EXTRA_TITLE = "title"
         private const val REQ_FILE = 4201

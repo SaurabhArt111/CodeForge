@@ -13,4 +13,6 @@ tools/devhost/node_modules/
 *.jks
 *.keystore
 web-dist/
-dist-site/
+website/dist/
+website/node_modules/
+website/downloads/

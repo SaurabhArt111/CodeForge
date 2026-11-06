@@ -6,6 +6,7 @@ import { bus } from "../core/events.js";
 import { h, icon, P, fmtBytes, copyText, isTouch } from "../core/util.js";
 import { confirm, contextMenu, longPress, prompt, toast, toastError, busy } from "../core/ui.js";
 import * as icons from "../features/icons.js";
+import { askZipOptions } from "./zipdialog.js";
 
 const state = { expanded: new Set(), cache: new Map(), selected: new Set(), anchor: null, clip: null, decorations: new Map(), dirDecor: new Map() };
 let treeEl, headEl, bodyEl, pending = null;
@@ -54,6 +55,7 @@ async function pollOnce() {
       if (prev !== undefined && prev !== st.m) { state.cache.delete(d); changed = true; ws.invalidate(); bus.emit("fs:external", d); }
     } catch { /* ignore */ }
   }
+  bus.emit("fs:poll");
   if (changed) render();
 }
 
@@ -270,10 +272,10 @@ function rootMenu(x, y) {
 
 async function zipPaths(paths) {
   const base = paths.length === 1 ? P.base(paths[0]) : "archive";
-  const name = await prompt("Compress to ZIP", { value: base + ".zip", okLabel: "Compress" }); if (!name) return;
-  const dest = P.join(P.dir(paths[0]), name);
+  const o = await askZipOptions({ name: base + ".zip", paths }); if (!o) return;
+  const dest = P.join(P.dir(paths[0]), o.name);
   const b = busy("Compressing…");
-  try { const r = await ws.zip(paths, dest); toast(`Created ${name} (${r.count} files)`, "success"); } catch (e) { toastError(e); } finally { b.close(); }
+  try { const r = await ws.zip(paths, dest, o.exclude); toast(`Created ${o.name} (${r.count} files)`, "success"); } catch (e) { toastError(e); } finally { b.close(); }
 }
 
 function itemMenu(it, x, y) {

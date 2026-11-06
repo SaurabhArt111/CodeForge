@@ -10,7 +10,7 @@ const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++
   await page.waitForFunction(() => window.__cfReady || window.__cfError, null, { timeout: 30000 });
   ok(await page.evaluate(() => !!window.__cfReady), "boot");
   // open folder dialog
-  await page.click("text=Open Folder…");
+  await page.click("text=Open Folder…"); await page.waitForSelector(".projects .pj-act"); await page.click(".pj-act:has-text(\"Browse device\")");
   await page.waitForSelector(".ofd-list .row");
   ok((await page.locator(".ofd-root").count()) >= 1, "storage roots shown");
   await page.screenshot({ path: "/tmp/cf-dev/shot-ofd.png" });

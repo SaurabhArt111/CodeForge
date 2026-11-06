@@ -17,7 +17,7 @@ fs.writeFileSync("/tmp/cf-dev/home/lk/README.md", "# Demo\n\nOpen https://exampl
   ok((await page.locator(".tab:has-text('Preview')").count()) === 0, "no in-app preview tab opened by default");
   // 2) the real chain: node spawns xdg-open → node-patch intercepts → OSC → browser
   await page.keyboard.type("clear\r"); await page.waitForTimeout(300);
-  await page.keyboard.type(`NODE_OPTIONS="--require /home/claude/build/CodeForge/app/src/main/assets/env/node-patch.js" node -e "require('child_process').spawn('xdg-open',['http://localhost:4000/x'],{stdio:'ignore',detached:true}).on('exit',c=>console.log('opener-exit',c))"\r`);
+  await page.keyboard.type(`NODE_OPTIONS="--require ${require("path").join(__dirname, "..", "..", "app/src/main/assets/env/node-patch.js")}" node -e "require('child_process').spawn('xdg-open',['http://localhost:4000/x'],{stdio:'ignore',detached:true}).on('exit',c=>console.log('opener-exit',c))"\r`);
   await page.waitForFunction(() => window.__opened.includes("http://localhost:4000/x"), null, { timeout: 8000 }).then(() => ok(true, "node spawn('xdg-open') intercepted → system browser"), () => ok(false, "node spawn('xdg-open') intercepted: " + JSON.stringify([])));
   // 3) selecting a URL in the terminal shows the chip → click opens in browser
   await page.keyboard.type("clear; echo see https://example.org/path?q=1 ok\r"); await page.waitForTimeout(700);

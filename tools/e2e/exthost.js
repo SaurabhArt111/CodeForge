@@ -1,5 +1,5 @@
 // e2e: install a VSIX that has NLS placeholders, a README with odd casing and extension code; run it in the lite host.
-const { launch } = require("./lib"); const fs = require("fs"); const JSZip = require("/home/claude/build/CodeForge/tools/devhost/node_modules/jszip");
+const { launch } = require("./lib"); const fs = require("fs"); const JSZip = require(require("path").join(__dirname, "..", "devhost", "node_modules", "jszip"));
 let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
 for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f, { force: true });
 fs.rmSync("/tmp/cf-dev/cf/extensions", { recursive: true, force: true }); fs.rmSync("/tmp/cf-dev/cf/ext-data", { recursive: true, force: true });

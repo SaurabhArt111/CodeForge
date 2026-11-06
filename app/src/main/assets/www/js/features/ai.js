@@ -75,18 +75,19 @@ function build(el) {
   ctxEl = h("div.ai-ctx");
   inputEl = h("textarea", { rows: 2, placeholder: "Ask anything…  (@ to add files, / for commands)", spellcheck: true, onkeydown: onKey, oninput: onInput });
   sendBtn = h("button.btn.primary.ai-send", { title: "Send", onclick: () => (streaming ? stop() : send()) }, icon("send"));
-  el.append(h("div.view-head", h("span.title", "AI Assistant"), h("button.icon-btn", { title: "New chat", onclick: newChat }, icon("add")), h("button.icon-btn", { title: "History", onclick: history }, icon("history")), h("button.icon-btn", { title: "Coding CLIs", onclick: cliMenu }, icon("terminal")), h("button.icon-btn", { title: "Provider & key", onclick: pickProvider }, icon("settings-gear"))),
+  el.append(h("div.view-head", h("span.title", "AI Assistant"), h("button.icon-btn", { title: "New chat", onclick: newChat }, icon("add")), h("button.icon-btn", { title: "History", onclick: history }, icon("history")), h("button.icon-btn", { title: "Coding CLIs", onclick: cliMenu }, icon("terminal")), h("button.icon-btn", { title: "AI settings (provider, API key, model, CLIs)", onclick: openSettings }, icon("settings-gear"))),
     headEl, msgsEl, h("div.ai-compose", ctxEl, h("div.ai-inputrow", inputEl, sendBtn)));
   renderHead(); renderCtx(); renderMsgs();
   A.ed.editorEvents.on("active", renderCtx); A.ed.editorEvents.on("selection", debounce(renderCtx, 300));
 }
 function renderHead() {
+  if (!headEl) return;   // the chat view is built lazily; settings may change the provider before it exists
   const p = curProvider();
   headEl.replaceChildren(
     h("button.chip.ai-pill", { onclick: pickProvider, title: "Change provider / model" }, icon("sparkle"), ` ${p.label.split(" (")[0]} · ${curModel() || "model?"}`),
     h("button.icon-btn.ai-more", { title: "More", onclick: (e) => A.contextMenu([
       { label: "New chat", icon: "add", run: newChat }, { label: "History…", icon: "history", run: history }, { label: "Coding CLIs…", icon: "terminal", run: cliMenu },
-      { label: "Provider & key…", icon: "settings-gear", run: pickProvider }, { label: "Copy chat as Markdown", icon: "copy", run: exportChat }], e.clientX, e.clientY) }, icon("kebab-horizontal")),
+      { label: "AI settings…", icon: "settings-gear", run: openSettings }, { label: "Quick provider / model…", icon: "sparkle", run: pickProvider }, { label: "Copy chat as Markdown", icon: "copy", run: exportChat }], e.clientX, e.clientY) }, icon("kebab-horizontal")),
     h("div.ai-modes", ...[["chat", "Chat"], ["agent", "Agent"]].map(([m, l]) => h("button.chip" + (mode === m ? ".on" : ""), { onclick: () => setMode(m), title: m === "agent" ? "The AI can read, edit files and run commands in your project (asks before changing things)" : "Ask questions with your code as context" }, l))));
 }
 function setMode(m) { mode = m; renderHead(); A.toast(m === "agent" ? "Agent mode: the AI can use tools in your project" : "Chat mode", { timeout: 1500 }); }
@@ -106,6 +107,37 @@ async function addFile() {
 }
 function onInput() { inputEl.style.height = "auto"; inputEl.style.height = Math.min(160, inputEl.scrollHeight) + "px"; if (/(^|\s)@$/.test(inputEl.value)) { inputEl.value = inputEl.value.slice(0, -1); addFile(); } }
 function onKey(e) { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); send(); } }
+
+/** The gear: the full Settings page, scrolled to the AI section (provider, API keys, model, endpoints, coding CLIs). */
+export async function openSettings() { const sv = await import("../ui/settingsview.js"); return sv.open("AI Assistant"); }
+
+/** Providers / keys / model / coding CLIs, drawn inside the Settings page. */
+export function renderSettings(box) {
+  if (!A) return;
+  const S = A.settings;
+  const draw = async () => {
+    const cur = S.get("ai.provider");
+    const rows = [];
+    for (const [id, p] of Object.entries(PROVIDERS)) {
+      const has = p.key ? !!(await keyFor(p)) : true;
+      const status = !p.key ? "no key needed" : has ? "key saved" : "no key";
+      const base = p.baseSetting ? h("input", { type: "text", value: S.get(p.baseSetting), placeholder: "Base URL", onchange: (e) => S.set(p.baseSetting, e.target.value.trim()) }) : null;
+      rows.push(h("div.ai-prov" + (id === cur ? ".cur" : ""),
+        h("div.ai-prov-head", h("button.chip" + (id === cur ? ".on" : ""), { onclick: async () => { S.set("ai.provider", id); S.set("ai.model", ""); renderHead(); draw(); } }, id === cur ? "In use" : "Use"),
+          h("span.ai-prov-name", p.label), h("span.muted.ai-prov-status" + (p.key && !has ? ".warn" : ""), status)),
+        h("div.ai-prov-acts", ...(p.key ? [h("button.btn.small", { onclick: async () => { await setKey(id); draw(); } }, has ? "Replace key" : "Set key"),
+          has && p.key && (await A.N.secret.has(p.key)) ? h("button.btn.small", { onclick: async () => { await A.N.secret.delete(p.key); A.toast("Key removed"); draw(); } }, "Remove") : null,
+          p.help ? h("a.btn.small", { href: p.help, target: "_blank", rel: "noopener" }, "Get a key") : null] : []), base)));
+    }
+    const model = h("input", { type: "text", value: curModel(), placeholder: "Model id", onchange: (e) => { const m = e.target.value.trim(); S.state.aiModels = { ...(S.state.aiModels || {}), [S.get("ai.provider")]: m }; S.saveState(); S.set("ai.model", ""); renderHead(); } });
+    const cliRows = CLIS.map((c) => h("div.ai-cli", h("div", h("div.ai-cli-name", c.name), h("div.muted", c.note)), h("button.btn.small", { onclick: () => launchCli(c) }, "Open in terminal")));
+    box.replaceChildren(
+      h("div.set-subhead", "Provider & API key"), ...rows,
+      h("div.set-subhead", "Model"), h("div.ai-model-row", model, h("button.btn.small", { onclick: async () => { await pickModel(); draw(); } }, "Choose from list…")),
+      h("div.set-subhead", "Coding CLIs (Claude Code, Codex, Copilot, Gemini…)"), h("p.muted.set-note", "Run in the Linux terminal. They edit your project files directly; CodeForge refreshes open files and Git status as they change."), ...cliRows);
+  };
+  draw();
+}
 
 async function pickProvider() {
   const names = Object.entries(PROVIDERS).map(([id, p]) => ({ label: p.label, description: id === A.settings.get("ai.provider") ? "current" : "", value: id }));
@@ -161,13 +193,108 @@ function renderMarkdown(text, host) {
   host.querySelectorAll("pre > code").forEach((code) => {
     const pre = code.parentElement; const lang = (code.className.match(/language-([\w+-]+)/) || [])[1] || ""; const src = code.textContent;
     pre.classList.add("ai-code");
-    pre.prepend(h("div.ai-code-bar", h("span.muted", lang || "code"), h("span", { style: { flex: 1 } }),
+    pre.prepend(h("div.ai-code-bar", h("span.muted.ai-code-lang", lang || "code"), h("span", { style: { flex: 1 } }),
       h("button.icon-btn", { title: "Copy", onclick: () => { A.N.sys.clipboardSet(src); A.toast("Copied", { timeout: 900 }); } }, icon("copy")),
       /^(sh|bash|shell|zsh|console)$/i.test(lang) ? h("button.icon-btn", { title: "Run in terminal", onclick: () => A.term.run(src.replace(/^\$ /gm, ""), { cwd: A.ws.root || undefined, title: "ai", reuse: false }) }, icon("play")) : null,
       h("button.icon-btn", { title: "Insert at cursor", onclick: () => A.ed.insertText(src) }, icon("insert")),
-      h("button.icon-btn", { title: "Apply…", onclick: (e) => applyMenu(src, lang, e.clientX, e.clientY) }, icon("diff"))));
+      h("button.icon-btn", { title: "More ways to apply…", onclick: (e) => applyMenu(src, lang, e.clientX, e.clientY) }, icon("diff"))));
+    const edit = parseEdit(src);
+    if (edit) { pre.dataset.file = edit.path; pre.querySelector(".ai-code-bar").prepend(h("button.btn.small.primary.ai-apply", { title: `Apply to ${edit.path}`, onclick: (e) => { const b = e.currentTarget; applyEdit(edit).then((ok) => { if (ok) { b.textContent = "Applied ✓"; b.disabled = true; } }); } }, icon("check"), " Apply")); }
   });
 }
+
+// ---------------------------------------------------------------- applying AI code to files (works with every model: no tool support needed)
+// A fenced block whose first line is `FILE: path` is a change to that file: either the complete new content, or SEARCH/REPLACE blocks.
+const FILE_RE = /^\s*(?:\/\/|#|--|;|<!--|\/\*)?\s*(?:FILE|PATH|File|Path)\s*[:=]\s*([^\s*]+?)\s*(?:-->|\*\/)?\s*$/;
+export function parseEdit(src) {
+  const lines = String(src).replace(/\r\n/g, "\n").split("\n");
+  const m = FILE_RE.exec(lines[0] || ""); if (!m) return null;
+  const path = m[1].replace(/^["'`]|["'`]$/g, "");
+  const rest = lines.slice(1).join("\n");
+  if (/^<{5,9} SEARCH\s*$/m.test(rest)) {
+    const edits = []; const re = /^<{5,9} SEARCH\s*\n([\s\S]*?)\n?^={5,9}\s*\n([\s\S]*?)\n?^>{5,9} REPLACE\s*$/gm; let x;
+    while ((x = re.exec(rest))) edits.push({ search: x[1], replace: x[2] });
+    return edits.length ? { path, edits } : null;
+  }
+  return { path, content: rest.replace(/\n$/, "") };
+}
+/** every path-tagged fenced block of a reply */
+export function extractEdits(text) {
+  const out = []; const re = /```[^\n]*\n([\s\S]*?)```/g; let m;
+  while ((m = re.exec(String(text || "")))) { const e = parseEdit(m[1]); if (e) out.push(e); }
+  return out;
+}
+/** returns { text } or { error } */
+export function planText(oldText, ed) {
+  if (ed.content != null) return { text: ed.content.endsWith("\n") || !ed.content ? ed.content : ed.content + "\n" };
+  let text = oldText;
+  for (const { search, replace } of ed.edits) {
+    if (!search.trim()) { text = text ? text.replace(/\n?$/, "\n") + replace + "\n" : replace + "\n"; continue; }
+    const i = text.indexOf(search);
+    if (i >= 0) { text = text.slice(0, i) + replace + text.slice(i + search.length); continue; }
+    // whitespace-tolerant: same lines, ignoring indentation / trailing spaces
+    const tl = text.split("\n"), sl = search.split("\n"); const norm = (x) => x.trim(); let hit = -1;
+    for (let k = 0; k + sl.length <= tl.length && hit < 0; k++) { let okk = true; for (let j = 0; j < sl.length; j++) if (norm(tl[k + j]) !== norm(sl[j])) { okk = false; break; } if (okk) hit = k; }
+    if (hit < 0) return { error: `Could not find the text to replace in ${ed.path}: “${search.split("\n")[0].trim().slice(0, 60)}”. The file may have changed.` };
+    const ind = (tl[hit].match(/^\s*/) || [""])[0], sInd = (sl[0].match(/^\s*/) || [""])[0];
+    const rl = replace.split("\n").map((l) => (l.trim() ? ind + (l.startsWith(sInd) ? l.slice(sInd.length) : l.trimStart()) : l));
+    tl.splice(hit, sl.length, ...rl); text = tl.join("\n");
+  }
+  return { text };
+}
+/** line diff with 3 lines of context (Myers-lite LCS; very large files fall back to a block replace) */
+function lineDiff(a, b) {
+  const x = a.split("\n"), y = b.split("\n"); let pre = 0; while (pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;
+  let sx = x.length, sy = y.length; while (sx > pre && sy > pre && x[sx - 1] === y[sy - 1]) { sx--; sy--; }
+  const mid = (arr, n) => arr.slice(pre, n); const ma = mid(x, sx), mb = mid(y, sy);
+  const ops = [];
+  if (ma.length * mb.length > 4e6) { ma.forEach((l) => ops.push(["-", l])); mb.forEach((l) => ops.push(["+", l])); }
+  else {
+    const n = ma.length, m = mb.length, L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = ma[i] === mb[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    let i = 0, j = 0; while (i < n && j < m) { if (ma[i] === mb[j]) { ops.push([" ", ma[i]]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) ops.push(["-", ma[i++]]); else ops.push(["+", mb[j++]]); }
+    while (i < n) ops.push(["-", ma[i++]]); while (j < m) ops.push(["+", mb[j++]]);
+  }
+  const head = x.slice(Math.max(0, pre - 3), pre).map((l) => [" ", l]), tail = x.slice(sx, sx + 3).map((l) => [" ", l]);
+  return [...head, ...ops, ...tail];
+}
+function reviewBody(path, oldText, newText) {
+  const box = h("div.ai-diff.selectable"); const ops = lineDiff(oldText, newText); let n = 0;
+  box.append(h("div.ai-diff-file", path));
+  for (const [k, l] of ops) { if (++n > 400) { box.append(h("div.muted", "… diff truncated")); break; } box.append(h("div." + (k === "+" ? "add" : k === "-" ? "del" : "ctxl"), (k === " " ? "  " : k + " ") + l)); }
+  return box;
+}
+/** Apply one path-tagged change. `review`: show the diff first (skipped when the "apply automatically" setting is on). Returns true when written. */
+export async function applyEdit(ed, { review = true } = {}) {
+  try {
+    if (!A.ws.isOpen) { A.toast("Open a project folder first", { kind: "warn" }); return false; }
+    const full = rel(ed.path); const exists = await A.N.fs.exists(full);
+    const doc = A.ed.getDoc(full); let oldText = "", bom = false;
+    if (exists) { if (doc?.model) oldText = doc.model.getValue(); else { const r = await A.N.fs.readText(full); if (r.text == null) throw new Error("Cannot read " + ed.path + " (binary or too large)"); oldText = r.text; bom = r.bom; } }
+    const plan = planText(oldText, ed); if (plan.error) { A.toast(plan.error, { kind: "error", timeout: 6000 }); return false; }
+    if (plan.text === oldText) { A.toast("Already up to date: " + ed.path, { timeout: 1800 }); return true; }
+    if (review && !A.settings.get("ai.autoApply")) {
+      const r = await A.modal({ title: `${exists ? "Apply changes to" : "Create"} ${P.rel(A.ws.root, full)}`, width: 640, className: "tall", body: reviewBody(P.rel(A.ws.root, full), oldText, plan.text), buttons: [{ label: "Cancel", value: false }, { label: exists ? "Apply" : "Create file", primary: true, value: true }] });
+      if (r !== true) return false;
+    }
+    if (doc?.model) { doc.model.pushEditOperations([], [{ range: doc.model.getFullModelRange(), text: plan.text }], () => null); await A.ed.save(full); }
+    else { await A.N.fs.mkdir(P.dir(full)); await A.N.fs.writeText(full, plan.text, { bom }); A.ws.emit("changed", new Set([P.dir(full)])); }
+    A.bus.emit("fs:docreload", full);
+    A.toast(`${exists ? "Applied to" : "Created"} ${P.rel(A.ws.root, full)}`, { kind: "success", timeout: 2200 });
+    if (!A.ed.getDoc(full)) A.ed.openFile(full, { preview: false });
+    return true;
+  } catch (e) { A.toastError(e); return false; }
+}
+async function applyAll(edits) {
+  if (!edits.length) return;
+  if (!A.settings.get("ai.autoApply")) {
+    const body = h("div", h("p.modal-text", `Apply ${edits.length} change${edits.length === 1 ? "" : "s"} to your project?`), h("ul.ai-apply-list", ...edits.map((e) => h("li", e.path, h("span.muted", e.edits ? ` · ${e.edits.length} edit${e.edits.length === 1 ? "" : "s"}` : " · whole file")))));
+    if ((await A.modal({ title: "Apply all", width: 460, body, buttons: [{ label: "Cancel", value: false }, { label: "Apply all", primary: true, value: true }] })) !== true) return;
+  }
+  let n = 0; for (const e of edits) if (await applyEdit(e, { review: false })) n++;
+  if (edits.length > 1) A.toast(`Applied ${n} of ${edits.length} changes`, { kind: n === edits.length ? "success" : "warn" });
+}
+
 function applyMenu(src, lang, x, y) {
   const t = A.ed.activeTab(); const hasSel = !!A.ed.selectionText();
   A.contextMenu([
@@ -198,7 +325,9 @@ function addBubble(m) {
   msgsEl.append(el); m.el = el; return el;
 }
 function msgActions(m) {
+  const edits = extractEdits(m.text);
   return h("div.ai-actions",
+    edits.length > 1 ? h("button.btn.small.primary", { title: "Apply every file change in this reply", onclick: () => applyAll(edits) }, icon("check-all"), ` Apply all (${edits.length})`) : null,
     h("button.icon-btn", { title: "Copy reply", onclick: () => { A.N.sys.clipboardSet(m.text || ""); A.toast("Copied", { timeout: 900 }); } }, icon("copy")),
     h("button.icon-btn", { title: "Regenerate", onclick: () => regenerate(m) }, icon("refresh")));
 }
@@ -235,7 +364,7 @@ async function buildContext() {
 }
 const SLASH = { "/explain": "Explain the code clearly, step by step.", "/fix": "Find and fix the bug(s). Show the corrected code and explain the cause.", "/tests": "Write thorough unit tests for this code using the project's test framework (or a sensible default).", "/docs": "Add concise documentation comments to this code.", "/refactor": "Refactor this code for readability and maintainability without changing behaviour.", "/optimize": "Suggest and apply performance optimizations." };
 function systemPrompt() {
-  const base = `You are CodeForge AI, an expert programming assistant built into an Android code editor (Monaco editor, a terminal with Alpine Linux, live preview, git).\nBe concise and practical. When you output code, use fenced code blocks with a language tag. Prefer minimal diffs: only show changed parts unless asked for the full file.\n${A.ws.isOpen ? `The open project is "${A.ws.name}".` : "No project is open."}\nCurrent date: ${new Date().toDateString()}.`;
+  const base = `You are CodeForge AI, an expert programming assistant built into an Android code editor (Monaco editor, a terminal with Alpine Linux, live preview, git).\nBe concise and practical. When you output code, use fenced code blocks with a language tag. Prefer minimal diffs: only show changed parts unless asked for the full file.\nWhen you propose a change to a project file, make it applicable with one tap: put it in its own fenced block whose FIRST line is FILE: relative/path (plain text, no comment marker). Then either give the complete new file content, or one or more edit blocks in exactly this form:\n<<<<<<< SEARCH\n(exact existing lines)\n=======\n(replacement lines)\n>>>>>>> REPLACE\nSEARCH text must match the file exactly and be unique. New files: the FILE line plus the full content. Keep prose outside the block.\n${A.ws.isOpen ? `The open project is "${A.ws.name}".` : "No project is open."}\nCurrent date: ${new Date().toDateString()}.`;
   const agent = mode === "agent" ? `\n\nYou are in AGENT mode with tools to read, search, create and edit files in the project and run shell commands. Work step by step: find files with find_files/search, read before editing, make focused edits with edit_file (exact string replacement) or write_file, then verify with get_problems and by running the project's checks/tests when useful. You may call several read-only tools at once. Paths are relative to the project root. Stop and give a short summary when the task is done.` : "";
   const proj = rules.text ? `\n\nProject instructions found in the repository (follow them):${rules.text}` : "";
   return base + agent + proj + (A.settings.get("ai.systemPrompt") ? "\n\n" + A.settings.get("ai.systemPrompt") : "");
@@ -267,6 +396,7 @@ async function runTurn() {
       const asst = { role: "assistant", text: "", toolCalls: [] }; chat.messages.push(asst); const el = addBubble(asst); el.classList.add("streaming"); const body = el.querySelector(".ai-md");
       const done = await streamOnce(p, asst, (t) => { asst.text = t; renderMarkdown(t + "▍", body); msgsEl.scrollTop = msgsEl.scrollHeight; });
       renderMarkdown(asst.text, body); el.classList.remove("streaming");
+      if (mode === "chat" && !streaming.cancelled && A.settings.get("ai.autoApply")) { const eds = extractEdits(asst.text); if (eds.length) applyAll(eds); }
       for (const tc of asst.toolCalls) el.append(toolCard(tc));
       if (streaming.cancelled) break;
       if (!asst.toolCalls.length) break;
@@ -436,8 +566,10 @@ async function selectionAction(kind) {
 // ---------------------------------------------------------------- coding CLIs (real Claude Code / Codex / Copilot CLI inside the Linux terminal)
 async function cliMenu(e) {
   const r = await A.quickPick(CLIS.map((c) => ({ label: c.name, description: c.note, value: c, icon: "terminal" })), { placeholder: "Open a coding CLI in the terminal (installs it on first use)" }); if (!r) return;
+  return launchCli(r);
+}
+async function launchCli(r) {
   const st = await A.N.env.status(); if (!st.installed) { if (await A.confirm(`${r.name} runs in the Linux environment (needs node/npm). Set it up now?`, { okLabel: "Set up" })) (await A.feat("env")).wizard(); return; }
-  const install = r.pkg ? `npm i -g ${r.pkg}` : `pip install --break-system-packages ${r.pip}`;
-  const line = `command -v ${r.bin} >/dev/null 2>&1 || { echo "Installing ${r.name}…"; ${install}; }; ${r.bin}`;
+  const line = `cf run ${r.bin}`;   // cf installs the CLI on first use; keeps the typed command short
   await A.term.run(line, { cwd: A.ws.root || undefined, title: r.bin, mode: "linux", reuse: false });
 }

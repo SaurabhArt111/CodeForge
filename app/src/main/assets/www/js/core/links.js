@@ -33,7 +33,7 @@ export function urlAt(text, col) {
   return null;
 }
 export function openInBrowser(u) { u = normalize(u); return N.sys.openUrl(u).catch((e) => toast(e.message || String(e), { kind: "error" })); }
-export function openInPreview(u) { bus.emit("preview:url", normalize(u).replace("//localhost", "//127.0.0.1")); }
+export function openInPreview(u) { bus.emit("preview:url", normalize(u)); }
 export async function openUrl(u, { quiet = false } = {}) {
   u = normalize(u);
   if (!/^https?:\/\//i.test(u)) return N.sys.openUrl(u);

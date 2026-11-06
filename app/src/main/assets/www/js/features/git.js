@@ -14,6 +14,9 @@ export async function init(api) {
   const refreshSoon = debounce(() => refresh(), 700);
   A.ws.on("root", () => { dir = A.ws.root; state = { ...state, repo: false, log: null }; refresh(); });
   A.bus.on("saved", refreshSoon); A.bus.on("fs:external", refreshSoon); A.ws.on("changed", refreshSoon);
+  A.bus.on("fs:docreload", refreshSoon);
+  // while a terminal is running (coding CLIs, npm, git…) files change behind the editor's back: keep the Git view current
+  setInterval(() => { if (!document.hidden && A.ws.isOpen && state.repo && A.term.list().some((t) => t.alive)) refresh(); }, 10000);
   // coming back from another app must never stall the UI: refresh lazily, at most every 20 s, after the first paint
   const onReturn = () => { if (!document.hidden && Date.now() - lastDone > 20000) setTimeout(() => refresh(), 1800); };
   window.addEventListener("focus", onReturn); A.N.on("app.resume", onReturn);
@@ -272,7 +275,10 @@ async function loadRepos(box, pick) {
 // ---------------------------------------------------------------- gutter decorations (diff vs HEAD)
 let diffEd = null, collections = new WeakMap(), headCache = new Map();
 const gutterSoon = debounce((force) => gutter(force), 450);
-async function gutter(force) {
+// one run at a time: two overlapping runs shared `diffEd`, and the first one disposed the model the second was attaching ("Model is disposed!")
+let gutterChain = Promise.resolve();
+const gutter = (force) => (gutterChain = gutterChain.then(() => gutterRun(force)).catch(() => {}));
+async function gutterRun(force) {
   const t = A.ed.activeTab(); const e = A.ed.activeEditor(); const mon = A.ed.monaco;
   if (!t?.path || t.kind !== "file" || !e || !mon || !state.repo || !dir || !A.ws.isOpen || !P.inside(dir, t.path)) return;
   const rel = P.rel(dir, t.path); let orig = headCache.get(rel);
@@ -280,10 +286,12 @@ async function gutter(force) {
   let coll = collections.get(e); if (!coll) { coll = e.createDecorationsCollection([]); collections.set(e, coll); }
   if (orig === null || (orig === "" && !(await A.N.fs.exists(dir + "/.git/HEAD")))) { coll.set([]); return; }
   if (!diffEd) { const host = document.createElement("div"); host.style.cssText = "position:absolute;width:10px;height:10px;left:-99px;visibility:hidden"; document.body.append(host); diffEd = mon.editor.createDiffEditor(host, { renderSideBySide: false, automaticLayout: false, ignoreTrimWhitespace: false }); }
+  if (!t.doc.model || t.doc.model.isDisposed()) return;
   const om = mon.editor.createModel(orig, t.doc.model.getLanguageId());
-  diffEd.setModel({ original: om, modified: t.doc.model });
+  try { diffEd.setModel({ original: om, modified: t.doc.model }); } catch { om.dispose(); return; }
   const done = new Promise((res) => { const d = diffEd.onDidUpdateDiff(() => { d.dispose(); res(); }); setTimeout(res, 2500); });
   await done;
+  if (t.doc.model.isDisposed()) { try { diffEd.setModel(null); } catch { /* ignore */ } om.dispose(); return; }
   const changes = diffEd.getLineChanges() || []; const decos = [];
   for (const c of changes) {
     const [os, oe, ms, me] = [c.originalStartLineNumber, c.originalEndLineNumber, c.modifiedStartLineNumber, c.modifiedEndLineNumber];

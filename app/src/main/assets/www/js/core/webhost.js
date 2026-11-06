@@ -58,10 +58,11 @@ function searchText(o) {
   }
   return { results, files: nfiles, scanned, truncated };
 }
-async function zipOut(srcs, base) {
+const skipName = (name, pats) => pats.some((p) => (p.startsWith("*") ? name.endsWith(p.slice(1)) : p.endsWith("*") ? name.startsWith(p.slice(0, -1)) : name === p));
+async function zipOut(srcs, base, exclude = []) {
   await lazy.jszip();
   const zip = new window.JSZip(); let count = 0;
-  for (const s of srcs) for (const k of underPrefix(abs(s)).sort()) { const rel = k.slice(abs(base || dirOf(s)).length).replace(/^\//, ""); if (!rel) continue; const r = files.get(k); if (r.t === "d") zip.folder(rel); else { zip.file(rel, r.d); count++; } }
+  for (const s of srcs) for (const k of underPrefix(abs(s)).sort()) { const rel = k.slice(abs(base || dirOf(s)).length).replace(/^\//, ""); if (!rel) continue; if (exclude.length && rel.split("/").some((seg) => skipName(seg, exclude))) continue; const r = files.get(k); if (r.t === "d") zip.folder(rel); else { zip.file(rel, r.d); count++; } }
   return { bytes: await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }), count };
 }
 export function blobUrl(p) { const r = need(p); return URL.createObjectURL(new Blob([r.d || new Uint8Array()], { type: mimeOf(p) })); }
@@ -200,7 +201,7 @@ export function create(emit) {
     "sys.importUri": async (uri, dest) => { const f = picked.get(uri); if (!f) throw new Error("File is no longer available"); picked.delete(uri); let d = abs(dest); if (files.get(d)?.t === "d") d = norm(d + "/" + f.name); await put(d, new Uint8Array(await f.arrayBuffer())); return { path: d, size: f.size }; },
     "sys.importTree": async (uri, dest) => { const l = picked.get(uri); if (!l) throw new Error("Folder is no longer available"); picked.delete(uri); let n = 0; const root = abs(dest); for (const f of l) { const rel = (f.webkitRelativePath || f.name).split("/").slice(1).join("/") || f.name; if (/(^|\/)(node_modules|\.git)\//.test(rel)) continue; await put(norm(root + "/" + rel), new Uint8Array(await f.arrayBuffer())); n++; } return { path: root, count: n }; },
     "sys.exportFile": async (src) => { const r = need(src); download(baseOf(src), r.d, mimeOf(src)); return true; },
-    "sys.exportTree": async (src) => { const z = await zipOut([src]); download(baseOf(src) + ".zip", z.bytes, "application/zip"); return true; },
+    "sys.exportTree": async (src, _uri, ex) => { const z = await zipOut([src], null, ex || []); download(baseOf(src) + ".zip", z.bytes, "application/zip"); return true; },
     "sys.exit": async () => true, "sys.setSecure": async () => true,
 
     "fs.list": async (p) => { p = abs(p); const r = files.get(p); if (!r) throw new Error("No such directory: " + p); if (r.t !== "d") throw new Error("Not a directory: " + p); return [...(kids.get(p) || [])].map((n) => ({ n, ...statObj(files.get(norm(p + "/" + n))) })); },
@@ -214,7 +215,7 @@ export function create(emit) {
     "fs.realpath": async (p) => abs(p), "fs.chmod": async () => true, "fs.token": async () => "web",
     "fs.symlink": async () => { throw new Error("Symlinks are not supported in the web version"); }, "fs.readlink": async () => { throw new Error("Not a symlink"); },
     "search.text": async (o) => searchText(o), "search.cancel": async () => true,
-    "archive.zip": async (o) => { const z = await zipOut(o.src, o.base); await put(abs(o.dest), z.bytes); return { count: z.count }; },
+    "archive.zip": async (o) => { const z = await zipOut(o.src, o.base, o.exclude || []); await put(abs(o.dest), z.bytes); return { count: z.count }; },
     "archive.unzip": async (o) => { await lazy.jszip(); const zip = await window.JSZip.loadAsync(need(o.src).d); let count = 0; const root = abs(o.dest); for (const [name, e] of Object.entries(zip.files)) { const out = norm(root + "/" + name); if (out !== root && !out.startsWith(root + "/")) throw new Error("Blocked unsafe path in archive: " + name); if (e.dir) await mkdirp(out); else { await put(out, await e.async("uint8array")); count++; } } return { count }; },
     "archive.listZip": async (p) => { await lazy.jszip(); const zip = await window.JSZip.loadAsync(need(p).d); return Object.values(zip.files).map((e) => ({ name: e.name, size: 0, dir: e.dir })); },
     "archive.untar": async () => { throw new Error("tar archives are not supported in the web version"); },

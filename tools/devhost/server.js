@@ -230,7 +230,8 @@ const methods = {
   "search.text": async (o) => searchText(o), "search.cancel": async () => true,
   "archive.zip": async (o) => {
     const zip = new JSZip(); let count = 0;
-    async function add(f, base) { const rel = path.relative(base, f).split(path.sep).join("/"); const st = await fsp.lstat(f); if (st.isSymbolicLink()) return; if (st.isDirectory()) { if (rel) zip.folder(rel); for (const n of (await fsp.readdir(f)).sort()) await add(path.join(f, n), base); } else { zip.file(rel, await fsp.readFile(f)); count++; } }
+    const ex = o.exclude || [], skip = (n) => ex.some((p) => (p.startsWith("*") ? n.endsWith(p.slice(1)) : p.endsWith("*") ? n.startsWith(p.slice(0, -1)) : n === p));
+    async function add(f, base) { if (!o.src.includes(f) && skip(path.basename(f))) return; const rel = path.relative(base, f).split(path.sep).join("/"); const st = await fsp.lstat(f); if (st.isSymbolicLink()) return; if (st.isDirectory()) { if (rel) zip.folder(rel); for (const n of (await fsp.readdir(f)).sort()) await add(path.join(f, n), base); } else { zip.file(rel, await fsp.readFile(f)); count++; } }
     for (const s of o.src) await add(s, o.base || path.dirname(s));
     await fsp.mkdir(path.dirname(o.dest), { recursive: true }); await fsp.writeFile(o.dest, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })); return { count };
   },

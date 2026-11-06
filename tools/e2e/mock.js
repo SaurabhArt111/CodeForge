@@ -1,6 +1,6 @@
 // Mock Open VSX registry + mock Anthropic/OpenAI streaming endpoints (for e2e tests only).
 const http = require("http");
-const JSZip = require("/home/claude/build/CodeForge/tools/devhost/node_modules/jszip");
+const JSZip = require(require("path").join(__dirname, "..", "devhost", "node_modules", "jszip"));
 async function makeVsix() {
   const z = new JSZip();
   z.file("extension/package.json", JSON.stringify({ name: "mock-theme", publisher: "acme", version: "1.2.3", displayName: "Mock Theme Pack", description: "A theme, icon theme and snippets",

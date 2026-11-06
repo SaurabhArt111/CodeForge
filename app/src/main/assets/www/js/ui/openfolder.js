@@ -5,6 +5,7 @@ import { ws } from "./workspace.js";
 import { h, icon, P, fmtBytes, relTime } from "../core/util.js";
 import { modal, prompt, toast, toastError, busy, confirm } from "../core/ui.js";
 import * as icons from "../features/icons.js";
+import { askZipOptions } from "./zipdialog.js";
 
 let info = null;
 export const setInfo = (i) => (info = i);
@@ -126,10 +127,11 @@ export async function openZipAsProject(zipPath) {
 
 /** Export a workspace folder to a user-picked location via the system picker. */
 export async function exportFolderToDevice(folder) {
+  const o = await askZipOptions({ name: P.base(folder), paths: [folder], title: "Export project to device", okLabel: "Choose destination…", askName: false }); if (!o) return;
   let picked; try { picked = await N.sys.pickFolder(); } catch (e) { return toastError(e); }
   if (!picked) return;
   const b = busy("Exporting…");
-  try { const r = await N.sys.exportTree(folder, picked.uri); toast(`Exported ${r.count} files`, { kind: "success" }); } catch (e) { toastError(e); } finally { b.close(); }
+  try { const r = await N.sys.exportTree(folder, picked.uri, o.exclude); toast(`Exported ${r.count} files`, { kind: "success" }); } catch (e) { toastError(e); } finally { b.close(); }
 }
 export async function exportFileToDevice(file) {
   let c; try { c = await N.sys.createFile({ name: P.base(file) }); } catch (e) { return toastError(e); }

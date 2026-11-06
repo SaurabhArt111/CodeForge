@@ -23,7 +23,24 @@ class SessionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /** Whatever happens next, Android requires startForeground() soon after startForegroundService(): do it as the very first thing. */
+    private fun goForeground(): Boolean {
+        ensureChannel(this)
+        val n = buildNotification(this)
+        return try {
+            if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(NOTIF_ID, n)
+            fgReady = true; true
+        } catch (_: Exception) { false }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        goForeground()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!fgReady) goForeground()   // also for the stop action below: a service that was started as a foreground service must not end without this
         if (intent?.action == ACTION_STOP_ALL) {
             SessionManager.killAll()
             LiveServers.stopAll()
@@ -31,15 +48,7 @@ class SessionService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        ensureChannel(this)
-        val n = buildNotification(this)
-        try {
-            if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-            else startForeground(NOTIF_ID, n)
-        } catch (_: Exception) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        if (!fgReady) { stopSelf(); return START_NOT_STICKY }
         if (wake == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "codeforge:sessions").also { it.setReferenceCounted(false); it.acquire(6 * 60 * 60 * 1000L) }
@@ -52,6 +61,7 @@ class SessionService : Service() {
     }
 
     override fun onDestroy() {
+        fgReady = false; startedAt = 0L
         try { wake?.release() } catch (_: Exception) {}
         wake = null
         super.onDestroy()
@@ -61,6 +71,9 @@ class SessionService : Service() {
         const val ACTION_STOP_ALL = "dev.codeforge.ide.STOP_ALL"
         private const val CHANNEL = "cf_sessions"
         private const val NOTIF_ID = 4201
+        @Volatile private var fgReady = false
+        @Volatile private var startedAt = 0L
+        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
         private fun ensureChannel(c: Context) {
             val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -103,12 +116,17 @@ class SessionService : Service() {
             try {
                 if (active) {
                     val i = Intent(c, SessionService::class.java)
+                    if (!fgReady) startedAt = System.currentTimeMillis()
                     c.startForegroundService(i)
                     val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     ensureChannel(c)
                     nm.notify(NOTIF_ID, buildNotification(c))
                 } else {
+                    // stopService() right after startForegroundService() kills the app ("did not then call Service.startForeground()"):
+                    // wait until the service has gone foreground first
+                    if (startedAt != 0L && !fgReady && System.currentTimeMillis() - startedAt < 8000) { handler.postDelayed({ sync() }, 1000); return }
                     c.stopService(Intent(c, SessionService::class.java))
+                    startedAt = 0L
                 }
             } catch (_: Exception) {
                 // Background-start restrictions: sessions still run while the app is visible.

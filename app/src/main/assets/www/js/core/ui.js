@@ -146,10 +146,26 @@ export function contextMenu(items, x, y) {
   // dismiss only on a *new* press outside, never on the tail of the long-press that opened us
   const back = h("div.ctx-back", { onpointerdown: (e) => { if (settled()) { e.preventDefault(); closeMenu(); } }, oncontextmenu: (e) => { e.preventDefault(); if (settled()) closeMenu(); } });
   overlay().append(back, menu);
-  const r = menu.getBoundingClientRect();
-  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 4)) + "px";
-  menu.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) + "px";
-  menu.style.maxHeight = (window.innerHeight - 12) + "px";
+  // area-aware placement: use the visible viewport (soft keyboard excluded), open upwards when there is more room above,
+  // and when neither side fits the menu gets the largest free area and scrolls
+  const place = () => {
+    const vv = window.visualViewport, VW = vv?.width || window.innerWidth, VH = vv?.height || window.innerHeight, M = 6;
+    menu.style.maxHeight = "none"; menu.style.top = "0px"; menu.style.left = "0px";   // measure the natural size
+    const r = { width: menu.offsetWidth, height: menu.offsetHeight };   // layout size: unaffected by the pop-in animation
+    const below = VH - y - M, above = y - M;
+    let top, maxH;
+    if (r.height <= below) { top = y; maxH = below; }
+    else if (r.height <= above) { top = y - r.height; maxH = above; }
+    else if (Math.max(below, above) < 160) { top = M; maxH = VH - 2 * M; }
+    else if (below >= above) { top = y; maxH = below; }
+    else { top = M; maxH = above; }
+    menu.style.maxHeight = Math.floor(maxH) + "px";
+    const hh = menu.offsetHeight;
+    menu.style.top = Math.max(M, Math.min(top, VH - hh - M)) + "px";
+    menu.style.left = Math.max(M, Math.min(x, VW - r.width - M)) + "px";
+  };
+  place();
+  menu.addEventListener("click", () => requestAnimationFrame(place));   // a submenu opened / closed: re-fit
   openMenu = { remove() { back.remove(); menu.remove(); } };
 }
 

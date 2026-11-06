@@ -1,9 +1,14 @@
-# Netlify: build the whole site; no server needed.
+# Netlify: build the whole site (React + web editor); no server needed.
 [build]
-  command = "sh tools/site/build-site.sh dist-site"
-  publish = "dist-site"
+  base = "website"
+  command = "npm ci && npm run build"
+  publish = "website/dist"
 [build.environment]
-  PYTHON_VERSION = "3.11"
+  NODE_VERSION = "20"
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
 [[headers]]
   for = "/*"
   [headers.values]

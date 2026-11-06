@@ -2,6 +2,8 @@
 import { N } from "./bridge.js";
 import { Emitter } from "./events.js";
 import { P, debounce } from "./util.js";
+// phone = the narrow (drawer) layout; a tablet in landscape is >760px wide
+const phone = () => Math.min(window.screen?.width || 9999, window.innerWidth) <= 760;
 
 export const DEFAULTS = {
   "ui.theme": "Dark Modern",
@@ -61,6 +63,7 @@ export const DEFAULTS = {
   "ai.model": "",
   "ai.temperature": 0.2,
   "ai.agentConfirm": true,
+  "ai.autoApply": false,
   "ai.rules": true,
   "ai.endpoint.custom": "http://127.0.0.1:11434/v1",
   "ai.endpoint.ollama": "http://127.0.0.1:11434",
@@ -83,6 +86,13 @@ class Settings extends Emitter {
     this.stateFile = P.join(this.dataDir, "state.json");
     try { const r = await N.fs.readText(this.settingsFile); if (r.text) Object.assign(this.values, JSON.parse(r.text)); } catch { /* first run */ }
     try { const r = await N.fs.readText(this.stateFile); if (r.text) Object.assign(this.state, JSON.parse(r.text)); } catch { /* first run */ }
+    // device-class font defaults: 12 on a phone, 14 on a tablet / desktop - only where the user has not chosen a size themselves
+    this.deviceDefaults = { "editor.fontSize": phone() ? 12 : 14, "terminal.fontSize": phone() ? 12 : 14 };
+    if (!this.state.fontDefaultsSeeded) {
+      // settings.json written by older builds contains every key (including the old default 14): treat 14 as "unset" once
+      for (const k in this.deviceDefaults) if (this.values[k] === 14) this.values[k] = this.deviceDefaults[k];
+      this.state.fontDefaultsSeeded = 1; this.saveState(); this._saveSettings();
+    }
     this.ready = true;
     document.addEventListener("visibilitychange", () => { if (document.hidden) this.flush(); });
     window.addEventListener("pagehide", () => this.flush());
@@ -102,6 +112,7 @@ class Settings extends Emitter {
   flush() { this._saveSettings.cancel(); this.saveState.cancel(); if (!this.ready) return Promise.resolve(); this._write(this.settingsFile, () => JSON.stringify(this.values, null, 2)); return this._write(this.stateFile, () => JSON.stringify(this.state)); }
   addRecent(path) {
     this.state.recent = [path, ...this.state.recent.filter((p) => p !== path)].slice(0, 20);
+    (this.state.recentAt ||= {})[path] = Date.now();
     this.state.lastWorkspace = path; this.saveState();
   }
   removeRecent(path) { this.state.recent = this.state.recent.filter((p) => p !== path); if (this.state.lastWorkspace === path) this.state.lastWorkspace = null; this.saveState(); }

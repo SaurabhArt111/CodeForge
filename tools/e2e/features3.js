@@ -1,4 +1,4 @@
-const { launch } = require("./lib"); const fs = require("fs"); const JSZip = require("/home/claude/build/CodeForge/tools/devhost/node_modules/jszip");
+const { launch } = require("./lib"); const fs = require("fs"); const JSZip = require(require("path").join(__dirname, "..", "devhost", "node_modules", "jszip"));
 let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
 for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f, { force: true });
 fs.rmSync("/tmp/cf-dev/home/imported", { recursive: true, force: true }); fs.rmSync("/tmp/cf-dev/home/projects/tpl1", { recursive: true, force: true });
@@ -21,7 +21,7 @@ fs.rmSync("/tmp/cf-dev/home/imported", { recursive: true, force: true }); fs.rmS
   await page.screenshot({path:"/tmp/cf-dev/f3a.png"});
   console.log("ctx items:", (await page.locator(".ctx-item").allTextContents()).join("|"));
   await page.click('.ctx-item:has-text("Compress to ZIP")'); await page.waitForTimeout(500); await page.screenshot({path:"/tmp/cf-dev/f3b.png"});
-  await page.waitForSelector(".modal input"); await page.keyboard.press("Enter");
+  await page.waitForSelector(".zipdlg"); await page.click('.zipdlg button:has-text("Compress")');
   await page.waitForSelector('#view-explorer .row[data-path$="/src.zip"]', { timeout: 10000 }); ok(true, "context menu: compress to ZIP");
   await page.click('#view-explorer .row[data-path$="/src.zip"]', { button: "right" }); await page.click('.ctx-item:has-text("Extract to Folder")');
   await page.waitForSelector('#view-explorer .row[data-path$="/src 2"], #view-explorer .row[data-path$="/src.zip"]'); await page.waitForTimeout(600);

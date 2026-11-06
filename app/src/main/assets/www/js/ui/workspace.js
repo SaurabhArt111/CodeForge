@@ -113,9 +113,9 @@ class Workspace extends Emitter {
     this._changed(...paths.map(P.dir));
   }
 
-  async zip(paths, destZip) {
+  async zip(paths, destZip, exclude = []) {
     const base = P.dir(paths[0]);
-    const r = await N.archive.zip({ src: paths, dest: destZip, base });
+    const r = await N.archive.zip({ src: paths, dest: destZip, base, exclude });
     this._changed(P.dir(destZip)); return r;
   }
   async extractZip(zipPath, destDir) {

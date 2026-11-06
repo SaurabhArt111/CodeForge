@@ -78,7 +78,7 @@ export function autoOpenNext(ms = 180000) { autoOpenUntil = Date.now() + ms; }
 async function onPort(port) {
   if (detected.has(port) || servers.has(port)) return; detected.add(port); A.bus.emit("ports:changed", [...detected]);
   if (Date.now() < autoOpenUntil) { autoOpenUntil = 0; const { openUrl } = await import("../core/links.js"); return openUrl(`http://localhost:${port}/`); }
-  A.toast(`Server detected on port ${port}`, { action: { label: "Preview", run: () => openPreview(`http://127.0.0.1:${port}/`) }, timeout: 9000 });
+  A.toast(`Server detected on port ${port}`, { action: { label: "Preview", run: () => openPreview(`http://localhost:${port}/`) }, timeout: 9000 });
 }
 export const ports = () => [...detected];
 
@@ -102,7 +102,7 @@ function buildPane() {
   pane.append(bar, stage, consoleBox);
   new ResizeObserver(layoutFrame).observe(stage);
 }
-function normalize(u) { u = u.trim(); if (!u) return ""; if (/^\d{2,5}$/.test(u)) return `http://127.0.0.1:${u}/`; if (/^(localhost|127\.|0\.0\.0\.0|\[::1\]|\d+\.\d+\.\d+\.\d+)/.test(u)) return "http://" + u.replace(/^0\.0\.0\.0/, "127.0.0.1"); if (!/^[a-z]+:\/\//i.test(u)) return "https://" + u; return u; }
+function normalize(u) { u = u.trim(); if (!u) return ""; if (/^\d{2,5}$/.test(u)) return `http://localhost:${u}/`; if (/^(localhost|127\.|0\.0\.0\.0|\[::1\]|\d+\.\d+\.\d+\.\d+)/.test(u)) return "http://" + u.replace(/^0\.0\.0\.0/, "127.0.0.1"); if (!/^[a-z]+:\/\//i.test(u)) return "https://" + u; return u; }
 
 /** "auto" = a separate-process window on Android (a heavy page can't take the IDE down); inline panel elsewhere. */
 export const previewMode = () => { const m = A.settings.get("preview.mode"); return m === "auto" ? (isolatedOk ? "window" : "inline") : m; };

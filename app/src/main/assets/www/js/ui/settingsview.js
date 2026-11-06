@@ -41,15 +41,18 @@ export const SCHEMA = [
   ["Git", [S("git.userName", "User name", "text"), S("git.userEmail", "User email", "text"), S("git.autoFetch", "Auto fetch", "bool")]],
   ["AI Assistant", [
     S("ai.provider", "Provider", "select", { options: ["anthropic", "openai", "github", "gemini", "openrouter", "ollama", "custom"] }), S("ai.model", "Model (blank = provider default)", "text"), S("ai.temperature", "Temperature", "number", { min: 0, max: 2, step: 0.1 }),
-    S("ai.agentConfirm", "Ask before the agent runs commands / writes files", "bool"), S("ai.rules", "Use AGENTS.md / CLAUDE.md from the project as instructions", "bool"), S("ai.endpoint.custom", "Custom OpenAI-compatible endpoint", "text"), S("ai.endpoint.ollama", "Ollama endpoint", "text"), S("ai.systemPrompt", "Extra system prompt", "textarea"),
+    S("ai.agentConfirm", "Ask before the agent runs commands / writes files", "bool"), S("ai.autoApply", "Apply AI file changes from chat automatically (no review)", "bool", { hint: "Chat replies can contain “FILE: path” blocks; normally you review the diff and tap Apply" }), S("ai.rules", "Use AGENTS.md / CLAUDE.md from the project as instructions", "bool"), S("ai.endpoint.custom", "Custom OpenAI-compatible endpoint", "text"), S("ai.endpoint.ollama", "Ollama endpoint", "text"), S("ai.systemPrompt", "Extra system prompt", "textarea"),
   ]],
   ["GitHub", [S("github.clientId", "OAuth App client ID (device flow)", "text", { hint: "Create an OAuth App on GitHub with Device Flow enabled. Leave blank to use the build-time value, or sign in with a token." })]],
   ["Extensions", [S("extensions.registry", "Extension registry (Open VSX compatible)", "text"), S("plugins.registry", "CodeForge plugin registry URL (JSON)", "text")]],
 ];
 
-export function open() {
+/** open(section?) – optionally scroll to a section by its title (e.g. "AI Assistant"). */
+export async function open(section) {
   bus.emit("sidebar:close");   // on phones the drawer would still cover the page that just opened
-  return ed.openCustom("settings", "Settings", { iconName: "settings-gear", render: render });
+  const r = await ed.openCustom("settings", "Settings", { iconName: "settings-gear", render: render });
+  if (section) setTimeout(() => { const t = [...document.querySelectorAll(".settings-page h3")].find((x) => x.textContent === section); t?.scrollIntoView({ block: "start", behavior: "smooth" }); }, 120);
+  return r;
 }
 
 function render(el) {
@@ -61,6 +64,10 @@ function render(el) {
     const sec = h("section.set-sec", h("h3", title));
     for (const it of items) { const row = control(it); row.dataset.text = (it.label + " " + it.key + " " + title).toLowerCase(); sec.append(row); }
     sections.push(sec); body.append(sec);
+    if (title === "AI Assistant") {   // providers, keys, models and coding CLIs live in the AI module
+      const box = h("div.set-ai"); box.dataset.search = "ai provider key api model cli claude codex"; sec.append(box);
+      import("../features/ai.js").then((m) => m.renderSettings?.(box)).catch(() => {});
+    }
   }
   const extra = h("section.set-sec", h("h3", "Advanced"),
     h("div.set-row", h("div.set-info", h("div.set-label", "settings.json"), h("div.muted", "Edit the raw settings file")), h("button.btn", { onclick: () => ed.openFile(settings.settingsFile) }, "Open settings.json")),

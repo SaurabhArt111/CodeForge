@@ -37,3 +37,7 @@ try {
   wrap("spawnSync", done); wrap("execFileSync", () => Buffer.alloc(0));
   try { require("module").syncBuiltinESMExports(); } catch (_) { /* older Node */ }
 } catch (_) { /* never break node startup */ }
+
+// Node 17+ resolves "localhost" to ::1 first, so `vite` / `next dev` / `http-server` listen on IPv6 only and the preview window
+// (which opens http://127.0.0.1:PORT or http://localhost:PORT) gets "connection refused". Prefer IPv4 like Node 16 did.
+try { require("dns").setDefaultResultOrder("ipv4first"); } catch (e) { /* old Node: already IPv4-first */ }

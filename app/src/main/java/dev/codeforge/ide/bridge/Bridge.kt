@@ -205,7 +205,7 @@ object Bridge {
         "sys.importUri" -> importUri(a.str(0), a.str(1))
         "sys.importTree" -> importTree(a.str(0), a.str(1))
         "sys.exportFile" -> { Saf.exportFile(File(a.str(0)), Uri.parse(a.str(1))); true }
-        "sys.exportTree" -> exportTree(a.str(0), a.str(1))
+        "sys.exportTree" -> exportTree(a.str(0), a.str(1), a.optJSONArray(2)?.let { ar -> (0 until ar.length()).map { ar.getString(it) } } ?: emptyList())
         "sys.exit" -> { SessionManager.killAll(); LiveServers.stopAll(); host?.finishApp(); true }
 
         // ---------------- files
@@ -236,7 +236,7 @@ object Bridge {
 
         // ---------------- archives
         "archive.zip" -> a.obj(0).let { o ->
-            val n = ZipTools.zip(o.strList("src").map { File(it) }, File(o.getString("dest")), o.optString("base", "").ifEmpty { null }?.let { File(it) }) { c ->
+            val n = ZipTools.zip(o.strList("src").map { File(it) }, File(o.getString("dest")), o.optString("base", "").ifEmpty { null }?.let { File(it) }, o.strList("exclude")) { c ->
                 emit("archive.progress", JSONObject().put("count", c))
             }
             JSONObject().put("count", n)
@@ -450,8 +450,8 @@ object Bridge {
         return JSONObject().put("count", n).put("path", destPath)
     }
 
-    private fun exportTree(srcDir: String, treeUri: String): JSONObject {
-        val n = Saf.exportTree(File(srcDir), Uri.parse(treeUri)) { c -> emit("archive.progress", JSONObject().put("count", c)) }
+    private fun exportTree(srcDir: String, treeUri: String, exclude: List<String> = emptyList()): JSONObject {
+        val n = Saf.exportTree(File(srcDir), Uri.parse(treeUri), exclude) { c -> emit("archive.progress", JSONObject().put("count", c)) }
         return JSONObject().put("count", n)
     }
 

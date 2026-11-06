@@ -25,6 +25,10 @@ import { makeSash } from "./ui/sash.js";
 import * as security from "./ui/security.js";
 import * as crash from "./core/crash.js";
 import * as crashes from "./ui/crashes.js";
+import * as menubar from "./ui/menubar.js";
+import { askZipOptions } from "./ui/zipdialog.js";
+import * as projects from "./ui/projects.js";
+import * as transfer from "./ui/transfer.js";
 
 crash.install();   // JS errors + breadcrumbs go to the crash recorder from the very first line
 
@@ -70,7 +74,7 @@ async function boot() {
       if (to !== "sidebar" && name === currentView) showView("explorer", { silent: true });   // the view just left the sidebar
     });
     output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); cmd.initKeys();
-    layout(); registerCommands(); wireEvents();
+    layout(); registerCommands(); wireEvents(); menubar.init(); mobileNav();
     // keep the splash on screen long enough for its animation to play, then fade it out
     setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 900 - performance.now()));
     // restore last project
@@ -172,10 +176,47 @@ function layout() {
   window.__cfBack = () => {
     if (document.querySelector(".modal-wrap,.qp-wrap,.ctx")) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); document.querySelector(".ctx-back")?.click(); return true; }
     if ($("#sidebar").classList.contains("open")) { closeDrawer(); return true; }
+    if (panel.isSheetOpen("page")) { panel.hide("page"); return true; }
     if (panel.closeLast()) return true;
     const t = ed.activeTab(); if (t && ed.allTabs().length) { ed.closeTab(t); return true; }
     return false;
   };
+}
+
+// ---------------------------------------------------------------------------------------------- phone: drawer icon strip + edge swipes
+function mobileNav() {
+  const sb = $("#sidebar");
+  const defs = [["explorer", "files", "Files"], ["search", "search", "Search"], ["git", "source-control", "Source Control"], ["run", "debug-alt", "Run & Preview"], ["extensions", "extensions", "Extensions"], ["ai", "sparkle", "AI Assistant"]];
+  const strip = h("div#side-nav", {}, ...defs.map(([v, ic, tip]) => h("button.sn-btn", { dataset: { view: v }, title: tip, "aria-label": tip, onclick: () => showView(v) }, icon(ic))),
+    h("span.spacer"), h("button.sn-btn", { title: "Settings", "aria-label": "Settings", onclick: () => { closeDrawer(); sv.open(); } }, icon("settings-gear")),
+    h("button.sn-btn", { title: "Close", "aria-label": "Close menu", onclick: closeDrawer }, icon("close")));
+  sb.prepend(strip);
+  const sync = () => strip.querySelectorAll(".sn-btn[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === currentView));
+  bus.on("view:shown", sync); sync();
+  // swipe: left edge → right opens the drawer, right edge → left opens the right sheet, and the reverse swipes close them
+  let t0 = null;
+  const blocked = (el) => el.closest?.(".modal-wrap,.ctx,.qp-wrap,.tabs,.sheet-tabs,#keybar-row,input,textarea,.xterm-viewport.scrolling-x");
+  document.addEventListener("touchstart", (e) => {
+    if (!isMobile() || e.touches.length !== 1) { t0 = null; return; }
+    const t = e.touches[0], W = window.innerWidth, drawer = sb.classList.contains("open"), right = !$("#sheet-right").classList.contains("hidden");
+    let kind = null;
+    if (drawer) kind = "close-left"; else if (right) kind = "close-right";
+    else {
+      const free = !blocked(e.target);   // scrollable strips / inputs only give up the outer 36px, never the outermost 14px
+      if (t.clientX < 14 || (free && t.clientX < 36)) kind = "open-left";
+      else if ((t.clientX > W - 14 || (free && t.clientX > W - 36)) && panel.layout().right.length) kind = "open-right";
+    }
+    t0 = kind ? { kind, x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (!t0) return; const t = e.changedTouches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y, k = t0.kind; t0 = null;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    if (k === "open-left" && dx > 0) showView(currentView || "explorer");
+    else if (k === "open-right" && dx < 0) panel.show(panel.layout().right[0]);
+    else if (k === "close-left" && dx < 0) closeDrawer();
+    else if (k === "close-right" && dx > 0) panel.hide("right");
+  }, { passive: true });
+  document.addEventListener("touchcancel", () => { t0 = null; }, { passive: true });
 }
 
 // ---------------------------------------------------------------------------------------------- workspace actions
@@ -192,8 +233,9 @@ async function closeFolder() { if (!(await ed.closeAll())) return; settings.stat
 const handlers = {
   openFile: (p, o) => ed.openFile(p, o),
   openFolder,
-  openProjectMenu: () => of.chooseProject({ openFolder }),
+  openProjectMenu: () => projects.chooseProject({ openFolder, handlers }),
   openZip: async () => { const r = await of.browse({ mode: "file", title: "Open ZIP project", filter: (it) => /\.(zip|tar|tgz|tar\.gz)$/i.test(it.n), okLabel: "Open as project" }); if (r) { const d = await of.openZipAsProject(r); if (d) openFolder(d); } },
+  importBundle: () => transfer.importBundle({ openFolder }),
   cloneRepo: async () => (await feat("git")).cloneDialog(),
   newProject: async () => (await feat("templates")).newProject(),
   closeFolder,
@@ -338,8 +380,15 @@ function registerCommands() {
   R("file.close", "Close Editor", () => ed.closeTab(ed.activeTab()), { category: "View" });
   R("file.closeAll", "Close All Editors", () => ed.closeAll(), { category: "View" });
   R("file.reload", "Reload File from Disk", () => { const d = ed.activeDoc(); if (d) ed.reload(d.path); }, { category: "File" });
+  R("file.transferOut", bridgeMode === "android" ? "Transfer: Export bundle for CodeForge Web…" : "Transfer: Export bundle for the CodeForge app…", () => transfer.exportBundle(), { category: "File" });
+  R("file.transferIn", "Transfer: Import bundle (.cfbundle)…", () => transfer.importBundle({ openFolder }), { category: "File" });
   R("file.export", "Export Project Folder to Device…", () => ws.root && of.exportFolderToDevice(ws.root), { category: "File" });
-  R("file.zipProject", "Compress Project to ZIP", async () => { if (!ws.root) return; const dest = P.join(P.dir(ws.root), P.base(ws.root) + ".zip"); const b = busy("Compressing…"); try { await ws.zip([ws.root], dest); toast("Created " + P.base(dest), { kind: "success" }); } catch (e) { toastError(e); } finally { b.close(); } }, { category: "File" });
+  R("file.zipProject", "Compress Project to ZIP…", async () => {
+    if (!ws.root) return;
+    const o = await askZipOptions({ name: P.base(ws.root) + ".zip", paths: [ws.root] }); if (!o) return;
+    const dest = P.join(P.dir(ws.root), o.name); const b = busy("Compressing…");
+    try { const r = await ws.zip([ws.root], dest, o.exclude); toast(`Created ${o.name} (${r.count} files)`, { kind: "success" }); if (bridgeMode !== "android") await N.sys.exportFile(dest); else of.exportFileToDevice(dest); } catch (e) { toastError(e); } finally { b.close(); }
+  }, { category: "File" });
   R("nav.quickOpen", "Go to File…", () => cmd.quickOpen(), { category: "Go", keys: "Ctrl+P" });
   R("nav.line", "Go to Line…", () => cmd.gotoLine(), { category: "Go", keys: "Ctrl+G" });
   R("nav.symbol", "Go to Symbol in Editor…", () => cmd.gotoSymbol(), { category: "Go" });
@@ -355,6 +404,13 @@ function registerCommands() {
   R("sheet.aiBottom", "Move AI Assistant to Bottom Sheet", () => { panel.move("ai", "bottom"); panel.show("ai"); }, { category: "View" });
   R("sheet.aiTop", "Move AI Assistant to Top Sheet", () => { panel.move("ai", "top"); panel.show("ai"); }, { category: "View" });
   R("sheet.aiSidebar", "Move AI Assistant back to Sidebar", () => { panel.move("ai", "sidebar"); showView("ai"); }, { category: "View" });
+  const to = (name, where) => () => { panel.move(name, where); panel.show(name); };
+  R("sheet.terminalRight", "Move Terminal to Right Sheet (opposite the sidebar)", to("terminal", "right"), { category: "View" });
+  R("sheet.terminalPage", "Open Terminal as Page", to("terminal", "page"), { category: "View" });
+  R("sheet.aiRight", "Move AI Assistant to Right Sheet", to("ai", "right"), { category: "View" });
+  R("sheet.aiPage", "Open AI Assistant as Page", to("ai", "page"), { category: "View" });
+  R("sheet.toggleBottom", "Toggle Bottom Panel", () => { const l = panel.layout().bottom; if (panel.isSheetOpen("bottom")) panel.hide("bottom"); else if (l[0]) panel.show(l[0]); else to("terminal", "bottom")(); }, { category: "View" });
+  R("sheet.toggleRight", "Toggle Right Sheet", () => { const l = panel.layout().right; if (panel.isSheetOpen("right")) panel.hide("right"); else if (l[0]) panel.show(l[0]); else to("terminal", "right")(); }, { category: "View" });
   R("sheet.top", "Toggle Top Sheet", () => { const l = panel.layout(); const n = l.top[0]; if (n) panel.toggle(n); else { panel.move("terminal", "top"); panel.show("terminal"); } }, { category: "View" });
   R("sheet.reset", "Reset Top / Bottom Sheets Layout", () => panel.resetLayout(), { category: "View" });
   R("view.problems", "Show Problems", () => panel.show("problems"), { category: "View" });

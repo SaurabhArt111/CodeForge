@@ -22,6 +22,10 @@ const ITEMS = {
   extensions: { label: "Extensions", icon: "extensions", view: true },
 };
 const BASE = ["terminal", "preview", "output", "problems"];
+// top / bottom: resizable (drag the handle, the size is remembered). right: opposite the aside, fixed width. page: a full-screen page with a back button.
+const IDS = ["top", "bottom", "right", "page"];
+const SIZED = new Set(["top", "bottom"]);
+const WHERE = { top: ["Top Sheet", "arrow-up"], bottom: ["Bottom Sheet", "arrow-down"], right: ["Right Sheet", "arrow-right"], page: ["Page", "screen-full"] };
 const MIN_EDITOR = () => (isMobile() ? 90 : 120);
 
 const sheets = {};          // id -> {id, el, tabs, actions, body, items:[], active, open, sash, cssVar, stateKey}
@@ -34,19 +38,23 @@ export function setViewBuilder(fn) { ensureBuilt = fn; }
 export function setDockHandler(fn) { onDock = fn; }
 
 const elOf = (n) => document.getElementById((ITEMS[n].view ? "view-" : "pane-") + n);
-export const sheetOf = (name) => (sheets.top?.items.includes(name) ? "top" : sheets.bottom?.items.includes(name) ? "bottom" : null);
+export const sheetOf = (name) => IDS.find((id) => sheets[id]?.items.includes(name)) || null;
 const wb = () => document.getElementById("workbench");
 
 export function init() {
-  for (const id of ["top", "bottom"]) {
+  for (const id of IDS) {
     const el = document.querySelector(`.sheet[data-sheet="${id}"]`);
     sheets[id] = { id, el, tabs: el.querySelector(".sheet-tabs"), actions: el.querySelector(".sheet-actions"), body: el.querySelector(".sheet-body"), items: [], active: null, open: false,
-      sash: document.getElementById(id === "top" ? "sash-top" : "sash-h"), cssVar: id === "top" ? "--top-h" : "--panel-h", stateKey: id === "top" ? "topHeight" : "panelHeight" };
+      sash: SIZED.has(id) ? document.getElementById(id === "top" ? "sash-top" : "sash-h") : null, cssVar: id === "top" ? "--top-h" : "--panel-h", stateKey: id === "top" ? "topHeight" : "panelHeight" };
     const sh = sheets[id];
     el.querySelector(".sheet-close").addEventListener("click", () => hide(id));
     el.querySelector(".sheet-max").addEventListener("click", () => { el.classList.toggle("max"); panelEvents.emit("resize"); });
     el.querySelector(".sheet-add").addEventListener("click", (e) => addMenu(id, e.clientX, e.clientY));
     el.querySelector(".sheet-more").addEventListener("click", (e) => moreMenu(id, e.clientX, e.clientY));
+    new ResizeObserver(() => panelEvents.emit("resize")).observe(sh.body);
+    if (id === "page") { const back = h("button.icon-btn.sheet-back", { title: "Back", onclick: () => hide("page") }, icon("arrow-left")); el.querySelector(".sheet-head").prepend(back); }
+    if (id === "right") document.getElementById("right-backdrop")?.addEventListener("click", () => hide("right"));
+    if (!SIZED.has(id)) continue;
     const px = settings.state[sh.stateKey]; if (px) el.style.setProperty(sh.cssVar, px + "px");
     makeSash(sh.sash, {
       axis: "y", invert: id === "bottom",
@@ -56,12 +64,23 @@ export function init() {
       commit: (v) => { settings.state[sh.stateKey] = Math.round(v); settings.saveState(); },
       reset: () => { el.style.removeProperty(sh.cssVar); settings.state[sh.stateKey] = 0; settings.saveState(); panelEvents.emit("resize"); },
     });
-    new ResizeObserver(() => panelEvents.emit("resize")).observe(sh.body);
     panelEvents.on("resize", syncDual);
   }
   loadLayout();
-  window.addEventListener("resize", () => { for (const id of ["top", "bottom"]) { const sh = sheets[id]; const max = maxHeight(id); if (max > 0 && sh.el.getBoundingClientRect().height > max) sh.el.style.setProperty(sh.cssVar, Math.max(80, max) + "px"); } });
+  // The saved height (CSS var / settings) is never rewritten by a viewport change: when the soft keyboard shrinks the window the sheet is only
+  // capped with max-height, and it springs back to the user's size when the keyboard closes.
+  window.addEventListener("resize", clampSheets);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", clampSheets);
   bus.on("panel", (n) => show(n)); bus.on("cmd:terminal", () => toggle("terminal"));
+}
+
+function clampSheets() {
+  for (const id of ["top", "bottom"]) {
+    const sh = sheets[id]; if (!sh) continue;
+    if (!sh.open || sh.el.classList.contains("max")) { sh.el.style.removeProperty("max-height"); continue; }
+    const max = maxHeight(id);
+    if (max > 0) sh.el.style.maxHeight = Math.max(80, max) + "px"; else sh.el.style.removeProperty("max-height");
+  }
 }
 
 /** How tall may this sheet get: leave room for the editor and for the other sheet if it is open. */
@@ -75,15 +94,20 @@ function maxHeight(id) {
 function loadLayout() {
   const saved = settings.state.sheets || {};
   const seen = new Set();
-  for (const id of ["top", "bottom"]) {
-    const base = id === "bottom" ? (saved.bottom || (saved.top ? [] : BASE)) : (saved.top || []);
+  for (const id of IDS) {
+    const base = id === "bottom" ? (saved.bottom || (saved.top ? [] : BASE)) : (saved[id] || []);
     sheets[id].items = base.filter((n) => ITEMS[n] && !seen.has(n) && (seen.add(n), true));
   }
   for (const n of BASE) if (!seen.has(n)) sheets.bottom.items.push(n);   // the four core panes must live somewhere
-  for (const id of ["top", "bottom"]) { sheets[id].active = saved.active?.[id] && sheets[id].items.includes(saved.active[id]) ? saved.active[id] : sheets[id].items[0] || null; }
-  placeAll(); renderTabs("top"); renderTabs("bottom");
+  for (const id of IDS) { sheets[id].active = saved.active?.[id] && sheets[id].items.includes(saved.active[id]) ? saved.active[id] : sheets[id].items[0] || null; }
+  placeAll(); renderAllTabs();
 }
-function saveLayout() { settings.state.sheets = { top: [...sheets.top.items], bottom: [...sheets.bottom.items], active: { top: sheets.top.active, bottom: sheets.bottom.active } }; settings.saveState(); }
+const renderAllTabs = () => IDS.forEach(renderTabs);
+function saveLayout() {
+  const o = { active: {} };
+  for (const id of IDS) { o[id] = [...sheets[id].items]; o.active[id] = sheets[id].active; }
+  settings.state.sheets = o; settings.saveState();
+}
 
 function place(name, sid) {
   const el = elOf(name); if (!el) return;
@@ -106,10 +130,11 @@ function renderTabs(sid) {
   sh.el.classList.toggle("empty", !sh.items.length);
 }
 
+const moveItems = (name, sid) => IDS.filter((o) => o !== sid).map((o) => ({ label: `Move “${ITEMS[name].label}” to ${WHERE[o][0]}`, icon: WHERE[o][1], run: () => { move(name, o); show(name); } }));
 function tabMenu(name, x, y) {
-  const sid = sheetOf(name), other = sid === "top" ? "bottom" : "top";
+  const sid = sheetOf(name);
   contextMenu([
-    { label: `Move “${ITEMS[name].label}” to ${other === "top" ? "Top" : "Bottom"} Sheet`, icon: other === "top" ? "arrow-up" : "arrow-down", run: () => { move(name, other); show(name); } },
+    ...moveItems(name, sid),
     ...(ITEMS[name].view ? [{ label: "Move back to Sidebar", icon: "layout-sidebar-left", run: () => move(name, "sidebar") }] : []),
     { separator: true },
     { label: "Close Sheet", icon: "close", run: () => hide(sid) },
@@ -118,15 +143,17 @@ function tabMenu(name, x, y) {
 }
 function addMenu(sid, x, y) {
   const here = new Set(sheets[sid].items);
-  const where = (n) => { const s = sheetOf(n); return s ? (s === "top" ? "in top sheet" : "in bottom sheet") : "in sidebar"; };
+  const where = (n) => { const s = sheetOf(n); return s ? "in " + WHERE[s][0].toLowerCase() : "in sidebar"; };
   contextMenu([{ label: "Add view to this sheet", disabled: true }, { separator: true }, ...Object.entries(ITEMS).filter(([n]) => !here.has(n)).map(([n, it]) => ({ label: `${it.label}  ·  ${where(n)}`, icon: it.icon, run: () => { move(n, sid); show(n); } }))], x, y);
 }
 function moreMenu(sid, x, y) {
-  const sh = sheets[sid], other = sid === "top" ? "bottom" : "top";
+  const sh = sheets[sid];
   contextMenu([
-    ...(sh.active ? [{ label: `Move “${ITEMS[sh.active].label}” to ${other === "top" ? "Top" : "Bottom"} Sheet`, icon: other === "top" ? "arrow-up" : "arrow-down", run: () => { const n = sh.active; move(n, other); show(n); } }] : []),
-    { label: sh.el.classList.contains("max") ? "Restore Size" : "Maximize", icon: "screen-full", run: () => { sh.el.classList.toggle("max"); panelEvents.emit("resize"); } },
-    { label: "Reset Height", icon: "discard", run: () => { sh.el.style.removeProperty(sh.cssVar); settings.state[sh.stateKey] = 0; settings.saveState(); panelEvents.emit("resize"); } },
+    ...(sh.active ? moveItems(sh.active, sid) : []),
+    ...(SIZED.has(sid) ? [
+      { label: sh.el.classList.contains("max") ? "Restore Size" : "Maximize", icon: "screen-full", run: () => { sh.el.classList.toggle("max"); panelEvents.emit("resize"); } },
+      { label: "Reset Height", icon: "discard", run: () => { sh.el.style.removeProperty(sh.cssVar); settings.state[sh.stateKey] = 0; settings.saveState(); panelEvents.emit("resize"); } },
+    ] : []),
     { separator: true },
     { label: "Reset Sheets Layout", icon: "layout", run: resetLayout },
     { label: "Close Sheet", icon: "close", run: () => hide(sid) },
@@ -150,12 +177,13 @@ export function move(name, to) {
   }
   if (to === "sidebar") { place(name, null); onDock?.(name, "sidebar"); }
   else { sheets[to].items.push(name); place(name, to); if (!sheets[to].active) sheets[to].active = name; onDock?.(name, to); }
-  renderTabs("top"); renderTabs("bottom"); saveLayout(); panelEvents.emit("resize");
+  renderAllTabs(); saveLayout(); panelEvents.emit("resize");
 }
 export function resetLayout() {
   for (const n of Object.keys(ITEMS)) if (ITEMS[n].view && sheetOf(n)) place(n, null);
-  sheets.top.items = []; sheets.bottom.items = [...BASE]; sheets.top.active = null; sheets.bottom.active = "terminal";
-  hide("top"); placeAll(); renderTabs("top"); renderTabs("bottom"); saveLayout();
+  for (const id of IDS) { sheets[id].items = []; sheets[id].active = null; }
+  sheets.bottom.items = [...BASE]; sheets.bottom.active = "terminal";
+  hide(); placeAll(); renderAllTabs(); saveLayout();
   for (const id of ["top", "bottom"]) { sheets[id].el.style.removeProperty(sheets[id].cssVar); settings.state[sheets[id].stateKey] = 0; }
   settings.saveState(); onDock?.("*", "reset");
 }
@@ -179,10 +207,10 @@ export function show(name = lastActive) {
   const sh = sheets[sid];
   if (ITEMS[name].view && ensureBuilt) ensureBuilt(name);
   sh.active = name; lastActive = name; sh.open = true;
-  sh.el.classList.remove("hidden"); sh.sash.classList.remove("hidden");
+  sh.el.classList.remove("hidden"); sh.sash?.classList.remove("hidden");
   openOrder = openOrder.filter((s) => s !== sid); openOrder.push(sid);
   // two sheets + editor must still leave room to type
-  const max = maxHeight(sid); if (max > 0 && sh.el.getBoundingClientRect().height > max) sh.el.style.setProperty(sh.cssVar, Math.max(80, max) + "px");
+  clampSheets();
   paint(sid); saveLayout();
   crumb("sheet show " + name + " (" + sid + ")");
   panelEvents.emit("show", name); panelEvents.emit("resize");
@@ -191,10 +219,10 @@ export function show(name = lastActive) {
 }
 /** hide("top" | "bottom" | <view name>) – no argument hides every sheet. */
 export function hide(which) {
-  const ids = !which ? ["top", "bottom"] : sheets[which] ? [which] : [sheetOf(which)].filter(Boolean);
+  const ids = !which ? IDS : sheets[which] ? [which] : [sheetOf(which)].filter(Boolean);
   for (const id of ids) {
     const sh = sheets[id]; if (!sh.open && sh.el.classList.contains("hidden")) continue;
-    sh.open = false; sh.el.classList.add("hidden"); sh.el.classList.remove("max"); sh.sash.classList.add("hidden");
+    sh.open = false; sh.el.classList.add("hidden"); sh.el.classList.remove("max"); sh.sash?.classList.add("hidden");
     sh.items.forEach((n) => elOf(n)?.classList.remove("on"));
     openOrder = openOrder.filter((s) => s !== id); renderTabs(id);
   }
@@ -205,9 +233,10 @@ export function closeLast() { const id = openOrder[openOrder.length - 1]; if (!i
 export function toggle(name) { if (isShown(name)) hide(name); else show(name); }
 const syncNav = () => document.querySelector('#bottomnav [data-nav="terminal"]')?.classList.toggle("active", isShown("terminal"));
 
-export const isOpen = () => sheets.top.open || sheets.bottom.open;
+export const isSheetOpen = (id) => !!sheets[id]?.open;
+export const isOpen = () => IDS.some((id) => sheets[id].open);
 export const isShown = (name) => { const id = sheetOf(name); return !!id && sheets[id].open && sheets[id].active === name; };
 export const active = () => sheets.bottom.active;
 export function setBadge(name, n) { const c = badge(name); c.textContent = n; c.classList.toggle("hidden", !n); }
 export function pane(name) { return elOf(name); }
-export const layout = () => ({ top: [...sheets.top.items], bottom: [...sheets.bottom.items] });
+export const layout = () => Object.fromEntries(IDS.map((id) => [id, [...sheets[id].items]]));

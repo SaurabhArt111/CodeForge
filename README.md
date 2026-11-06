@@ -56,13 +56,14 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
 ## Build
 See **BUILD.md**. Short version: `./gradlew assembleDebug`.
 
-## Website (landing page, web editor, code browser, download page)
+## Website (React + Node: landing page, web editor, code browser, download page)
 ```sh
-sh tools/site/build-site.sh      # -> ./dist-site   (Python 3 only)
-node backend/server.js           # http://localhost:8080  (Node 18+, optional: also serves the Git proxy)
+cd website && npm install
+npm run build        # -> website/dist   (React site, /app web editor, code data, source ZIP, APK if available)
+npm start            # http://localhost:8080  (Node 18+ server: static files, Git CORS proxy, env-driven config)
 ```
-Pages: `/` landing, `/app/` web editor, `/code/` source browser, `/download/` APK + Google Play (set `playStoreUrl` in `site/site-config.js` or `PLAY_STORE_URL` when you have the link), `/privacy/`.
-See **DEPLOY.md** for static hosting, Docker, environment variables and the Git proxy. Tests: `tools/e2e/site.js`.
+Pages: `/` landing, `/app/` web editor, `/code` source browser, `/download` APK + Google Play (set `playStoreUrl` in `website/public/site-config.js` or `PLAY_STORE_URL` when you have the link), `/privacy`.
+See **DEPLOY.md** for static hosting, Docker, environment variables and the Git proxy, and **Site.md** for how the site is organised. Tests: `tools/e2e/site.js`.
 
 ## Honest limitations
 - This source drop has **not been compiled into an APK or run on a device by its author's tooling** (the build sandbox had no Android SDK / Maven access).
@@ -87,6 +88,6 @@ app/src/main/assets/www/               the IDE UI (ES modules, vendored libs in 
 app/src/main/assets/env/               Linux setup scripts
 tools/devhost, tools/e2e               Node dev host + Playwright tests
 tools/web                              build script, PWA manifest and service worker for the web version
-site/, backend/, tools/site            website sources, optional Node server (static files + Git CORS proxy), site build scripts
+website/                               React (Vite) site, Node server (static files + Git CORS proxy), build scripts
 ```
 Licenses: MIT (see LICENSE); third-party in THIRD_PARTY_NOTICES.md.

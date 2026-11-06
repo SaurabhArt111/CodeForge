@@ -73,7 +73,7 @@ object Saf {
     }
 
     /** Copies [srcDir] into the picked tree as a new sub-folder named like the source. */
-    fun exportTree(srcDir: File, treeUri: Uri, progress: (Int) -> Unit): Int {
+    fun exportTree(srcDir: File, treeUri: Uri, exclude: List<String> = emptyList(), progress: (Int) -> Unit): Int {
         val r = ctx.contentResolver
         var count = 0
         fun mimeFor(name: String): String =
@@ -85,6 +85,7 @@ object Saf {
                 ?: throw IOException("Cannot create folder ${dir.name}")
             for (k in dir.listFiles() ?: emptyArray()) {
                 if (java.nio.file.Files.isSymbolicLink(k.toPath())) continue
+                if (ZipTools.skipped(k.name, exclude)) continue
                 if (k.isDirectory) copyDir(k, created)
                 else {
                     val doc = DocumentsContract.createDocument(r, created, mimeFor(k.name), k.name) ?: continue

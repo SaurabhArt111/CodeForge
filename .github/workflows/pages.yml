@@ -1,5 +1,5 @@
-# Publishes the website (landing, /app web editor, /code browser, /download) to GitHub Pages on every push to main.
-# GitHub Pages is static, so the Git CORS proxy is not available there: set "proxy" in site/site-config.js to a deployed backend if you want cloning in the web editor.
+# Publishes the website (React site, /app web editor, /code browser, /download) to GitHub Pages on every push to main.
+# GitHub Pages is static, so the Git CORS proxy is not available there: set "proxy" in website/public/site-config.js to a deployed `npm start` server if you want cloning in the web editor.
 name: Website
 on:
   push: { branches: [main] }
@@ -11,10 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sh tools/site/build-site.sh dist-site
-      - run: touch dist-site/.nojekyll
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: website/package-lock.json }
+      - name: Build site
+        working-directory: website
+        env:
+          SITE_BASE: /${{ github.event.repository.name }}/
+        # `sh` / `node` are used on purpose: files edited on Windows lose their executable bit in Git
+        run: |
+          npm ci
+          npm run build
+          touch dist/.nojekyll
       - uses: actions/upload-pages-artifact@v3
-        with: { path: dist-site }
+        with: { path: website/dist }
   deploy:
     needs: build
     runs-on: ubuntu-latest

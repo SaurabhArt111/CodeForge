@@ -21,7 +21,8 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
       - uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+        # `sh` instead of executing the file: gradlew committed from Windows has no executable bit (exit 126 "Permission denied")
+        run: sh ./gradlew --no-daemon assembleDebug
         env:
           CODEFORGE_GITHUB_CLIENT_ID: ${{ secrets.CODEFORGE_GITHUB_CLIENT_ID }}
       - uses: actions/upload-artifact@v4
@@ -33,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: tools/web/build.sh web-dist
+      - run: sh tools/web/build.sh web-dist
       - uses: actions/upload-artifact@v4
         with:
           name: CodeForge-web

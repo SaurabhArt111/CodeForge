@@ -96,7 +96,30 @@
           <div class="pane" id="pane-problems"></div>
         </div>
       </section>
+      <!-- PAGE: a full-screen page over the editor (back button on the left) -->
+      <section id="sheet-page" class="sheet page hidden" data-sheet="page">
+        <div class="sheet-head">
+          <div class="sheet-tabs"></div><div class="spacer"></div><div class="sheet-actions"></div>
+          <button class="icon-btn sheet-add" title="Add a view to this sheet"><i class="codicon codicon-add"></i></button>
+          <button class="icon-btn sheet-more" title="Sheet options"><i class="codicon codicon-ellipsis"></i></button>
+          <button class="icon-btn sheet-max" title="Maximize"><i class="codicon codicon-screen-full"></i></button>
+          <button class="icon-btn sheet-close" title="Close sheet"><i class="codicon codicon-close"></i></button>
+        </div>
+        <div class="sheet-body"></div>
+      </section>
     </main>
+    <!-- RIGHT sheet: opposite the aside, fixed width -->
+    <section id="sheet-right" class="sheet right hidden" data-sheet="right">
+        <div class="sheet-head">
+          <div class="sheet-tabs"></div><div class="spacer"></div><div class="sheet-actions"></div>
+          <button class="icon-btn sheet-add" title="Add a view to this sheet"><i class="codicon codicon-add"></i></button>
+          <button class="icon-btn sheet-more" title="Sheet options"><i class="codicon codicon-ellipsis"></i></button>
+          <button class="icon-btn sheet-max" title="Maximize"><i class="codicon codicon-screen-full"></i></button>
+          <button class="icon-btn sheet-close" title="Close sheet"><i class="codicon codicon-close"></i></button>
+        </div>
+      <div class="sheet-body"></div>
+    </section>
+    <div id="right-backdrop"></div>
   </div>
 
   <footer id="statusbar">

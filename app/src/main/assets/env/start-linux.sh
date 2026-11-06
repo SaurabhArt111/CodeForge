@@ -17,6 +17,8 @@ done
 export LD_LIBRARY_PATH="$CF_ENV"
 export PROOT_TMP_DIR="$CF_ENV/tmp"
 mkdir -p "$PROOT_TMP_DIR" "$CF_ROOTFS/tmp"
+# Android's /system/bin/sh writes here-documents to $TMPDIR (default /data/local, not writable): "can't create temporary file ... Permission denied"
+export TMPDIR="$PROOT_TMP_DIR"
 
 [ -f "$CF_NATIVE_DIR/libproot.so" ] && export PROOT_LOADER="$CF_NATIVE_DIR/libproot.so"
 [ -f "$CF_NATIVE_DIR/libproot32.so" ] && export PROOT_LOADER32="$CF_NATIVE_DIR/libproot32.so"
@@ -70,8 +72,12 @@ SHIM
 done
 # `cf`: control the IDE from the terminal (open / preview / ai / install coding CLIs …)
 if [ -f "$CF_ENV/cf.sh" ]; then cp "$CF_ENV/cf.sh" "$CF_ROOTFS/usr/local/bin/cf" 2>/dev/null && chmod 755 "$CF_ROOTFS/usr/local/bin/cf" 2>/dev/null; fi
+: > "$CF_ROOTFS/etc/motd" 2>/dev/null   # no banner when a terminal opens
 cat > "$CF_ROOTFS/etc/profile.d/20-codeforge-env.sh" <<'PROF'
 export BROWSER=/usr/local/bin/cf-open-url
+# short prompt: the last two folders only (the full /data/data/... path used up most of a phone screen)
+export PROMPT_DIRTRIM=2
+export PS1='\[\033[2m\]\w\[\033[0m\] \$ '
 export CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING:-1}
 if [ -n "$CF_ENV" ] && [ -f "$CF_ENV/node-patch.js" ]; then
   case "$NODE_OPTIONS" in *node-patch.js*) ;; *) export NODE_OPTIONS="--require $CF_ENV/node-patch.js $NODE_OPTIONS" ;; esac
@@ -82,6 +88,7 @@ export BROWSER=/usr/local/bin/cf-open-url
 export CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-1}"
 [ -f "$CF_ENV/node-patch.js" ] && export NODE_OPTIONS="--require $CF_ENV/node-patch.js ${NODE_OPTIONS:-}"
 
+unset TMPDIR   # host-only; the Linux side uses its own /tmp
 if [ $# -eq 0 ]; then
   set -- /bin/sh -c 'if command -v bash >/dev/null 2>&1; then exec bash -l; else exec ash -l; fi'
 fi

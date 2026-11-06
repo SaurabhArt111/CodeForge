@@ -16,8 +16,17 @@ object ZipTools {
         java.nio.file.Files.isSymbolicLink(f.toPath())
     } catch (_: Exception) { false }
 
-    /** Zips [sources]; entry names are relative to [base] (defaults to each source's parent). */
-    fun zip(sources: List<File>, dest: File, base: File?, progress: (Int) -> Unit = {}): Int {
+    /** Name patterns that are skipped anywhere in the tree: exact names ("node_modules"), "*.log" or "build*". */
+    fun skipped(name: String, patterns: List<String>): Boolean = patterns.any { p ->
+        when {
+            p.startsWith("*") -> name.endsWith(p.substring(1))
+            p.endsWith("*") -> name.startsWith(p.dropLast(1))
+            else -> name == p
+        }
+    }
+
+    /** Zips [sources]; entry names are relative to [base] (defaults to each source's parent). [exclude] = name patterns left out. */
+    fun zip(sources: List<File>, dest: File, base: File?, exclude: List<String> = emptyList(), progress: (Int) -> Unit = {}): Int {
         dest.parentFile?.mkdirs()
         var count = 0
         ZipOutputStream(BufferedOutputStream(FileOutputStream(dest), 1 shl 16)).use { zos ->
@@ -25,6 +34,7 @@ object ZipTools {
             val buf = ByteArray(1 shl 16)
             fun add(f: File, root: File) {
                 if (isLink(f)) return
+                if (f !in sources && skipped(f.name, exclude)) return
                 val rel = f.relativeTo(root).path.replace(File.separatorChar, '/')
                 if (f.isDirectory) {
                     if (rel.isNotEmpty()) {

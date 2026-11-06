@@ -85,7 +85,7 @@ export function editorOptions() {
   const auto = s("editor.autoClosing") ? "languageDefined" : "never";
   return {
     fontSize: fontscale.scaled(s("editor.fontSize")), fontFamily: `"${s("editor.fontFamily")}", var(--mono), monospace`, fontLigatures: s("editor.ligatures"), lineHeight: s("editor.lineHeight") || 0,
-    tabSize: s("editor.tabSize"), insertSpaces: s("editor.insertSpaces"), wordWrap: s("editor.wordWrap"), minimap: { enabled: s("editor.minimap") && !mobile },
+    tabSize: s("editor.tabSize"), insertSpaces: s("editor.insertSpaces"), wordWrap: s("editor.wordWrap"), minimap: { enabled: !!s("editor.minimap"), side: "right", showSlider: mobile ? "always" : "mouseover", renderCharacters: !mobile, maxColumn: mobile ? 40 : 120, scale: 1 },
     lineNumbers: s("editor.lineNumbers"), renderWhitespace: s("editor.renderWhitespace"), bracketPairColorization: { enabled: s("editor.bracketPairColors") },
     smoothScrolling: s("editor.smoothScrolling"), cursorBlinking: s("editor.cursorBlinking"), stickyScroll: { enabled: s("editor.stickyScroll") },
     formatOnPaste: s("editor.formatOnPaste"), formatOnType: s("editor.formatOnType"), automaticLayout: true, fixedOverflowWidgets: true, contextmenu: !mobile,
@@ -193,7 +193,7 @@ async function checkExternalNow() {
     if (!st) { if (!d.missing) { d.missing = true; toast(`"${d.name}" was deleted on disk`, { kind: "warn" }); } continue; }
     d.missing = false;
     if (st.m === d.mtime) continue;
-    if (!d.dirty) { await reload(d.path, true); }
+    if (!d.dirty) { await reload(d.path, true); bus.emit("fs:docreload", d.path); }
     else {
       d.mtime = st.m;
       if (await confirm(`"${d.name}" changed on disk and you have unsaved edits. Reload and discard your changes?`, { title: "File changed", okLabel: "Reload", danger: true })) await reload(d.path, true);
@@ -288,15 +288,16 @@ export function initEditor() {
   ws.on("deleted", onDeleted);
   ws.on("root", (r) => { if (!r) closeAll(null, true); });
   bus.on("fs:external", () => { checkExternal(); });
+  bus.on("fs:poll", () => { if (docs.size) checkExternal(); });   // a coding CLI / script rewrote an open file in place (no folder mtime change): pick it up within a few seconds
   new ResizeObserver(() => groups.forEach((g) => g?.editor?.layout())).observe(document.getElementById("editor-area"));
 }
 
-export function toggleSplit(force) {
+export function toggleSplit(force, { open = true } = {}) {
   const on = force ?? groups[1].el.classList.contains("hidden");
   groups[1].el.classList.toggle("hidden", !on); document.getElementById("sash-split").classList.toggle("hidden", !on);
   groups[0].el.style.flex = ""; groups[1].el.style.flex = "";
   document.getElementById("btn-split").classList.toggle("on", on);
-  if (on && !groups[1].tabs.length && groups[0].active) { const t = groups[0].active; if (t.kind === "file") openFile(t.doc.path, { group: 1 }); }
+  if (open && on && !groups[1].tabs.length && groups[0].active) { const t = groups[0].active; if (t.kind === "file") openFile(t.doc.path, { group: 1 }); }
   if (!on) { for (const t of [...groups[1].tabs]) moveTab(t, 0); setActiveGroup(0); }
   groups.forEach((g) => g?.editor?.layout());
 }
@@ -405,7 +406,8 @@ function emptyGroupHint(g) {
 
 export async function openFile(path, opts = {}) {
   let { group = activeGroup, preview = false, line, col, focus = true, reveal = true } = opts;
-  if (group === 1) toggleSplit(true);
+  // open: false — this function is what fills the new group, toggleSplit must not call back into it (that was an endless loop: "Maximum call stack size exceeded")
+  if (group === 1 && groups[1].el.classList.contains("hidden")) toggleSplit(true, { open: false });
   const g = groups[group];
   let tab = g.tabs.find((t) => t.path === path) || allTabs().find((t) => t.path === path && !opts.group && opts.group !== 0 && false);
   if (!tab) {
