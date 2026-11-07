@@ -4,7 +4,7 @@ let A, user = null;
 export async function init(api) {
   A = api;
   A.cmd.register({ id: "github.signin", title: "GitHub: Sign In", run: signIn }); A.cmd.register({ id: "github.signout", title: "GitHub: Sign Out", run: signOut });
-  A.cmd.register({ id: "github.token", title: "GitHub: Sign In with Personal Access Token", run: signInToken }); A.cmd.register({ id: "github.repos", title: "GitHub: Browse My Repositories", run: repos });
+  A.cmd.register({ id: "github.token", title: "GitHub: Sign In with Personal Access Token", run: signInToken }); A.cmd.register({ id: "github.newToken", title: "GitHub: Create a Personal Access Token (opens GitHub)", run: () => openTokenPage(false) }); A.cmd.register({ id: "github.repos", title: "GitHub: Browse My Repositories", run: repos });
   A.cmd.register({ id: "github.gitcreds", title: "GitHub: Use Token for Terminal Git (store credentials)", run: gitCreds });
   await refresh();
 }
@@ -23,7 +23,7 @@ export function accountMenu(x, y) {
     { label: "Open GitHub profile", icon: "link-external", run: () => A.N.sys.openUrl(user.html_url) }, { label: "Browse my repositories…", icon: "repo", run: repos }, { label: "Clone repository…", icon: "repo-clone", run: () => A.feat("git").then((g) => g.cloneDialog()) },
     { separator: true }, { label: "Use token for terminal git…", icon: "key", run: gitCreds }, { label: "Sign out", icon: "sign-out", danger: true, run: signOut },
   ], x, y);
-  A.contextMenu([{ label: "Sign in with GitHub (device code)…", icon: "github", run: signIn }, { label: "Sign in with a personal access token…", icon: "key", run: signInToken }, { separator: true }, { label: "Settings", icon: "settings-gear", run: () => A.cmd.run("view.settings") }], x, y);
+  A.contextMenu([{ label: "Sign in with GitHub (device code)…", icon: "github", run: signIn }, { label: "Sign in with a personal access token…", icon: "key", run: signInToken }, { label: "Create a personal access token on GitHub", icon: "link-external", run: () => openTokenPage(false) }, { separator: true }, { label: "Settings", icon: "settings-gear", run: () => A.cmd.run("view.settings") }], x, y);
 }
 
 export async function signIn() {
@@ -51,9 +51,22 @@ export async function signIn() {
     if (["expired", "denied", "error"].includes(r.status)) { status.textContent = r.status === "error" ? r.message : "Authorization " + r.status; break; }
   }
 }
+// GitHub's "new token" pages, pre-filled so one tap gives the right permissions: classic = repo + workflow (push, pull, Actions files) + read:user + user:email
+export const TOKEN_URL = "https://github.com/settings/tokens/new?" + new URLSearchParams({ description: "CodeForge (" + (navigator.userAgent.includes("Android") ? "Android" : "web") + ")", scopes: "repo,workflow,read:user,user:email" }).toString();
+export const FINE_GRAINED_URL = "https://github.com/settings/personal-access-tokens/new";
+export const openTokenPage = (fine = false) => A.N.sys.openUrl(fine ? FINE_GRAINED_URL : TOKEN_URL);
+
 export async function signInToken() {
-  const t = await A.prompt("Paste a GitHub personal access token (classic: repo, read:user, user:email)", { password: true, okLabel: "Sign in" }); if (!t) return;
-  await A.N.secret.set("github.token", t.trim());
+  const input = h("input.input", { type: "password", placeholder: "ghp_… or github_pat_…", spellcheck: false, autocapitalize: "off", autocomplete: "off" });
+  const err = h("div.field-error");
+  const body = h("div.token-dlg",
+    h("div.token-step", h("b", "1. Create a token"), h("p.muted", "Opens GitHub with the permissions CodeForge needs already ticked (repo, workflow, read:user, user:email). Sign in to GitHub if asked, scroll down and press “Generate token”, then copy it."),
+      h("div.token-btns", h("button.btn.primary", { type: "button", onclick: () => openTokenPage(false) }, icon("link-external"), " Create token on GitHub"), h("button.btn", { type: "button", onclick: () => openTokenPage(true) }, "Fine-grained token…"))),
+    h("div.token-step", h("b", "2. Paste it here"), h("p.muted", "It is stored encrypted on this device and never leaves it except to talk to GitHub."), input, err));
+  const v = await A.modal({ title: "Sign in with a personal access token", width: 460, body,
+    buttons: [{ label: "Cancel", value: undefined }, { label: "Sign in", primary: true, value: "__ok", onClick: () => { if (!input.value.trim()) { err.textContent = "Paste your token first"; return false; } } }] });
+  if (v !== "__ok") return;
+  await A.N.secret.set("github.token", input.value.trim());
   try { await A.N.github.user(); await afterSignIn(); } catch (e) { await A.N.github.signOut().catch(() => {}); A.toastError(e); }
 }
 async function afterSignIn() {

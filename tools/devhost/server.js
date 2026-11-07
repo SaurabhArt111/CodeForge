@@ -205,7 +205,7 @@ const methods = {
   "sys.importTree": async (uri, dest) => { await fsp.cp(uri.replace(/^file:\/\//, ""), dest, { recursive: true }); return { count: 1, path: dest }; },
   "sys.exportFile": async (src, uri) => { await fsp.copyFile(src, uri.replace(/^file:\/\//, "")); return true; },
   "sys.exportTree": async (src, uri) => { await fsp.cp(src, path.join(uri.replace(/^file:\/\//, ""), path.basename(src)), { recursive: true }); return { count: 1 }; },
-  "sys.exit": async () => true,
+  "sys.exit": async () => true, "sys.moveToBack": async () => true,
   "fs.token": async () => TOKEN,
   "fs.list": async (p) => fsList(p),
   "fs.stat": async (p) => { try { return statObj(await fsp.stat(abs(p))); } catch { return null; } },

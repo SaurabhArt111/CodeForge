@@ -5,7 +5,7 @@ import { N, mode as bridgeMode } from "./core/bridge.js";
 import { settings } from "./core/settings.js";
 import { bus } from "./core/events.js";
 import { h, icon, P, clamp, isMobile, isTouch, copyText } from "./core/util.js";
-import { toast, toastError, contextMenu, modal, prompt, confirm, busy, quickPick } from "./core/ui.js";
+import { toast, toastError, contextMenu, modal, prompt, confirm, busy, quickPick, longPress } from "./core/ui.js";
 import { openUrl } from "./core/links.js";
 import * as themes from "./features/themes.js";
 import * as icons from "./features/icons.js";
@@ -18,6 +18,7 @@ import * as search from "./ui/search.js";
 import * as cmd from "./ui/commands.js";
 import * as status from "./ui/statusbar.js";
 import * as keybar from "./ui/keybar.js";
+import * as keyboard from "./ui/keyboard.js";
 import * as sv from "./ui/settingsview.js";
 import * as of from "./ui/openfolder.js";
 import * as output from "./ui/output.js";
@@ -73,7 +74,7 @@ async function boot() {
       if (name === "*") { showView("explorer", { silent: true }); return; }
       if (to !== "sidebar" && name === currentView) showView("explorer", { silent: true });   // the view just left the sidebar
     });
-    output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); cmd.initKeys();
+    output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); keyboard.init(); cmd.initKeys();
     layout(); registerCommands(); wireEvents(); menubar.init(); mobileNav();
     // keep the splash on screen long enough for its animation to play, then fade it out
     setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 900 - performance.now()));
@@ -125,12 +126,19 @@ export function showView(name, { silent = false, toggle = false } = {}) {
 const closeDrawer = () => { $("#sidebar").classList.remove("open"); $("#side-backdrop").classList.remove("on"); document.querySelectorAll("#bottomnav button").forEach((b) => b.classList.remove("active")); };
 
 function layout() {
-  document.querySelectorAll(".ab-btn[data-view]").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view, { toggle: true })));
+  document.querySelectorAll(".ab-btn[data-view]").forEach((b) => {
+    b.addEventListener("click", () => showView(b.dataset.view, { toggle: true }));
+    // right-click / long-press: move this view to the right sheet, bottom, top, a page … (or back)
+    if (panel.canMove(b.dataset.view)) { b.addEventListener("contextmenu", (e) => { e.preventDefault(); panel.moveMenu(b.dataset.view, e.clientX, e.clientY); }); longPress(b, (x, y) => panel.moveMenu(b.dataset.view, x, y), 520); }
+  });
   $("#side-backdrop").addEventListener("click", closeDrawer);
   bus.on("sidebar:close", closeDrawer);
   bus.on("view", (v) => showView(v));
   bus.on("cmd:sidebar", () => (isMobile() ? ($("#sidebar").classList.contains("open") ? closeDrawer() : showView(currentView || "explorer")) : $("#sidebar").classList.toggle("collapsed")));
-  $("#btn-sidebar").addEventListener("click", () => (isMobile() ? ($("#sidebar").classList.contains("open") ? closeDrawer() : showView(currentView || "explorer")) : $("#sidebar").classList.toggle("collapsed")));
+  $("#btn-sidebar").addEventListener("click", (e) => {
+    if (!menubar.hasMenuBar()) { const r = e.currentTarget.getBoundingClientRect(); menubar.openMainMenu(r.left, r.bottom + 4); return; }   // phones: File, Edit, Selection, View, Go, Run, Terminal, Help
+    $("#sidebar").classList.toggle("collapsed");
+  });
   $("#title").addEventListener("click", () => cmd.palette());
   $("#btn-term").addEventListener("click", () => panel.toggle("terminal"));
   $("#btn-ai").addEventListener("click", () => showView("ai", { toggle: true }));
@@ -172,22 +180,39 @@ function layout() {
   // title
   const upd = () => { const t = ed.activeTab(); $("#title-text").textContent = [t?.title, ws.name].filter(Boolean).join(" — ") || "CodeForge"; document.title = $("#title-text").textContent + " — CodeForge"; };
   ed.editorEvents.on("active", upd); ws.on("root", upd); bus.on("dirty", upd);
-  // android back button
+  // android back button: close whatever is open on top; with nothing left to close the app goes to the recents list - but never with unsaved work
   window.__cfBack = () => {
     if (document.querySelector(".modal-wrap,.qp-wrap,.ctx")) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); document.querySelector(".ctx-back")?.click(); return true; }
     if ($("#sidebar").classList.contains("open")) { closeDrawer(); return true; }
     if (panel.isSheetOpen("page")) { panel.hide("page"); return true; }
     if (panel.closeLast()) return true;
-    const t = ed.activeTab(); if (t && ed.allTabs().length) { ed.closeTab(t); return true; }
-    return false;
+    if (keyboard.isOpen()) { keyboard.closeKeyboard(); return true; }
+    if (ed.dirtyDocs().length) { leaveApp(); return true; }
+    return false;   // the native side moves the app to the background
   };
+}
+
+/** Leave to the recents list; with unsaved files ask first (save & leave / leave anyway / stay). */
+export async function leaveApp({ quit = false } = {}) {
+  const go = () => (quit ? N.sys.exit() : N.sys.moveToBack());
+  const dirty = ed.dirtyDocs();
+  if (!dirty.length) return go();
+  const names = dirty.map((d) => d.name);
+  const v = await modal({
+    title: quit ? "Unsaved changes — quit?" : "Unsaved changes", width: 440,
+    body: h("div", h("p.modal-text", `${names.length === 1 ? "1 file has" : names.length + " files have"} changes that are not saved:`),
+      h("ul.exit-list", ...names.slice(0, 8).map((n) => h("li", n)), names.length > 8 ? h("li.muted", `…and ${names.length - 8} more`) : null)),
+    buttons: [{ label: "Stay", value: "stay" }, { label: quit ? "Quit without saving" : "Leave without saving", danger: true, value: "leave" }, { label: quit ? "Save all & quit" : "Save all & leave", primary: true, value: "save" }],
+  });
+  if (v === "save") { await ed.saveAll(); if (ed.dirtyDocs().length) { toast("Some files could not be saved, staying here", { kind: "error" }); return; } go(); }
+  else if (v === "leave") go();
 }
 
 // ---------------------------------------------------------------------------------------------- phone: drawer icon strip + edge swipes
 function mobileNav() {
   const sb = $("#sidebar");
   const defs = [["explorer", "files", "Files"], ["search", "search", "Search"], ["git", "source-control", "Source Control"], ["run", "debug-alt", "Run & Preview"], ["extensions", "extensions", "Extensions"], ["ai", "sparkle", "AI Assistant"]];
-  const strip = h("div#side-nav", {}, ...defs.map(([v, ic, tip]) => h("button.sn-btn", { dataset: { view: v }, title: tip, "aria-label": tip, onclick: () => showView(v) }, icon(ic))),
+  const strip = h("div#side-nav", {}, ...defs.map(([v, ic, tip]) => { const b = h("button.sn-btn", { dataset: { view: v }, title: tip + (panel.canMove(v) ? " (long-press to move)" : ""), "aria-label": tip, onclick: () => showView(v) }, icon(ic)); if (panel.canMove(v)) { b.addEventListener("contextmenu", (e) => { e.preventDefault(); panel.moveMenu(v, e.clientX, e.clientY); }); longPress(b, (x, y) => panel.moveMenu(v, x, y), 520); } return b; }),
     h("span.spacer"), h("button.sn-btn", { title: "Settings", "aria-label": "Settings", onclick: () => { closeDrawer(); sv.open(); } }, icon("settings-gear")),
     h("button.sn-btn", { title: "Close", "aria-label": "Close menu", onclick: closeDrawer }, icon("close")));
   sb.prepend(strip);
@@ -410,8 +435,13 @@ function registerCommands() {
   R("sheet.aiRight", "Move AI Assistant to Right Sheet", to("ai", "right"), { category: "View" });
   R("sheet.aiPage", "Open AI Assistant as Page", to("ai", "page"), { category: "View" });
   R("sheet.toggleBottom", "Toggle Bottom Panel", () => { const l = panel.layout().bottom; if (panel.isSheetOpen("bottom")) panel.hide("bottom"); else if (l[0]) panel.show(l[0]); else to("terminal", "bottom")(); }, { category: "View" });
-  R("sheet.toggleRight", "Toggle Right Sheet", () => { const l = panel.layout().right; if (panel.isSheetOpen("right")) panel.hide("right"); else if (l[0]) panel.show(l[0]); else to("terminal", "right")(); }, { category: "View" });
+  R("sheet.toggleRight", "Toggle Right Sheet", () => { const l = panel.layout().right; if (panel.isSheetOpen("right")) panel.hide("right"); else if (l[0]) panel.show(l[0]); else to("ai", "right")(); }, { category: "View" });
   R("sheet.top", "Toggle Top Sheet", () => { const l = panel.layout(); const n = l.top[0]; if (n) panel.toggle(n); else { panel.move("terminal", "top"); panel.show("terminal"); } }, { category: "View" });
+  R("sheet.moveView", "Move a View to Another Sheet…", async () => {
+    const names = [["ai", "AI Assistant"], ["terminal", "Terminal"], ["preview", "Preview"], ["output", "Output"], ["problems", "Problems"], ["search", "Search"], ["git", "Source Control"], ["run", "Run & Preview"], ["extensions", "Extensions"]];
+    const v = await quickPick(names.map(([id, label]) => ({ label, value: id })), { placeholder: "Which view?" }); if (!v) return;
+    panel.moveMenu(v, innerWidth / 2 - 100, innerHeight / 3);
+  }, { category: "View" });
   R("sheet.reset", "Reset Top / Bottom Sheets Layout", () => panel.resetLayout(), { category: "View" });
   R("view.problems", "Show Problems", () => panel.show("problems"), { category: "View" });
   R("view.split", "Split Editor", () => ed.toggleSplit(), { category: "View", keys: "Ctrl+\\" });
@@ -446,7 +476,7 @@ function registerCommands() {
   R("sys.diagnostics", "Copy Diagnostics", async () => { await copyText(await N.crash.diagnostics()); toast("Diagnostics copied"); }, { category: "Developer" });
   R("view.previewWindow", "Open Preview in Separate Window", async () => { const p = ed.activeTab()?.path; if (!p) return; const l = await feat("live"); const root = ws.isOpen && P.inside(ws.root, p) ? ws.root : P.dir(p); const s = await l.serve(root, { open: false }); if (s) l.openIsolated(s.url + P.rel(root, p).split("/").map(encodeURIComponent).join("/")); }, { category: "Live Server" });
   R("sys.reload", "Reload Window", () => location.reload(), { category: "Developer" });
-  R("sys.exit", "Quit CodeForge (stop all sessions)", async () => { if (await confirm("Stop all terminals and servers and quit?", { okLabel: "Quit", danger: true })) N.sys.exit(); }, { category: "System" });
+  R("sys.exit", "Quit CodeForge (stop all sessions)", async () => { if (await confirm("Stop all terminals and servers and quit?", { okLabel: "Quit", danger: true })) leaveApp({ quit: true }); }, { category: "System" });
 }
 
 boot();

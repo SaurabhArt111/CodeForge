@@ -43,7 +43,13 @@ export async function chooseProject({ openFolder, handlers }) {
   const done = (v) => { result = v; closeFn(); };
   const search = h("input.input", { placeholder: "Search projects", type: "search", spellcheck: false, autocapitalize: "off" });
   const listEl = h("div.pj-list");
-  const recent = settings.state.recent.map((p) => ({ path: p, at: settings.state.recentAt?.[p] || 0, recent: true }));
+  // "home" and "imported" are the folders that HOLD your projects, not projects themselves: tapping them goes inside instead of opening the whole thing
+  const norm = (p) => p.replace(/\/+$/, "") || "/";
+  const homeDir = norm(info.paths.home), importedDir = P.join(homeDir, "imported");
+  const containers = [{ path: homeDir, label: "Home", note: "Everything CodeForge keeps on this device" }, { path: importedDir, label: "Imported", note: "Folders and ZIPs you brought in" }];
+  const isContainer = (p) => containers.some((c) => c.path === norm(p));
+  const goInside = async (path) => { const r = await of.browse({ mode: "folder", title: "Choose a project folder", start: path }); if (r) done(typeof r === "object" ? { zip: r.zip } : { open: r }); };
+  const recent = settings.state.recent.filter((p) => !isContainer(p)).map((p) => ({ path: p, at: settings.state.recentAt?.[p] || 0, recent: true }));
   const known = new Set(recent.map((r) => r.path));
   let stored = [];
   const meta = new Map();
@@ -68,9 +74,12 @@ export async function chooseProject({ openFolder, handlers }) {
   }
   function render() {
     const q = search.value.trim().toLowerCase(); const f = (a) => a.filter((p) => !q || p.path.toLowerCase().includes(q));
-    const r = f(recent), s = f(stored.filter((x) => !known.has(x.path)));
+    const r = f(recent), s = f(stored.filter((x) => !known.has(x.path) && !isContainer(x.path)));
+    const places = h("div.pj-section", h("div.pj-title", "Look inside"),
+      ...containers.filter((c) => !q || c.label.toLowerCase().includes(q)).map((c) => h("div.pj-card.place", { onclick: () => goInside(c.path), title: c.path },
+        h("span.pj-ico", icons.folderIcon(c.label.toLowerCase(), false)), h("div.pj-main", h("div.pj-name", c.label), h("div.pj-sub", c.note)), h("span.pj-go", icon("chevron-right")))));
     listEl.replaceChildren(section("Recent", r, q ? "No recent project matches." : "Nothing opened yet. Pick a folder below, clone a repo, or create a new project."),
-      ...(s.length || !q ? [section("In CodeForge storage", s, "No folders yet.")] : []));
+      ...(s.length || !q ? [section("In CodeForge storage", s, "No projects yet. Use “New project”, “Clone repo” or import one above.")] : []), ...(places.children.length > 1 ? [places] : []));
   }
   search.addEventListener("input", render);
   const act = (ic, label, fn) => h("button.pj-act", { type: "button", onclick: fn }, icon(ic), h("span", label));

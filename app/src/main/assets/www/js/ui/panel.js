@@ -91,8 +91,16 @@ function maxHeight(id) {
 }
 
 // ---------------------------------------------------------------- layout persistence
+// Default layout (like VS Code): terminal & friends in the bottom sheet, the AI Assistant in the right ("secondary side bar") sheet.
+const DEFAULT_RIGHT = ["ai"];
 function loadLayout() {
-  const saved = settings.state.sheets || {};
+  let saved = settings.state.sheets || {};
+  // layouts saved by older versions had nothing on the right: give the AI Assistant its place there once (it stays movable afterwards)
+  if (saved.v !== 2) {
+    const used = IDS.some((id) => (saved[id] || []).includes("ai"));
+    saved = { ...saved, v: 2, right: !used && !(saved.right || []).length ? [...DEFAULT_RIGHT] : saved.right || [] };
+    settings.state.sheets = saved;
+  }
   const seen = new Set();
   for (const id of IDS) {
     const base = id === "bottom" ? (saved.bottom || (saved.top ? [] : BASE)) : (saved[id] || []);
@@ -104,7 +112,7 @@ function loadLayout() {
 }
 const renderAllTabs = () => IDS.forEach(renderTabs);
 function saveLayout() {
-  const o = { active: {} };
+  const o = { v: 2, active: {} };
   for (const id of IDS) { o[id] = [...sheets[id].items]; o.active[id] = sheets[id].active; }
   settings.state.sheets = o; settings.saveState();
 }
@@ -179,10 +187,21 @@ export function move(name, to) {
   else { sheets[to].items.push(name); place(name, to); if (!sheets[to].active) sheets[to].active = name; onDock?.(name, to); }
   renderAllTabs(); saveLayout(); panelEvents.emit("resize");
 }
+/** "Move to …" menu for any view, wherever it lives (sidebar views have no tab, so this is how you get them out of the sidebar). */
+export function moveMenu(name, x, y) {
+  if (!ITEMS[name]) return;
+  const sid = sheetOf(name);
+  const items = IDS.filter((o) => o !== sid).map((o) => ({ label: `Move “${ITEMS[name].label}” to ${WHERE[o][0]}`, icon: WHERE[o][1], run: () => { move(name, o); show(name); } }));
+  if (ITEMS[name].view && sid) items.push({ label: "Move back to Sidebar", icon: "layout-sidebar-left", run: () => { move(name, "sidebar"); bus.emit("view", name); } });
+  items.push({ separator: true }, { label: "Reset Layout (AI right, terminal bottom)", icon: "discard", run: resetLayout });
+  contextMenu(items, x, y);
+}
+export const canMove = (name) => !!ITEMS[name];
 export function resetLayout() {
   for (const n of Object.keys(ITEMS)) if (ITEMS[n].view && sheetOf(n)) place(n, null);
   for (const id of IDS) { sheets[id].items = []; sheets[id].active = null; }
   sheets.bottom.items = [...BASE]; sheets.bottom.active = "terminal";
+  sheets.right.items = [...DEFAULT_RIGHT]; sheets.right.active = "ai";
   hide(); placeAll(); renderAllTabs(); saveLayout();
   for (const id of ["top", "bottom"]) { sheets[id].el.style.removeProperty(sheets[id].cssVar); settings.state[sheets[id].stateKey] = 0; }
   settings.saveState(); onDock?.("*", "reset");

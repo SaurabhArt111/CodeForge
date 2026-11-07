@@ -61,6 +61,8 @@ object Bridge {
         fun openUrl(url: String)
         fun share(args: JSONObject)
         fun finishApp()
+        /** Leaves the app to the recents list (like the Home button) without stopping anything. */
+        fun moveToBack()
         /** Shows the system biometric / device-credential prompt and blocks until it finishes. {ok, cancelled?, error?, unsupported?} */
         fun authenticate(title: String, subtitle: String): JSONObject
         fun authStatus(): JSONObject
@@ -206,6 +208,7 @@ object Bridge {
         "sys.importTree" -> importTree(a.str(0), a.str(1))
         "sys.exportFile" -> { Saf.exportFile(File(a.str(0)), Uri.parse(a.str(1))); true }
         "sys.exportTree" -> exportTree(a.str(0), a.str(1), a.optJSONArray(2)?.let { ar -> (0 until ar.length()).map { ar.getString(it) } } ?: emptyList())
+        "sys.moveToBack" -> { host?.moveToBack(); true }
         "sys.exit" -> { SessionManager.killAll(); LiveServers.stopAll(); host?.finishApp(); true }
 
         // ---------------- files

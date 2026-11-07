@@ -30,7 +30,10 @@ export function init(h_) {
   icons.iconEvents.on("change", () => render());
   settings.on("change:files.showHidden", () => refresh());
   // poll expanded folders for external changes (terminal, git, other apps)
-  setInterval(pollChanges, 2500);
+  // poll gently: every 5 s, only when the file tree is actually on screen, and not in the middle of a touch / keystroke (each stat is a bridge call)
+  const touch = () => { lastTouch = Date.now(); };
+  for (const ev of ["pointerdown", "keydown", "wheel", "touchmove"]) window.addEventListener(ev, touch, { passive: true, capture: true });
+  setInterval(pollChanges, 5000);
   render();
 }
 
@@ -42,12 +45,18 @@ function remap(from, to) {
 
 const mtimes = new Map();
 let polling = false;
+let lastTouch = 0;
+const explorerVisible = () => { const sb = document.getElementById("sidebar"); const v = document.getElementById("view-explorer"); return !!sb && !sb.classList.contains("collapsed") && !!v && v.classList.contains("active") && (window.innerWidth > 760 || sb.classList.contains("open")); };
 async function pollChanges() {
   if (!ws.isOpen || document.hidden || polling) return;
-  polling = true; try { await pollOnce(); } finally { polling = false; }
+  if (Date.now() - lastTouch < 1500) return;   // busy typing / scrolling: try again next tick
+  polling = true;
+  try {
+    if (explorerVisible()) await pollOnce(); else bus.emit("fs:poll");   // open files are still checked, the folder tree only when it can be seen
+  } finally { polling = false; }
 }
 async function pollOnce() {
-  const dirs = [ws.root, ...state.expanded].slice(0, 40); let changed = false;
+  const dirs = [ws.root, ...state.expanded].slice(0, 24); let changed = false;
   for (const d of dirs) {
     try {
       const st = await N.fs.stat(d); if (!st) { state.expanded.delete(d); changed = true; continue; }

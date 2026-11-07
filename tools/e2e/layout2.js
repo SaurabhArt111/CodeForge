@@ -31,7 +31,7 @@ for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f
     await page.click("#sheet-page .sheet-back"); ok(await page.evaluate(() => document.getElementById("sheet-page").classList.contains("hidden")), tag + "back closes the page");
     ok(JSON.stringify(await P((p) => p.layout())).includes('"page":["ai"]'), tag + "layout remembers page placement");
     await P((p) => p.resetLayout());
-    ok(JSON.stringify(await P((p) => p.layout())) === JSON.stringify({ top: [], bottom: ["terminal", "preview", "output", "problems"], right: [], page: [] }), tag + "reset layout");
+    ok(JSON.stringify(await P((p) => p.layout())) === JSON.stringify({ top: [], bottom: ["terminal", "preview", "output", "problems"], right: ["ai"], page: [] }), tag + "reset layout");
 
     // terminal height survives viewport changes (keyboard)
     await P((p) => p.show("terminal")); await page.waitForTimeout(400);
@@ -56,7 +56,7 @@ for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f
 
     if (mobile) {
       // drawer icon strip
-      await page.click("#btn-sidebar"); await page.waitForTimeout(300);
+      await page.click('#bottomnav [data-nav="explorer"]'); await page.waitForTimeout(300);
       ok(await page.evaluate(() => document.querySelectorAll("#side-nav .sn-btn[data-view]").length === 6 && getComputedStyle(document.getElementById("side-nav")).display !== "none"), tag + "drawer shows 6 small icon buttons");
       await page.click('#side-nav [data-view="search"]'); await page.waitForTimeout(250);
       ok(await page.evaluate(() => document.getElementById("view-search").classList.contains("active")), tag + "icon button switches the drawer view");

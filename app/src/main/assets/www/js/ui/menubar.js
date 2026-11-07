@@ -31,7 +31,7 @@ const MENUS = {
     { label: "Explorer", icon: "files", run: run("view.explorer") }, { label: "Search", icon: "search", run: run("view.search") }, { label: "Source Control", icon: "source-control", run: run("view.git") },
     { label: "Extensions", icon: "extensions", run: run("view.extensions") }, { label: "AI Assistant", icon: "sparkle", run: run("view.ai") }, { separator: true },
     { label: "Toggle Sidebar", icon: "layout-sidebar-left", keys: "Ctrl+B", run: run("view.sidebar") }, { label: "Toggle Bottom Panel", icon: "layout-panel", run: run("sheet.toggleBottom") },
-    { label: "Toggle Right Sheet", icon: "layout-sidebar-right", run: run("sheet.toggleRight") }, { label: "Split Editor", icon: "split-horizontal", run: run("view.split") },
+    { label: "Toggle Secondary Side Bar (AI Assistant)", icon: "layout-sidebar-right", run: run("sheet.toggleRight") }, { label: "Split Editor", icon: "split-horizontal", run: run("view.split") },
     { separator: true }, { label: "Word Wrap", icon: "word-wrap", run: run("view.wordWrap") }, { label: "Minimap", icon: "map", run: run("view.minimap") }, { label: "Settings", icon: "settings-gear", run: run("view.settings") },
   ],
   Go: () => [
@@ -48,6 +48,13 @@ const MENUS = {
   ],
   Help: () => [{ label: "Crash Reports", icon: "bug", run: run("sys.crashes") }, { label: "Diagnostics", icon: "pulse", run: run("sys.diagnostics") }, { label: "Linux Environment Setup", icon: "server-environment", run: run("env.setup") }],
 };
+
+const MENU_ICONS = { File: "file", Edit: "edit", Selection: "selection", View: "eye", Go: "go-to-file", Run: "play", Terminal: "terminal", Help: "question" };
+/** Phones and narrow tablets have no menu bar: the ☰ button opens this list instead (each entry opens its menu in place). */
+export function openMainMenu(x, y) {
+  contextMenu(Object.keys(MENUS).map((name) => ({ label: name, icon: MENU_ICONS[name], submenu: MENUS[name]() })), x, y);
+}
+export const hasMenuBar = () => window.innerWidth >= 900;
 
 export function init() {
   const bar = h("nav#menubar.desk-wide", { role: "menubar" });

@@ -137,7 +137,7 @@ export function contextMenu(items, x, y) {
       }, h("span.ctx-ico", it.icon ? icon(it.icon) : null), h("span.ctx-label", it.label), it.keys ? h("span.ctx-keys", it.keys) : null, it.submenu ? icon("chevron-right") : null);
       if (it.submenu) {
         const sub = h("div.ctx.sub"); build(it.submenu, sub); row.append(sub);
-        row.addEventListener("click", (e) => { e.stopPropagation(); if (settled()) row.classList.toggle("open"); });
+        row.addEventListener("click", (e) => { e.stopPropagation(); if (!settled()) return; const was = row.classList.contains("open"); parent.querySelectorAll(":scope > .ctx-item.open").forEach((r) => r.classList.remove("open")); if (!was) { row.classList.add("open"); row.scrollIntoView({ block: "nearest" }); } });   // one section open at a time
       }
       parent.append(row);
     }

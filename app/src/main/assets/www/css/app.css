@@ -407,3 +407,22 @@ body.kbd-open #bottomnav{display:none}
 .ai-apply-list{margin:6px 0 0 18px;padding:0}
 
 .xfer-title{font-weight:600;margin:10px 0 4px}.xfer-set{border:1px solid var(--border);border-radius:8px;margin-top:8px}
+
+/* ---- soft keyboard: floating button + "open keyboard?" prompt (touch devices) ---- */
+.kbd-fab{position:fixed;z-index:50;width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--widget-bg,var(--sidebar-bg));color:var(--fg);border:1px solid var(--border);box-shadow:0 3px 12px #0007;touch-action:none;user-select:none;-webkit-user-select:none;opacity:.88;padding:0}
+.kbd-fab.on{background:var(--accent,#007acc);color:#fff;border-color:transparent}
+.kbd-fab.drag{opacity:1;transform:scale(1.08);box-shadow:0 6px 18px #000a}
+.kbd-ask{position:fixed;z-index:55;display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:min(320px,calc(100vw - 16px));padding:8px;border-radius:12px;background:var(--widget-bg,var(--sidebar-bg));border:1px solid var(--border);box-shadow:0 6px 22px #000a;animation:kbdpop .14s ease-out}
+.kbd-ask button{font:inherit;color:inherit;border:0;background:transparent;padding:0}
+.kbd-ask-open{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 14px!important;border-radius:9px;background:var(--accent,#007acc)!important;color:#fff!important;font-weight:600}
+.kbd-ask-x{width:36px;height:36px;border-radius:9px;opacity:.7}
+.kbd-ask-always{flex-basis:100%;text-align:left;font-size:12px;opacity:.75;padding:4px 4px 0!important;text-decoration:underline}
+.kbd-ico{display:inline-flex}
+@keyframes kbdpop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.kbd-ask{animation:none}}
+
+/* ---- unsaved-changes dialog, token dialog */
+.exit-list{margin:6px 0 0;padding-left:20px;max-height:30vh;overflow:auto;font-family:var(--mono);font-size:calc(12.5px*var(--fz))}
+.token-dlg{display:flex;flex-direction:column;gap:14px}.token-step p{margin:4px 0 8px}.token-btns{display:flex;flex-wrap:wrap;gap:8px}
+.token-dlg .input{width:100%;box-sizing:border-box}
+.pj-card.place{opacity:.92}.pj-go{margin-left:auto;opacity:.6;display:inline-flex}

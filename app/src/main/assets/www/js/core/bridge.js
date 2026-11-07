@@ -71,7 +71,7 @@ export const N = {
     pickFile: (o = {}) => c("sys.pickFile", o), pickFolder: () => c("sys.pickFolder", {}), createFile: (o) => c("sys.createFile", o),
     importUri: (uri, dest) => c("sys.importUri", uri, dest), importTree: (uri, dest) => c("sys.importTree", uri, dest),
     exportFile: (src, uri) => c("sys.exportFile", src, uri), exportTree: (src, uri, exclude) => c("sys.exportTree", src, uri, exclude || []),
-    exit: () => c("sys.exit"), setSecure: (on) => c("sys.setSecure", !!on),
+    exit: () => c("sys.exit"), moveToBack: () => c("sys.moveToBack"), setSecure: (on) => c("sys.setSecure", !!on),
   },
   fs: {
     list: (p) => c("fs.list", p), stat: (p) => c("fs.stat", p), lstat: (p) => c("fs.lstat", p), exists: (p) => c("fs.exists", p),

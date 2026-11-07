@@ -17,7 +17,7 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
 - **Run & Preview** – run files by extension, `package.json` scripts, `tasks.json`; a **live server** (hot reload via SSE, SPA mode, console
   forwarding, optional LAN access) and an **in-app preview** with device-size presets and a console.
 - **Git** – isomorphic-git (clone, stage, commit, branches, log, diff, pull, push) with gutter decorations. `git@github.com:` URLs are mapped to HTTPS.
-- **GitHub login** – OAuth Device Flow (needs your client id, see BUILD.md) or a Personal Access Token. Tokens live in the Android Keystore
+- **GitHub login** – OAuth Device Flow (needs your client id, see BUILD.md) or a Personal Access Token (the sign-in dialog has a **Create token on GitHub** button that opens the token page with the right permissions ticked). Tokens live in the Android Keystore
   and are injected natively into requests, so scripts and extensions never see them.
 - **Extensions** – search/install from **Open VSX** or a local `.vsix`. Declarative parts are applied: themes, icon themes, snippets, language
   configuration, `configuration` (editable per-extension settings), `configurationDefaults`, `jsonValidation`, `%nls%` strings, and commands in the palette.
@@ -43,6 +43,9 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
   opens in* picks window / in-app panel.
 - **Top and bottom sheets** – two dockable sheets, each holding any views: Terminal, Preview, Output, Problems, AI, Search, Git, Run, Extensions. Use the **+** in a
   sheet's header (or long-press a tab) to add, move or close views; the layout is remembered. Palette: *Move Terminal to Top Sheet*, *Reset Sheets Layout* …
+- **Keyboard on your terms** – on touch devices tapping the editor or terminal places the cursor and offers an **Open keyboard** prompt instead of popping the keyboard up (Settings → Appearance → *On-screen keyboard*: `ask` / `auto`). A **floating keyboard button** you can drag anywhere opens and closes it (long-press for options); Android's back button closes an open keyboard first.
+- **Unsaved work is protected** – back (or *Quit*) with unsaved files asks *Save all & leave / Leave without saving / Stay*; with nothing unsaved the app simply goes to recents. In the browser the tab-close prompt does the same.
+- **VS Code-style layout** – side bar on the left, the **AI Assistant in the right ("secondary") side bar**, Terminal & friends in the bottom panel; the three toggles are in the title bar on wide screens. Right-click / long-press any view's icon (activity bar or phone drawer) for *Move to Right Sheet / Bottom / Top / Page / Sidebar*; *Reset Layout* restores the defaults. On phones ☰ opens File, Edit, Selection, View, Go, Run, Terminal, Help.
 - **Text size everywhere** – *Settings → Appearance → Text size* (70–170 %) scales the whole UI, the editor and the terminal together; editor and terminal sizes stay
   adjustable on top. `View: Increase Text Size (whole app)` in the palette.
 - **`cf` command** – in any terminal: `cf open file:line`, `cf preview index.html`, `cf serve`, `cf ai "explain this"` / `git diff | cf ai -s review`, `cf install claude|codex|gemini|opencode|copilot|qwen|aider`,

@@ -477,6 +477,10 @@ class MainActivity : Activity(), Bridge.Host {
         runOnUiThread { finishAndRemoveTask() }
     }
 
+    override fun moveToBack() {
+        runOnUiThread { moveTaskToBack(true) }
+    }
+
     // ------------------------------------------------------------------ results & permissions
 
     @Deprecated("Deprecated in Java")

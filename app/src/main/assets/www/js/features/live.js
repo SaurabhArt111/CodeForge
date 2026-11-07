@@ -20,7 +20,7 @@ export async function init(api) {
   A.bus.on("saved", (p) => { for (const s of servers.values()) if (A.ws.isOpen && P.inside(s.root, p)) A.N.live.reload(s.port, P.rel(s.root, p)).catch(() => {}); });
   A.bus.on("port:detected", onPort);
   await refresh();
-  setInterval(refresh, 4000);
+  setInterval(() => { if (!document.hidden) refresh(); }, 8000);
 }
 
 export async function refresh() {

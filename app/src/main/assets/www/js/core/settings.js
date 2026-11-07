@@ -9,6 +9,8 @@ export const DEFAULTS = {
   "ui.theme": "Dark Modern",
   "ui.iconTheme": "seti",
   "ui.mobileKeyBar": true,
+  "ui.keyboard": "ask",
+  "ui.kbdFab": true,
   "ui.fontScale": 100,
   "ui.openUrlWith": "browser",
   "ui.language": "auto",

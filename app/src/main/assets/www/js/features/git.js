@@ -16,7 +16,7 @@ export async function init(api) {
   A.bus.on("saved", refreshSoon); A.bus.on("fs:external", refreshSoon); A.ws.on("changed", refreshSoon);
   A.bus.on("fs:docreload", refreshSoon);
   // while a terminal is running (coding CLIs, npm, git…) files change behind the editor's back: keep the Git view current
-  setInterval(() => { if (!document.hidden && A.ws.isOpen && state.repo && A.term.list().some((t) => t.alive)) refresh(); }, 10000);
+  setInterval(() => { if (!document.hidden && A.ws.isOpen && state.repo && A.term.list().some((t) => t.alive)) refresh(); }, 20000);
   // coming back from another app must never stall the UI: refresh lazily, at most every 20 s, after the first paint
   const onReturn = () => { if (!document.hidden && Date.now() - lastDone > 20000) setTimeout(() => refresh(), 1800); };
   window.addEventListener("focus", onReturn); A.N.on("app.resume", onReturn);
@@ -49,6 +49,11 @@ async function onAuthFor(url) {
   if (signedIn && /github\.com/.test(url)) return { headers: {} };
   const host = new URL(url).host; const k = "gitcred:" + host;
   if (cache[k]) return cache[k];
+  if (host === "github.com") {   // GitHub no longer accepts passwords: send the user through the token page instead of asking for a "password"
+    try { await (await A.feat("github")).signInToken(); } catch { /* cancelled */ }
+    if (await A.N.github.signedIn().catch(() => false)) { signedIn = true; return { headers: {} }; }
+    return { cancel: true };
+  }
   const username = await A.prompt(`Username for ${host}`, { okLabel: "Next" }); if (!username) return { cancel: true };
   const password = await A.prompt(`Password / token for ${username}@${host}`, { password: true, okLabel: "Sign in" }); if (!password) return { cancel: true };
   return (cache[k] = { username, password });
@@ -249,7 +254,7 @@ export async function cloneDialog() {
   const depth = h("select", {}, h("option", { value: "0" }, "Full history"), h("option", { value: "1", selected: true }, "Shallow (latest only, fastest)"), h("option", { value: "50" }, "Last 50 commits"));
   const repos = h("div", { style: { marginTop: "10px", maxHeight: "34vh", overflow: "auto" } });
   signedIn = await A.N.github.signedIn().catch(() => false);
-  const sec = h("div", signedIn ? h("div.section-title", { style: { padding: "6px 0" } }, "Your GitHub repositories") : h("div.muted", { style: { fontSize: "calc(12px * var(--fz))", marginTop: "8px" } }, "Sign in with GitHub (account button) to browse and clone private repositories."), repos);
+  const sec = h("div", signedIn ? h("div.section-title", { style: { padding: "6px 0" } }, "Your GitHub repositories") : h("div.muted", { style: { fontSize: "calc(12px * var(--fz))", marginTop: "8px" } }, "Sign in with GitHub (account button) to browse and clone private repositories. ", h("button.link", { type: "button", onclick: async () => (await A.feat("github")).openTokenPage(false) }, "Create a personal access token")), repos);
   if (signedIn) loadRepos(repos, (r) => { url.value = r.clone_url; name.value = r.name; });
   const r = await A.modal({ title: "Clone repository", width: 560, body: h("div", url, h("div", { style: { display: "flex", gap: "8px", marginTop: "8px" } }, name, depth), sec), buttons: [{ label: "Cancel", value: undefined }, { label: "Clone", primary: true, value: "go", onClick: () => (url.value.trim() ? true : false) }] });
   if (r !== "go") return;

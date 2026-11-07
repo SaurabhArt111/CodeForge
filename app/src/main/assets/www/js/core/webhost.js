@@ -202,7 +202,7 @@ export function create(emit) {
     "sys.importTree": async (uri, dest) => { const l = picked.get(uri); if (!l) throw new Error("Folder is no longer available"); picked.delete(uri); let n = 0; const root = abs(dest); for (const f of l) { const rel = (f.webkitRelativePath || f.name).split("/").slice(1).join("/") || f.name; if (/(^|\/)(node_modules|\.git)\//.test(rel)) continue; await put(norm(root + "/" + rel), new Uint8Array(await f.arrayBuffer())); n++; } return { path: root, count: n }; },
     "sys.exportFile": async (src) => { const r = need(src); download(baseOf(src), r.d, mimeOf(src)); return true; },
     "sys.exportTree": async (src, _uri, ex) => { const z = await zipOut([src], null, ex || []); download(baseOf(src) + ".zip", z.bytes, "application/zip"); return true; },
-    "sys.exit": async () => true, "sys.setSecure": async () => true,
+    "sys.exit": async () => true, "sys.moveToBack": async () => true, "sys.setSecure": async () => true,
 
     "fs.list": async (p) => { p = abs(p); const r = files.get(p); if (!r) throw new Error("No such directory: " + p); if (r.t !== "d") throw new Error("Not a directory: " + p); return [...(kids.get(p) || [])].map((n) => ({ n, ...statObj(files.get(norm(p + "/" + n))) })); },
     "fs.stat": async (p) => { const r = files.get(abs(p)); return r ? statObj(r) : null; }, "fs.lstat": async (p) => H["fs.stat"](p), "fs.exists": async (p) => files.has(abs(p)),

@@ -12,7 +12,7 @@ for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f
     const P = (fn, ...a) => page.evaluate(async ([f, args]) => { const p = await import("/js/ui/panel.js"); return eval("(" + f + ")")(p, ...args); }, [fn.toString(), a]);
 
     // ---- default layout: everything in the bottom sheet
-    ok(JSON.stringify(await P((p) => p.layout())) === JSON.stringify({ top: [], bottom: ["terminal", "preview", "output", "problems"], right: [], page: [] }), tag + "default layout");
+    ok(JSON.stringify(await P((p) => p.layout())) === JSON.stringify({ top: [], bottom: ["terminal", "preview", "output", "problems"], right: ["ai"], page: [] }), tag + "default layout");
     await P((p) => p.show("terminal")); await page.waitForSelector("#panel .xterm-screen");
     ok(await page.evaluate(() => !document.getElementById("panel").classList.contains("hidden")), tag + "bottom sheet opens with terminal");
     await page.waitForTimeout(600);
@@ -64,8 +64,8 @@ for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f
 
     // ---- reset
     await P((p) => p.resetLayout());
-    ok(JSON.stringify(await P((p) => p.layout())) === JSON.stringify({ top: [], bottom: ["terminal", "preview", "output", "problems"], right: [], page: [] }), tag + "reset layout");
-    ok(await page.evaluate(() => !!document.querySelector("#sidebar #view-ai")), tag + "AI view back in sidebar");
+    ok(JSON.stringify(await P((p) => p.layout())) === JSON.stringify({ top: [], bottom: ["terminal", "preview", "output", "problems"], right: ["ai"], page: [] }), tag + "reset layout");
+    ok(await page.evaluate(() => !!document.querySelector("#sheet-right #view-ai")), tag + "AI view back in its default place (right sheet)");
     await page.screenshot({ path: `/tmp/cf-dev/sheets-${mobile ? "m" : "d"}.png` });
 
     // ---- crash recorder UI

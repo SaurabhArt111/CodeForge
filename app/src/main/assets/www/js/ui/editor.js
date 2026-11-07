@@ -4,7 +4,7 @@ import * as fontscale from "../core/fontscale.js";
 import { N } from "../core/bridge.js";
 import { settings } from "../core/settings.js";
 import { bus, Emitter } from "../core/events.js";
-import { h, icon, P, debounce, fmtBytes, uid, isMobile } from "../core/util.js";
+import { h, icon, P, debounce, fmtBytes, uid, isMobile, isTouch } from "../core/util.js";
 import { toast, toastError, confirm, contextMenu, longPress, modal } from "../core/ui.js";
 import { openUrl, openInBrowser, urlAt, isUrl } from "../core/links.js";
 import { showLinkChip, hideLinkChip } from "./linkchip.js";
@@ -82,24 +82,25 @@ export const languages = () => (monaco ? monaco.languages.getLanguages().map((l)
 export function editorOptions() {
   const s = (k) => settings.get(k);
   const mobile = isMobile();
+  const lite = mobile || isTouch();   // phones / tablets: skip the effects that cost frames while scrolling and typing
   const auto = s("editor.autoClosing") ? "languageDefined" : "never";
   return {
     fontSize: fontscale.scaled(s("editor.fontSize")), fontFamily: `"${s("editor.fontFamily")}", var(--mono), monospace`, fontLigatures: s("editor.ligatures"), lineHeight: s("editor.lineHeight") || 0,
     tabSize: s("editor.tabSize"), insertSpaces: s("editor.insertSpaces"), wordWrap: s("editor.wordWrap"), minimap: { enabled: !!s("editor.minimap"), side: "right", showSlider: mobile ? "always" : "mouseover", renderCharacters: !mobile, maxColumn: mobile ? 40 : 120, scale: 1 },
     lineNumbers: s("editor.lineNumbers"), renderWhitespace: s("editor.renderWhitespace"), bracketPairColorization: { enabled: s("editor.bracketPairColors") },
-    smoothScrolling: s("editor.smoothScrolling"), cursorBlinking: s("editor.cursorBlinking"), stickyScroll: { enabled: s("editor.stickyScroll") },
+    smoothScrolling: lite ? false : s("editor.smoothScrolling"), cursorBlinking: lite && s("editor.cursorBlinking") === "smooth" ? "blink" : s("editor.cursorBlinking"), stickyScroll: { enabled: s("editor.stickyScroll") },
     formatOnPaste: s("editor.formatOnPaste"), formatOnType: s("editor.formatOnType"), automaticLayout: true, fixedOverflowWidgets: true, contextmenu: !mobile,
     // blank space after the last line so the end of a file can be scrolled up above the keyboard / bottom bars
     scrollBeyondLastLine: s("editor.scrollBeyondLastLine"), padding: { top: 6, bottom: s("editor.bottomPadding") },
-    guides: { bracketPairs: true, indentation: true }, renderLineHighlight: "all", mouseWheelZoom: true, links: true, linkedEditing: s("editor.linkedEditing"),
+    guides: { bracketPairs: !lite, indentation: true }, renderLineHighlight: lite ? "line" : "all", mouseWheelZoom: !lite, links: true, linkedEditing: s("editor.linkedEditing"),
     // ---- suggestions / IntelliSense
-    quickSuggestions: s("editor.quickSuggestions") ? { other: "on", comments: "off", strings: "on" } : false, quickSuggestionsDelay: 40,
+    quickSuggestions: s("editor.quickSuggestions") ? { other: "on", comments: "off", strings: "on" } : false, quickSuggestionsDelay: lite ? 120 : 40,
     suggestOnTriggerCharacters: true, acceptSuggestionOnEnter: s("editor.acceptSuggestionOnEnter"), acceptSuggestionOnCommitCharacter: true, tabCompletion: "on",
-    wordBasedSuggestions: "allDocuments", snippetSuggestions: "inline", suggestSelection: "first", parameterHints: { enabled: s("editor.parameterHints"), cycle: true },
+    wordBasedSuggestions: lite ? "matchingDocuments" : "allDocuments", snippetSuggestions: "inline", suggestSelection: "first", parameterHints: { enabled: s("editor.parameterHints"), cycle: true },
     suggest: { showWords: true, showSnippets: true, showIcons: true, showStatusBar: false, preview: true, previewMode: "subwordSmart", insertMode: "replace", filterGraceful: true, localityBonus: true, shareSuggestSelections: true, showInlineDetails: true, selectionMode: "whenQuickSuggestion" },
-    suggestFontSize: mobile ? 14 : 0, suggestLineHeight: mobile ? 36 : 0, inlineSuggest: { enabled: true }, hover: { enabled: true, delay: 350, sticky: true },
+    suggestFontSize: mobile ? 14 : 0, suggestLineHeight: mobile ? 36 : 0, inlineSuggest: { enabled: true }, hover: { enabled: !lite, delay: 350, sticky: true },
     autoClosingBrackets: auto, autoClosingQuotes: auto, autoClosingOvertype: "auto", autoSurround: s("editor.autoClosing") ? "languageDefined" : "never", autoIndent: "full",
-    occurrencesHighlight: "singleFile", colorDecorators: true, matchBrackets: "always", renderControlCharacters: false,
+    occurrencesHighlight: lite ? "off" : "singleFile", colorDecorators: !lite, matchBrackets: lite ? "near" : "always", renderControlCharacters: false,
     folding: true, foldingHighlight: false, showFoldingControls: mobile ? "always" : "mouseover", glyphMargin: !mobile, lineDecorationsWidth: mobile ? 4 : 10,
     lineNumbersMinChars: mobile ? 3 : 4, dragAndDrop: true, multiCursorModifier: "alt", accessibilitySupport: "off", unicodeHighlight: { ambiguousCharacters: false },
     overviewRulerBorder: false, hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: mobile ? 8 : 12, horizontalScrollbarSize: 10, useShadows: false },
@@ -187,9 +188,11 @@ export async function checkExternal() {
   try { await checkExternalNow(); } finally { checking = false; if (checkAgain) { checkAgain = false; setTimeout(checkExternal, 500); } }
 }
 async function checkExternalNow() {
-  for (const d of [...docs.values()]) {
-    if (!d.model || d.saving) continue;
-    let st; try { st = await N.fs.stat(d.path); } catch { continue; }
+  const list = [...docs.values()].filter((d) => d.model && !d.saving);
+  const stats = await Promise.all(list.map((d) => N.fs.stat(d.path).then((x) => ({ ok: true, x }), () => ({ ok: false }))));   // all files at once instead of one bridge call after another
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i]; if (d.saving || !stats[i].ok) continue;
+    const st = stats[i].x;
     if (!st) { if (!d.missing) { d.missing = true; toast(`"${d.name}" was deleted on disk`, { kind: "warn" }); } continue; }
     d.missing = false;
     if (st.m === d.mtime) continue;
@@ -283,7 +286,10 @@ export function initEditor() {
   document.addEventListener("visibilitychange", () => { if (document.hidden) { if (settings.get("files.autoSave") !== "off") dirtyDocs().forEach((d) => save(d.path, { auto: true })); } else checkExternal(); });
   window.addEventListener("focus", () => checkExternal());
   N.on("app.resume", () => checkExternal());
-  window.addEventListener("beforeunload", () => { if (settings.get("files.autoSave") !== "off") dirtyDocs().forEach((d) => save(d.path, { auto: true })); });
+  window.addEventListener("beforeunload", (e) => {
+    if (settings.get("files.autoSave") !== "off") dirtyDocs().forEach((d) => save(d.path, { auto: true }));
+    if (dirtyDocs().length) { e.preventDefault(); e.returnValue = ""; return ""; }   // browser: "Leave site? Changes you made may not be saved"
+  });
   ws.on("renamed", onRenamed);
   ws.on("deleted", onDeleted);
   ws.on("root", (r) => { if (!r) closeAll(null, true); });
