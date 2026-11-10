@@ -28,13 +28,23 @@ exports.activate = (ctx) => {
   const z2 = new JSZip();
   z2.file("extension/package.json", JSON.stringify({ name: "docky", publisher: "tester", version: "1.0.0", displayName: "Docky",
     contributes: { viewsContainers: { activitybar: [{ id: "docky", title: "Containers", icon: "$(package)" }] }, views: { docky: [{ id: "docky.list", name: "Containers" }] }, viewsWelcome: [{ view: "docky.list", contents: "No containers found.\n[Open Settings](command:settings.open)\nRead the [docs](https://example.com)." }] } }));
+  fs.mkdirSync("/tmp/cf-dev/shared", { recursive: true });
+  const z3 = new JSZip();
+  z3.file("extension/package.json", JSON.stringify({ name: "places", publisher: "tester", version: "1.0.0", displayName: "Places",
+    contributes: { viewsContainers: { panel: [{ id: "plog", title: "Box Logs", icon: "$(output)" }], secondarySidebar: [{ id: "pchat", title: "Box Chat", icon: "$(comment)" }] }, views: { plog: [{ id: "plog.v", name: "Logs" }], pchat: [{ id: "pchat.v", name: "Chat" }] },
+      viewsWelcome: [{ view: "plog.v", contents: "No logs yet." }, { view: "pchat.v", contents: "Say hello." }] } }));
+  const z4 = new JSZip();
+  z4.file("extension/package.json", JSON.stringify({ name: "claude-code", publisher: "anthropic", version: "2.0.0", displayName: "Claude Code for VS Code", main: "./x.js",
+    contributes: { viewsContainers: { activitybar: [{ id: "cc", title: "Claude Code", icon: "$(sparkle)" }], secondarySidebar: [{ id: "cc2", title: "Claude Code", icon: "$(sparkle)" }] }, views: { cc: [{ id: "cc.v", name: "Claude Code", type: "webview" }], cc2: [{ id: "cc.v2", name: "Claude Code", type: "webview" }] } } }));
+  z4.file("extension/x.js", 'require("node:fs");');
+  fs.writeFileSync("/tmp/cf-dev/shared/places.vsix", await z3.generateAsync({ type: "nodebuffer" })); fs.writeFileSync("/tmp/cf-dev/shared/cc.vsix", await z4.generateAsync({ type: "nodebuffer" }));
   fs.mkdirSync("/tmp/cf-dev/shared", { recursive: true }); fs.writeFileSync("/tmp/cf-dev/shared/box.vsix", await z.generateAsync({ type: "nodebuffer" })); fs.writeFileSync("/tmp/cf-dev/shared/docky.vsix", await z2.generateAsync({ type: "nodebuffer" }));
   for (const mobile of [false, true]) {
     const tag = mobile ? "[phone] " : "[desktop] ";
     const { browser, page, logs } = await launch({ mobile });
     await page.waitForFunction(() => window.__cfReady, null, { timeout: 40000 });
     await page.evaluate(async () => { const mm = await import("/js/main.js"); await mm.openFolder("/tmp/cf-dev/home/xv"); });
-    if (!mobile) await page.evaluate(async () => { const e = await import("/js/features/extensions.js"); await e.installVsix("/tmp/cf-dev/shared/box.vsix", { silent: true }); await e.installVsix("/tmp/cf-dev/shared/docky.vsix", { silent: true }); });
+    if (!mobile) await page.evaluate(async () => { const e = await import("/js/features/extensions.js"); await e.installVsix("/tmp/cf-dev/shared/box.vsix", { silent: true }); await e.installVsix("/tmp/cf-dev/shared/docky.vsix", { silent: true }); await e.installVsix("/tmp/cf-dev/shared/places.vsix", { silent: true }); await e.installVsix("/tmp/cf-dev/shared/cc.vsix", { silent: true }); });
     await page.waitForSelector(".ab-btn.ext-ab", { state: "attached", timeout: 10000 });
     const sel = mobile ? "#side-nav .sn-btn.ext-ab" : "#activitybar .ab-btn.ext-ab";
     ok(await page.locator(sel).count() === 2, tag + "one icon per extension (same container declared for activity bar, panel and secondary side bar is merged): " + (await page.locator(sel).evaluateAll((b) => b.map((x) => x.title).join(" | "))));
@@ -68,6 +78,20 @@ exports.activate = (ctx) => {
     if (mobile) { await page.click('#bottomnav [data-nav="explorer"]').catch(() => {}); await page.waitForTimeout(300); }
     await page.click(sel + '[title^="Containers"]'); await page.waitForSelector(".ext-view.active .xv-welcome");
     ok(/No containers found/.test(await page.locator(".ext-view.active .xv-welcome").textContent()) && await page.locator(".ext-view.active .xv-btn:has-text('Open Settings')").count() === 1, tag + "viewsWelcome text and command button");
+    // containers declared for the panel / the secondary side bar go there, not into the side bar
+    const P = (fn) => page.evaluate(`(async () => { const p = await import("/js/ui/panel.js"); return (${fn})(p); })()`);
+    const lay = await P((p) => p.layout());
+    ok(lay.bottom.some((n) => /plog/.test(n)) && lay.right.some((n) => /pchat/.test(n)), tag + "panel container → bottom panel tab, secondarySidebar container → right side bar tab: " + JSON.stringify(lay));
+    await P((p) => p.show(p.layout().bottom.find((n) => /plog/.test(n)))); await page.waitForSelector('.sheet[data-sheet="bottom"] .ext-view .xv-welcome');
+    ok(/No logs yet/.test(await page.locator('.sheet[data-sheet="bottom"] .ext-view .xv-welcome').textContent()) && await page.locator('.sheet[data-sheet="bottom"] .ptab[title="Box Logs"]').count() === 1, tag + "“Box Logs” is a tab beside Terminal and shows its view");
+    await P((p) => { p.hide(); p.show(p.layout().right.find((n) => /pchat/.test(n))); }); await page.waitForSelector('.sheet[data-sheet="right"] .ext-view .xv-welcome');
+    ok(/Say hello/.test(await page.locator('.sheet[data-sheet="right"] .ext-view .xv-welcome').textContent()), tag + "“Box Chat” opens in the right side bar");
+    // an AI coding extension becomes a tab of the AI Assistant, with no side bar icon and no error toast
+    await P((p) => p.show("ai")); await page.waitForSelector("#view-ai .ai-tabs .ai-tab");
+    const tabs = await page.locator("#view-ai .ai-tab:not(.ai-tab-add)").allTextContents();
+    ok(JSON.stringify(tabs) === JSON.stringify(["Chat", "Claude Code"]), tag + "installing Claude Code adds its tab to the AI side bar: " + tabs.join(" | "));
+    ok(await page.locator(sel + '[title^="Claude Code"]').count() === 0 && await page.locator(".toast:has-text('could not start')").count() === 0, tag + "no dead Claude Code icon in the side bar, no activation error");
+    await P((p) => p.hide());
     ok(!logs.some((l) => /pageerror/.test(l)), tag + "no page errors " + logs.filter((l) => /pageerror/.test(l)).join(" | "));
     await browser.close();
   }

@@ -178,7 +178,7 @@ function layout() {
   icons.iconEvents.on("registry", () => { const want = settings.get("ui.iconTheme"); if (icons.activeId() !== want && icons.list().some((t) => t.id === want)) icons.use(want); });
   settings.on("change:ui.iconTheme", (v) => icons.use(v));
   // title
-  const upd = () => { const t = ed.activeTab(); $("#title-text").textContent = [t?.title, ws.name].filter(Boolean).join(" , ") || "CodeForge"; document.title = $("#title-text").textContent + " , CodeForge"; };
+  const upd = () => { const t = ed.activeTab(); $("#title-text").textContent = [t?.title, ws.name].filter(Boolean).join(" — ") || "CodeForge"; document.title = $("#title-text").textContent + " — CodeForge"; };
   ed.editorEvents.on("active", upd); ws.on("root", upd); bus.on("dirty", upd);
   // android back button: close whatever is open on top; with nothing left to close the app goes to the recents list - but never with unsaved work
   window.__cfBack = () => {
@@ -199,7 +199,7 @@ export async function leaveApp({ quit = false } = {}) {
   if (!dirty.length) return go();
   const names = dirty.map((d) => d.name);
   const v = await modal({
-    title: quit ? "Unsaved changes , quit?" : "Unsaved changes", width: 440,
+    title: quit ? "Unsaved changes — quit?" : "Unsaved changes", width: 440,
     body: h("div", h("p.modal-text", `${names.length === 1 ? "1 file has" : names.length + " files have"} changes that are not saved:`),
       h("ul.exit-list", ...names.slice(0, 8).map((n) => h("li", n)), names.length > 8 ? h("li.muted", `…and ${names.length - 8} more`) : null)),
     buttons: [{ label: "Stay", value: "stay" }, { label: quit ? "Quit without saving" : "Leave without saving", danger: true, value: "leave" }, { label: quit ? "Save all & quit" : "Save all & leave", primary: true, value: "save" }],
@@ -410,7 +410,7 @@ function showWelcome() {
     render(el) {
       const recents = settings.state.recent.slice(0, 8);
       const card = (ic, t, d, fn) => h("button.wcard", { onclick: fn }, icon(ic), h("div", h("div.wt", t), h("div.muted", d)));
-      el.append(h("div.welcome", h("h1", "CodeForge"), h("p.muted", "A real code editor, terminal and live server , native on Android."),
+      el.append(h("div.welcome", h("h1", "CodeForge"), h("p.muted", "A real code editor, terminal and live server — native on Android."),
         h("div.wgrid",
           card("folder-opened", "Open Folder", "Browse storage, import from device", handlers.openProjectMenu), card("file-zip", "Open ZIP Project", "Extract and edit an archive", handlers.openZip),
           card("repo-clone", "Clone Repository", "From GitHub or any Git URL", handlers.cloneRepo), card("new-folder", "New Project", "HTML, Node, Python, Vite…", handlers.newProject),

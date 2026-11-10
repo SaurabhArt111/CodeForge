@@ -29,7 +29,7 @@ export async function exportBundle() {
   const el = h("div.xfer-top",
     h("p.modal-text", `Pack your work into one file to open in CodeForge on ${bridgeMode === "android" ? "the web" : "your Android phone or tablet"}.`),
     h("div.xfer-title", "Projects"),
-    h("div.zip-list", ...(projects.length ? projects.map((p) => { const cb = h("input", { type: "checkbox", checked: true, onchange: () => (cb.checked ? sel.add(p.name) : sel.delete(p.name)) }); return h("label.zip-row", cb, h("span.zip-text", h("span.zip-name", p.name), h("span.muted.zip-note", P.rel(info.paths.home, p.path))));}) : [h("div.pj-empty", "No projects yet , create or import one first.")])),
+    h("div.zip-list", ...(projects.length ? projects.map((p) => { const cb = h("input", { type: "checkbox", checked: true, onchange: () => (cb.checked ? sel.add(p.name) : sel.delete(p.name)) }); return h("label.zip-row", cb, h("span.zip-text", h("span.zip-name", p.name), h("span.muted.zip-note", P.rel(info.paths.home, p.path))));}) : [h("div.pj-empty", "No projects yet — create or import one first.")])),
     h("label.zip-row.xfer-set", h("input", { type: "checkbox", checked: true, onchange: (e) => (withSettings = e.target.checked) }), h("span.zip-text", h("span.zip-name", "Settings"), h("span.muted.zip-note", "Theme, fonts, editor and terminal options, Git name & email. API keys are never included."))));
   const o = await askZipOptions({ name: `CodeForge-${stamp()}.cfbundle`, paths: projects.filter((p) => sel.has(p.name)).map((p) => p.path), title: "Transfer to another CodeForge", okLabel: "Create bundle", before: { el, collect: () => ({ names: [...sel], withSettings }) } });
   if (!o) return;

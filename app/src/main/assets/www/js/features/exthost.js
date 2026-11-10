@@ -33,7 +33,7 @@ export async function register(ext) {
   unregister(ext);
   await applyStaticContributes(ext);
   const entry = entryOf(ext); if (!ext.enabled) return;
-  if (!entry) { xviews.add(ext, null); return; }
+  if (!entry || xviews.isAiCli(ext)) { xviews.add(ext, null); return; }
   const m = ext.manifest; const c = m.contributes || {};
   const ev = m.activationEvents || [];
   const langs = new Set([...ev.filter((e) => e.startsWith("onLanguage:")).map((e) => e.slice(11)), ...(c.languages || []).map((l) => l.id)].filter(Boolean));
@@ -79,7 +79,7 @@ async function ensureRunning(hh) {
     } catch (e) {
       hh.status = "error"; hh.error = e.message || String(e); logOut(ext, "Activation failed: " + hh.error);
       // say it once, and not at all when the extension's own view is on screen explaining the same thing
-      if (!hh.toasted && !document.querySelector(".ext-view.active")) { hh.toasted = true; A.toast(`${ext.name} could not start here , see Output › ${outName(ext)}`, { kind: "error" }); }
+      if (!hh.toasted && !document.querySelector(".ext-view.active")) { hh.toasted = true; A.toast(`${ext.name} could not start here — see Output › ${outName(ext)}`, { kind: "error" }); }
       hh.toasted = true; stop(hh, "error"); return null; }
   })();
   return hh.starting;
@@ -333,7 +333,7 @@ async function handle(hh, m, a) {
 function registerCommands() {
   A.cmd.register({ id: "ext.host.running", title: "Extensions: Show Running Extensions", run: async () => {
     const rows = statusAll(); if (!rows.length) return A.toast("No extensions with code are loaded");
-    const v = await A.quickPick(rows.map((r) => ({ label: r.name, description: r.status + (r.error ? " , " + r.error : ""), value: r.id })), { placeholder: "Select an extension to show its output" });
+    const v = await A.quickPick(rows.map((r) => ({ label: r.name, description: r.status + (r.error ? " — " + r.error : ""), value: r.id })), { placeholder: "Select an extension to show its output" });
     if (v) A.output.show(outName(allExts().find((e) => e.id === v) || { name: v }));
   } });
   A.cmd.register({ id: "ext.host.restart", title: "Extensions: Restart Extension Host", run: async () => { await restartAll(); A.toast("Extension host restarted", { kind: "success" }); } });

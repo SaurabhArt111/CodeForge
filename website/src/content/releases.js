@@ -3,9 +3,11 @@ export const RELEASES = [
   { v: "8.2", date: "November 2026", title: "Extension views, AI CLI tabs, touch scrolling",
     items: [
       ["new", "Extensions that contribute a side bar container now appear in the activity bar. Tree views, webview views, webview panels and welcome content are supported."],
-      ["new", "Chat, Claude Code, Codex, Gemini and Copilot are tabs in the AI side bar. Each CLI runs in its own Linux terminal and is installed on first use."],
+      ["new", "Coding CLIs run as tabs in the AI side bar, each in its own Linux terminal, installed on first use."],
       ["new", "About page in the app and on the website, with credits."],
       ["new", "Setting to start npm dev servers with “-- --host” so other devices on your network can open them."],
+      ["new", "Installed extensions appear where they ask to be: side bar containers in the activity bar, panel containers as tabs beside the terminal, secondary side bar containers in the right side bar."],
+      ["new", "Installing Claude Code, Codex, Gemini or Copilot adds its tab to the AI side bar; the + button adds or removes CLI tabs."],
       ["new", "The website uses the VS Code Dark Modern colours."],
       ["fix", "An extension that declares the same container for several places gets one icon, and a failed start is reported once."],
       ["fix", "Linux terminal: falls back to a compatible mode on devices where every command failed with “can't fork: Function not implemented”."],

@@ -2,6 +2,7 @@
 const { launch } = require("./lib"); const fs = require("fs");
 let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
 for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f, { force: true });
+fs.rmSync("/tmp/cf-dev/cf/extensions", { recursive: true, force: true });
 fs.mkdirSync("/tmp/cf-dev/home/v82", { recursive: true }); fs.writeFileSync("/tmp/cf-dev/home/v82/a.js", "1\n");
 // an old saved layout with Run & Preview parked in the bottom panel must be put back
 fs.mkdirSync("/tmp/cf-dev/cf", { recursive: true }); fs.writeFileSync("/tmp/cf-dev/cf/state.json", JSON.stringify({ sheets: { v: 2, bottom: ["terminal", "run", "preview"], right: [], top: ["ai"], page: [] } }));
@@ -35,8 +36,10 @@ fs.mkdirSync("/tmp/cf-dev/cf", { recursive: true }); fs.writeFileSync("/tmp/cf-d
 
   // ---- AI tabs
   await page.click("#btn-ai"); await page.waitForSelector("#view-ai .ai-tabs .ai-tab");
-  const tabs = await page.locator("#view-ai .ai-tab").allTextContents();
-  ok(JSON.stringify(tabs) === JSON.stringify(["Chat", "Claude Code", "Codex", "Gemini", "Copilot"]), "AI side bar tabs: " + tabs.join(" | "));
+  ok(JSON.stringify(await page.locator("#view-ai .ai-tab:not(.ai-tab-add)").allTextContents()) === '["Chat"]', "only Chat until an AI extension is installed or a CLI tab is added");
+  await page.click("#view-ai .ai-tab-add"); await page.waitForSelector(".ctx-item"); await page.click('.ctx-item:has-text("Claude Code")'); await page.waitForTimeout(300);
+  const tabs = await page.locator("#view-ai .ai-tab:not(.ai-tab-add)").allTextContents();
+  ok(JSON.stringify(tabs) === JSON.stringify(["Chat", "Claude Code"]), "+ adds a CLI tab: " + tabs.join(" | "));
   await page.click('#view-ai .ai-tab[data-tab="claude"]');
   await page.waitForFunction(() => document.querySelector("#view-ai .ai-cli-term .xterm") || document.querySelector("#view-ai .ai-cli-note"), null, { timeout: 15000 });
   const mode = await page.evaluate(() => (document.querySelector("#view-ai .ai-cli-term .xterm") ? "terminal" : document.querySelector("#view-ai .ai-cli-note").textContent));

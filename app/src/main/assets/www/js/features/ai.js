@@ -318,7 +318,7 @@ function welcome() {
   const p = curProvider();
   return h("div.ai-welcome", icon("sparkle", "big"), h("div", { style: { fontWeight: 600, fontSize: "calc(14px * var(--fz))" } }, "CodeForge AI"), h("div.muted", `Using ${p.label} · ${curModel() || "no model"}`),
     h("div.ai-suggest", ...["Explain this file", "Find bugs in the selection", "Write unit tests", "Add comments and docs", "Refactor for readability"].map((t) => h("button.chip", { onclick: () => { inputEl.value = t; send(); } }, t))),
-    h("div.muted", { style: { fontSize: "calc(12px * var(--fz))" } }, "Agent mode lets the AI read, edit files and run commands. Add an API key via ⚙ , keys stay in the Android Keystore."));
+    h("div.muted", { style: { fontSize: "calc(12px * var(--fz))" } }, "Agent mode lets the AI read, edit files and run commands. Add an API key via ⚙ — keys stay in the Android Keystore."));
 }
 function addBubble(m) {
   if (m.role === "tool") return null;
@@ -489,7 +489,7 @@ async function streamOnce(p, asst, onText) {
     if (!err && head.status < 400) break;
     const status = err ? 0 : head.status; const transient = err || status === 429 || status === 408 || status >= 500;
     let t = ""; if (!err) { try { for await (const c of s.body) t += textDec.decode(c); } catch { /* ignore */ } }
-    if (transient && attempt < 3) { const wait = [1500, 4000, 9000][attempt]; note(`${status ? "Server busy (" + status + ")" : "Connection problem"} , retrying in ${Math.round(wait / 1000)}s…`); await new Promise((r) => setTimeout(r, wait)); if (streaming.cancelled) throw new Error("cancelled"); continue; }
+    if (transient && attempt < 3) { const wait = [1500, 4000, 9000][attempt]; note(`${status ? "Server busy (" + status + ")" : "Connection problem"} — retrying in ${Math.round(wait / 1000)}s…`); await new Promise((r) => setTimeout(r, wait)); if (streaming.cancelled) throw new Error("cancelled"); continue; }
     let msg = err ? err.message : t; try { const j = JSON.parse(t); msg = j.error?.message || j.message || t; } catch { /* raw */ }
     throw new Error(`${status || "network"}: ${String(msg).slice(0, 400)}`);
   }
@@ -569,12 +569,26 @@ async function selectionAction(kind) {
 // ---------------------------------------------------------------- tabs in the AI side bar: Chat | Claude Code | Codex | Gemini | Copilot
 // Each CLI tab is the real tool running in its own Linux terminal inside this side bar (installed on first use), next to CodeForge's own chat.
 let tabsEl, chatEl, cliEl, aiTab = "chat"; const cliTerms = new Map();   // cli id -> { t, el }
-const TAB_CLIS = ["claude", "codex", "gemini", "copilot"];
+const ALL_CLIS = ["claude", "codex", "gemini", "copilot"];
+// Which CLI tabs are shown: those whose extension is installed (Claude Code, Codex …) plus the ones added with the + button.
+const extClis = new Set();
+const userClis = () => (A.settings.state.aiTabs ||= []);
+const shownClis = () => ALL_CLIS.filter((id) => extClis.has(id) || userClis().includes(id) || cliTerms.has(id));
+export function extTab(id, on, extName) {
+  if (on) { const fresh = !extClis.has(id); extClis.add(id); if (fresh && extName && tabsEl) A.toast(`${extName}: added to the AI side bar as a tab (runs the CLI in a Linux terminal)`); } else extClis.delete(id);
+  if (!on && aiTab === id && !shownClis().includes(id)) selectTab("chat"); else renderTabs();
+}
+function tabMenu(e) {
+  const r = e.currentTarget.getBoundingClientRect(); const u = userClis();
+  A.contextMenu(ALL_CLIS.map((id) => { const c = CLIS.find((x) => x.id === id); const fromExt = extClis.has(id), on = fromExt || u.includes(id);
+    return { label: (on ? "✓ " : "") + c.name + (fromExt ? "  (from extension)" : ""), disabled: fromExt, run: () => { if (on) { A.settings.state.aiTabs = u.filter((x) => x !== id); if (aiTab === id) { closeCli(id); selectTab("chat"); } } else { u.push(id); } A.settings.saveState(); renderTabs(); if (!on) selectTab(id); } }; }), r.left, r.bottom + 4);
+}
 function renderTabs() {
   if (!tabsEl) return;
   const mk = (id, label) => h("button.ai-tab" + (aiTab === id ? ".on" : ""), { role: "tab", dataset: { tab: id }, onclick: () => selectTab(id), oncontextmenu: (e) => { e.preventDefault(); if (id !== "chat" && cliTerms.has(id)) A.contextMenu([{ label: "Restart " + label, icon: "refresh", run: () => { closeCli(id); selectTab(id); } }, { label: "Close " + label, icon: "close", run: () => { closeCli(id); selectTab("chat"); } }], e.clientX, e.clientY); } },
     label, cliTerms.has(id) ? h("span.ai-tab-dot", { title: "running" }) : null);
-  tabsEl.replaceChildren(mk("chat", "Chat"), ...TAB_CLIS.map((id) => { const c = CLIS.find((x) => x.id === id); return c ? mk(id, c.name.replace(/^OpenAI | CLI$|^GitHub /g, "")) : null; }).filter(Boolean));
+  tabsEl.replaceChildren(mk("chat", "Chat"), ...shownClis().map((id) => { const c = CLIS.find((x) => x.id === id); return c ? mk(id, c.name.replace(/^OpenAI | CLI$|^GitHub /g, "")) : null; }).filter(Boolean),
+    h("button.ai-tab.ai-tab-add", { title: "Add or remove a coding CLI tab (Claude Code, Codex, Gemini, Copilot)", "aria-label": "Add tab", onclick: tabMenu }, icon("add")));
 }
 function closeCli(id) { const c = cliTerms.get(id); if (!c) return; cliTerms.delete(id); try { A.term.closeTerm(c.t.id); } catch { /* gone */ } c.el.remove(); renderTabs(); }
 export async function selectTab(id) {

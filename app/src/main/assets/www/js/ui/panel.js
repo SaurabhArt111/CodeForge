@@ -208,6 +208,18 @@ export function resetLayout() {
 // ---------------------------------------------------------------- show / hide
 export function registerView(name, { onShow } = {}) { views.set(name, { onShow }); }
 
+/** Views added at run time (extension containers): `sid` is where the extension asked to live ("bottom" = panel, "right" = secondary side bar). */
+export function addItem(name, def, sid) {
+  ITEMS[name] = { ...def, view: true };
+  if (sid && sheets[sid] && !sheetOf(name)) { sheets[sid].items.push(name); place(name, sid); renderTabs(sid); }
+}
+export function removeItem(name) {
+  if (!ITEMS[name]) return;
+  const sid = sheetOf(name);
+  if (sid) { const sh = sheets[sid]; sh.items = sh.items.filter((n) => n !== name); if (sh.active === name) sh.active = sh.items[0] || null; renderTabs(sid); if (sh.open) { if (sh.active) paint(sid); else hide(sid); } }
+  delete ITEMS[name]; saveLayout();
+}
+
 /** both sheets open → phones give each less room so the editor stays usable */
 function syncDual() { document.getElementById("workbench")?.classList.toggle("dual", !!(sheets.top.open && sheets.bottom.open)); }
 function paint(sid) {

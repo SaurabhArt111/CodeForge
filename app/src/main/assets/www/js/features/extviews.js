@@ -25,7 +25,12 @@ export function add(ext, hh) {
   remove(ext);
   const c = ext.manifest.contributes || {}; const vc = c.viewsContainers || {}; const views = c.views || {};
   const all = [...(vc.activitybar || []).map((x) => ({ ...x, where: "activitybar" })), ...(vc.panel || []).map((x) => ({ ...x, where: "panel" })), ...(vc.secondarySidebar || []).map((x) => ({ ...x, where: "secondary" }))];
-  // one icon per extension and title: many extensions declare the same container for the activity bar, the panel and the secondary side bar
+  // AI coding extensions (Claude Code, Codex, Gemini, Copilot) cannot run their desktop code here, but their CLI can:
+  // installing one adds its tab to the AI side bar, where the real tool runs in a Linux terminal.
+  const cli = aiCliOf(ext);
+  if (cli) { aiTabs.set(ext.id, cli); A.feat("ai").then((m) => m.extTab(cli, true, ext.name)).catch(() => {}); return; }
+  // one container per extension and title (many extensions declare the same one for several places); it goes where the extension asked:
+  // activitybar → side bar icon, panel → a tab in the bottom panel next to Terminal, secondarySidebar → a tab in the right (AI) side bar
   const merged = new Map();
   for (const def of all) {
     const list = (views[def.id] || []).filter((v) => v && v.id); if (!list.length) continue;
@@ -45,6 +50,10 @@ export function add(ext, hh) {
       A.N.fs.url(P.join(ext.base, def.icon)).then((u) => { img.src = u; }).catch(() => {});
       return img;
     };
+    if (def.where !== "activitybar") {   // bottom panel or right side bar: a tab there, no side bar icon
+      const cm = /^\$\(([\w-]+)\)$/.exec(def.icon || "");
+      A.panel.addItem(name, { label: cont.title, icon: cm ? cm[1] : "extensions" }, def.where === "panel" ? "bottom" : "right"); cont.sheet = true; continue;
+    }
     const ab = h("button.ab-btn.ext-ab", { dataset: { view: name }, title: `${cont.title} (${ext.name})`, onclick: () => A.showView(name, { toggle: true }) }, mkIcon());
     const anchor = document.querySelector('#activitybar .ab-btn[data-view="ai"]') || document.querySelector("#activitybar .ab-btn[data-view]:last-of-type");
     anchor?.after(ab); cont.btns.push(ab);
@@ -52,9 +61,20 @@ export function add(ext, hh) {
     if (strip) { const sb = h("button.sn-btn.ext-ab", { dataset: { view: name }, title: cont.title, "aria-label": cont.title, onclick: () => A.showView(name) }, mkIcon()); (strip.querySelector(".spacer") || strip.lastChild).before(sb); cont.btns.push(sb); }
   }
 }
+const aiTabs = new Map();   // ext id -> cli id
+export const isAiCli = (ext) => !!aiCliOf(ext);
+function aiCliOf(ext) {
+  const id = ext.id.toLowerCase();
+  if (/^anthropic\.claude-code$|claude-code/.test(id)) return "claude";
+  if (/^openai\.(chatgpt|codex)/.test(id)) return "codex";
+  if (/^google\.(gemini-cli|geminicodeassist)/.test(id)) return "gemini";
+  if (/^github\.copilot/.test(id)) return "copilot";
+  return null;
+}
 export function remove(ext) {
+  if (aiTabs.has(ext.id)) { const cli = aiTabs.get(ext.id); aiTabs.delete(ext.id); if (![...aiTabs.values()].includes(cli)) A.feat("ai").then((m) => m.extTab(cli, false)).catch(() => {}); }
   for (const [name, cont] of [...containers]) if (cont.ext.id === ext.id) {
-    cont.btns.forEach((b) => b.remove()); cont.el?.remove(); containers.delete(name);
+    cont.btns.forEach((b) => b.remove()); if (cont.sheet) A.panel.removeItem(name); cont.el?.remove(); containers.delete(name);
     for (const k of [...viewIndex.keys()]) if (k.startsWith(ext.id + "|")) viewIndex.delete(k);
   }
   for (const [k, p] of [...panels]) if (p.hh?.ext.id === ext.id) { p.el.remove(); panels.delete(k); }
