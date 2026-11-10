@@ -46,7 +46,7 @@ async function shareText(text, name) {
     const f = P.join(info.paths.home, ".cf-share", name);
     await N.fs.mkdir(P.dir(f)); await N.fs.writeText(f, text);
     await N.sys.share({ path: f, mime: "text/plain", title: "CodeForge report" });
-  } catch (e) { await copyText(text); toast("Sharing unavailable — copied to clipboard instead"); }
+  } catch (e) { await copyText(text); toast("Sharing unavailable , copied to clipboard instead"); }
 }
 
 export async function viewReport(meta, onChange) {
@@ -75,7 +75,7 @@ export function renderDiagnostics(el) {
     row("Crash reports", "Saved only on this device. Includes the stack, memory and what the app was doing.", count, h("button.btn", { onclick: openReports }, "View reports")),
     row("Tell me after a crash", "Show a notice at startup when CodeForge stopped unexpectedly", sw("diagnostics.notify")),
     row("Pause the in-app preview when memory is low", "Prevents Android from killing the app because of a heavy page", sw("preview.pauseOnLowMemory")),
-    row("Copy diagnostics", "Device, memory and the last actions — paste it when reporting a problem", h("button.btn", { onclick: async () => { await copyText(await N.crash.diagnostics()); toast("Diagnostics copied"); } }, "Copy")),
+    row("Copy diagnostics", "Device, memory and the last actions , paste it when reporting a problem", h("button.btn", { onclick: async () => { await copyText(await N.crash.diagnostics()); toast("Diagnostics copied"); } }, "Copy")),
     row("Create a test report", "Check that recording works", h("button.btn", { onclick: async () => { await N.crash.test(); toast("Test report created"); N.crash.list().then((l) => (count.textContent = String(l.length))); } }, "Create")),
   );
 }

@@ -412,7 +412,7 @@ function emptyGroupHint(g) {
 
 export async function openFile(path, opts = {}) {
   let { group = activeGroup, preview = false, line, col, focus = true, reveal = true } = opts;
-  // open: false — this function is what fills the new group, toggleSplit must not call back into it (that was an endless loop: "Maximum call stack size exceeded")
+  // open: false , this function is what fills the new group, toggleSplit must not call back into it (that was an endless loop: "Maximum call stack size exceeded")
   if (group === 1 && groups[1].el.classList.contains("hidden")) toggleSplit(true, { open: false });
   const g = groups[group];
   let tab = g.tabs.find((t) => t.path === path) || allTabs().find((t) => t.path === path && !opts.group && opts.group !== 0 && false);
@@ -466,7 +466,7 @@ function renderSpecial(el, d) {
   if (d.kind === "image") {
     const img = h("img", { style: { maxWidth: "100%", maxHeight: "78vh", background: "repeating-conic-gradient(#8883 0% 25%, transparent 0% 50%) 50% / 16px 16px", objectFit: "contain" } });
     N.fs.url(d.path).then((u) => (img.src = u + "?t=" + Date.now()));
-    img.onload = () => { info.textContent = `${d.name} — ${img.naturalWidth}×${img.naturalHeight}`; };
+    img.onload = () => { info.textContent = `${d.name} , ${img.naturalWidth}×${img.naturalHeight}`; };
     wrap.append(img, info);
   } else if (d.kind === "audio" || d.kind === "video") {
     const m = h(d.kind, { controls: true, style: { maxWidth: "100%" } }); N.fs.url(d.path).then((u) => (m.src = u)); wrap.append(m, info);

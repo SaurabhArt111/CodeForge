@@ -18,10 +18,10 @@ npm run dev                            # Vite dev server for working on the page
 ```
 
 ## Add the Play Store link later
-Either edit `website/public/site-config.js` (`playStoreUrl`) and rebuild, or — with the Node backend or Docker — set the environment variable `PLAY_STORE_URL` and restart. Until it is set, the badge shows **Coming soon** and has no link.
+Either edit `website/public/site-config.js` (`playStoreUrl`) and rebuild, or , with the Node backend or Docker , set the environment variable `PLAY_STORE_URL` and restart. Until it is set, the badge shows **Coming soon** and has no link.
 
 ## Add the Android APK
-1. Build it: `./gradlew assembleRelease` (or `assembleDebug`) — see BUILD.md.
+1. Build it: `./gradlew assembleRelease` (or `assembleDebug`) , see BUILD.md.
 2. `APK=../app/build/outputs/apk/release/app-release.apk npm run build   # inside website/ (or drop the .apk into website/downloads/)` copies it to `downloads/CodeForge.apk` and writes `downloads/apk.json` (size and SHA-256 appear on the page).
    Without a file the page says "APK not uploaded yet". To host the APK elsewhere (GitHub Releases, a CDN) set `apkUrl` in `site-config.js` or `APK_URL`.
 
