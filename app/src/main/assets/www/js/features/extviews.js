@@ -25,8 +25,14 @@ export function add(ext, hh) {
   remove(ext);
   const c = ext.manifest.contributes || {}; const vc = c.viewsContainers || {}; const views = c.views || {};
   const all = [...(vc.activitybar || []).map((x) => ({ ...x, where: "activitybar" })), ...(vc.panel || []).map((x) => ({ ...x, where: "panel" })), ...(vc.secondarySidebar || []).map((x) => ({ ...x, where: "secondary" }))];
+  // one icon per extension and title: many extensions declare the same container for the activity bar, the panel and the secondary side bar
+  const merged = new Map();
   for (const def of all) {
     const list = (views[def.id] || []).filter((v) => v && v.id); if (!list.length) continue;
+    const k = (def.title || ext.name).toLowerCase(); const m = merged.get(k);
+    if (m) { for (const v of list) if (!m.list.some((x) => x.id === v.id || (x.name || "") === (v.name || "\0"))) m.list.push(v); } else merged.set(k, { def, list: [...list] });
+  }
+  for (const { def, list } of merged.values()) {
     const name = vname(ext.id, def.id);
     const cont = { ext, hh, id: def.id, name, title: def.title || ext.name, views: list, btns: [], welcome: (c.viewsWelcome || []) };
     containers.set(name, cont);

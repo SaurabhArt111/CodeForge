@@ -18,15 +18,15 @@ npm run dev                            # Vite dev server for working on the page
 ```
 
 ## Add the Play Store link later
-Either edit `website/public/site-config.js` (`playStoreUrl`) and rebuild, or — with the Node backend or Docker — set the environment variable `PLAY_STORE_URL` and restart. Until it is set, the badge shows **Coming soon** and has no link.
+Either edit `website/public/site-config.js` (`playStoreUrl`) and rebuild, or , with the Node backend or Docker , set the environment variable `PLAY_STORE_URL` and restart. Until it is set, the badge shows **Coming soon** and has no link.
 
 ## Add the Android APK
-1. Build it: `./gradlew assembleRelease` (or `assembleDebug`) — see BUILD.md.
+1. Build it: `./gradlew assembleRelease` (or `assembleDebug`) , see BUILD.md.
 2. `APK=../app/build/outputs/apk/release/app-release.apk npm run build   # inside website/ (or drop the .apk into website/downloads/)` copies it to `downloads/CodeForge.apk` and writes `downloads/apk.json` (size and SHA-256 appear on the page).
    Without a file the page says "APK not uploaded yet". To host the APK elsewhere (GitHub Releases, a CDN) set `apkUrl` in `site-config.js` or `APK_URL`.
 
 ## Hosting options
-* **Static host** (GitHub Pages, Netlify, Cloudflare Pages, any web server): upload `website/dist` (for a project site on a sub-path build with `SITE_BASE=/repo-name/ npm run build`). `.github/workflows/pages.yml` and `netlify.toml` are included. The web editor needs HTTPS (or localhost) for offline support and for its in-browser live server (a service worker).
+* **Static host** (GitHub Pages, Netlify, Cloudflare Pages, any web server): first enable Pages once: repository **Settings → Pages → Source: GitHub Actions** (otherwise the workflow's deploy step fails with *status: 404, Ensure GitHub Pages has been enabled*), then upload `website/dist` (for a project site on a sub-path build with `SITE_BASE=/repo-name/ npm run build`). `.github/workflows/pages.yml` and `netlify.toml` are included. The web editor needs HTTPS (or localhost) for offline support and for its in-browser live server (a service worker).
 * **Node server** (`website/server/index.js`): serves the same files, gzip, security headers, generates `/site-config.js` from environment variables, and adds the Git proxy below.
 * **Docker**: `docker build -t codeforge-site . && docker run -p 8080:8080 codeforge-site`.
 

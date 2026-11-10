@@ -88,6 +88,16 @@ export BROWSER=/usr/local/bin/cf-open-url
 export CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-1}"
 [ -f "$CF_ENV/node-patch.js" ] && export NODE_OPTIONS="--require $CF_ENV/node-patch.js ${NODE_OPTIONS:-}"
 
+# Some kernels refuse proot's seccomp speed-up: every fork then fails with "can't fork: Function not implemented".
+# Probe once (a sub-shell needs a real fork) and fall back to plain ptrace mode on such devices; re-probed after an app or system update.
+PROBE="$CF_ENV/.seccomp-$(getprop ro.build.version.incremental 2>/dev/null | tr -c 'A-Za-z0-9._-' '_')"
+if [ ! -f "$PROBE.ok" ] && [ ! -f "$PROBE.off" ]; then
+  rm -f "$CF_ENV"/.seccomp-* 2>/dev/null
+  # shellcheck disable=SC2086
+  if "$PROOT" $ARGS -w / /bin/sh -c '(exit 0); (exit 0); exit 0' >/dev/null 2>&1; then : > "$PROBE.ok"; else : > "$PROBE.off"; fi
+fi
+[ -f "$PROBE.off" ] && export PROOT_NO_SECCOMP=1
+
 unset TMPDIR   # host-only; the Linux side uses its own /tmp
 if [ $# -eq 0 ]; then
   set -- /bin/sh -c 'if command -v bash >/dev/null 2>&1; then exec bash -l; else exec ash -l; fi'

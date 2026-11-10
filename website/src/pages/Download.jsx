@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { config, url, useApk } from "../lib/site.js";
+import { RELEASES } from "../content/releases.js";
 import CopyBlock from "../components/CopyBlock.jsx";
 import { DownloadIcon } from "../components/Layout.jsx";
 
@@ -50,14 +51,8 @@ export default function Download() {
       <CopyBlock text="./gradlew assembleDebug"><span className="c"># app/build/outputs/apk/debug/</span>{"\n"}<span className="p">$</span> ./gradlew assembleDebug</CopyBlock>
       <p style={{ marginTop: 20 }}>Or download the <a href={url("downloads/CodeForge-source.zip")}>source ZIP</a> and read it in the <Link to="/code">code browser</Link>.</p>
       <h2>What's new in {c.version}</h2>
-      <ul>
-        <li>Sheets on every side: top, bottom, a fixed-width right sheet and full-screen pages; swipe from the edge for the menu</li>
-        <li>A terminal that keeps its size when the keyboard opens, quieter startup, and default text size 12 on phones / 14 on tablets</li>
-        <li>AI: a settings page for providers and keys, one-tap Apply with diff review, and edits from coding CLIs show up in the editor and Git</li>
-        <li>Open Folder shows your projects; ZIP export lets you leave out node_modules, .git and other folders</li>
-        <li>Move projects and settings between the web editor and the app with a <code>.cfbundle</code></li>
-        <li>Preview opens the right port again, and the split editor no longer crashes</li>
-      </ul>
+      <ul>{RELEASES[0].items.map(([, t]) => <li key={t}>{t}</li>)}</ul>
+      <p><Link to="/updates">All release notes</Link></p>
       <p className="note">Debug builds are signed with a debug key. A release build signed with your own key is what you should publish to Google Play.</p>
     </div></section>
   </>);

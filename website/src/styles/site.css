@@ -1,7 +1,9 @@
 @font-face{font-family:"JetBrains Mono";src:url("/assets/fonts/JetBrains-Mono.ttf") format("truetype");font-display:swap}
 :root{
-  --paper:#ECEFF3;--paper-2:#E2E7ED;--ink:#0E141B;--ink-2:#1A2430;--steel:#C3CCD7;--muted:#566272;
-  --cobalt:#2C4BFF;--cobalt-ink:#fff;--ember:#FF9F1C;--ok:#0F8A4B;--warn:#B25E00;
+  /* VS Code "Dark Modern" palette: editor #1f1f1f, side bar / panels #181818, borders #2b2b2b–#3c3c3c, text #cccccc, accent #0078d4 */
+  --paper:#1f1f1f;--paper-2:#181818;--ink:#e7e7e7;--ink-2:#cccccc;--steel:#3c3c3c;--muted:#9d9d9d;
+  --cobalt:#0078d4;--cobalt-hi:#026ec1;--link:#4daafc;--cobalt-ink:#fff;--ember:#ce9178;--ok:#3fb950;--warn:#cca700;--hover:#2a2d2e;--frame:#000;
+  color-scheme:dark;
   --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --gutter:clamp(16px,4vw,48px);--max:1180px;
@@ -22,14 +24,14 @@ img{max-width:100%;display:block}
 .brand svg{width:26px;height:26px}
 .top nav{display:flex;gap:6px;margin-left:auto;align-items:center}
 .top nav a{text-decoration:none;padding:8px 12px;border-radius:8px;font-size:15px;color:var(--ink-2)}
-.top nav a:hover{background:var(--paper-2)}.top nav a[aria-current=page]{background:var(--paper-2)}
-.top nav a.cta{background:var(--ink);color:#fff}.top nav a.cta:hover{background:var(--cobalt)}
+.top nav a:hover{background:var(--hover)}.top nav a[aria-current=page]{background:var(--hover);color:#fff}
+.top nav a.cta{background:var(--cobalt);color:#fff}.top nav a.cta:hover{background:var(--cobalt-hi)}
 @media (max-width:720px){.top nav a:not(.cta):not(.keep){display:none}}
 
 /* ---- buttons ---- */
 .btn{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 22px;border-radius:10px;font:600 16px var(--sans);text-decoration:none;border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
-.btn:hover{background:var(--ink);color:#fff}
-.btn.primary{background:var(--cobalt);border-color:var(--cobalt);color:var(--cobalt-ink)}.btn.primary:hover{background:var(--ink);border-color:var(--ink)}
+.btn:hover{background:var(--hover);color:#fff}
+.btn.primary{background:var(--cobalt);border-color:var(--cobalt);color:var(--cobalt-ink)}.btn.primary:hover{background:var(--cobalt-hi);border-color:var(--cobalt-hi)}
 .btn[aria-disabled=true]{opacity:.55;cursor:not-allowed;pointer-events:none}
 .btn svg{width:20px;height:20px;flex:none}
 
@@ -43,9 +45,9 @@ img{max-width:100%;display:block}
 .actions{display:flex;gap:14px;flex-wrap:wrap}
 .fine{margin:18px 0 0;font-size:15px;color:var(--muted);max-width:36em}
 .stage{position:relative;display:flex;justify-content:center}
-.phone{width:min(100%,330px);aspect-ratio:412/860;border-radius:44px;background:var(--ink);padding:11px;box-shadow:0 40px 80px -30px rgba(14,20,27,.55),0 0 0 1px #000}
+.phone{width:min(100%,330px);aspect-ratio:412/860;border-radius:44px;background:var(--frame);padding:11px;box-shadow:0 40px 80px -30px rgba(0,0,0,.8),0 0 0 1px var(--steel)}
 .phone img{width:100%;height:100%;object-fit:cover;object-position:top;border-radius:34px;background:#111}
-.stage .laptop{position:absolute;right:-18%;bottom:-6%;width:78%;border-radius:12px;border:6px solid var(--ink);box-shadow:0 30px 60px -28px rgba(14,20,27,.6);display:none}
+.stage .laptop{position:absolute;right:-18%;bottom:-6%;width:78%;border-radius:12px;border:6px solid #2b2b2b;box-shadow:0 30px 60px -28px rgba(14,20,27,.6);display:none}
 @media (max-width:900px){.hero .wrap{grid-template-columns:1fr}.stage{order:-1}.phone{width:min(70%,270px)}}
 @media (prefers-reduced-motion:reduce){.hero h1 .caret{animation:none}html{scroll-behavior:auto}}
 
@@ -67,10 +69,10 @@ h3{margin:0 0 8px;font:600 20px/1.25 var(--sans)}
 .tabs button{all:unset;box-sizing:border-box;cursor:pointer;padding:18px 0;border-bottom:1px solid var(--steel);display:block}
 .tabs button:focus-visible{outline:3px solid var(--cobalt);outline-offset:2px}
 .tabs b{display:block;font:600 19px var(--sans)}.tabs span{display:block;color:var(--muted);max-height:0;overflow:hidden;transition:max-height .25s ease}
-.tabs button[aria-selected=true] b{color:var(--cobalt)}.tabs button[aria-selected=true] span{max-height:9em;margin-top:6px;color:var(--ink-2)}
+.tabs button[aria-selected=true] b{color:var(--link)}.tabs button[aria-selected=true] span{max-height:9em;margin-top:6px;color:var(--ink-2)}
 .viewer{position:sticky;top:84px;display:flex;justify-content:center}
 .viewer .phone{width:min(100%,320px)}
-.viewer .wide{width:100%;border-radius:12px;border:6px solid var(--ink);box-shadow:0 30px 60px -30px rgba(14,20,27,.5)}
+.viewer .wide{width:100%;border-radius:12px;border:6px solid #2b2b2b;box-shadow:0 30px 60px -30px rgba(14,20,27,.5)}
 @media (max-width:860px){.show{grid-template-columns:1fr}.viewer{position:static;order:-1}}
 
 /* compare table */
@@ -88,9 +90,9 @@ details p{margin:10px 0 0;max-width:46em;color:var(--ink-2)}
 
 /* code samples */
 pre,code{font-family:var(--mono)}
-.term{background:var(--ink);color:#DDE5EE;border-radius:12px;padding:18px 20px;font:15px/1.7 var(--mono);overflow-x:auto;position:relative;margin:0}
-.term .p{color:var(--ember)}.term .c{color:#7E8DA0}
-.term button{position:absolute;top:10px;right:10px;background:#26323F;color:#DDE5EE;border:0;border-radius:6px;padding:6px 10px;font:13px var(--sans);cursor:pointer}.term button:hover{background:var(--cobalt)}
+.term{background:#141414;border:1px solid #2b2b2b;color:#cccccc;border-radius:12px;padding:18px 20px;font:15px/1.7 var(--mono);overflow-x:auto;position:relative;margin:0}
+.term .p{color:var(--ember)}.term .c{color:#6a9955}
+.term button{position:absolute;top:10px;right:10px;background:#313131;color:#cccccc;border:0;border-radius:6px;padding:6px 10px;font:13px var(--sans);cursor:pointer}.term button:hover{background:var(--cobalt)}
 
 /* footer */
 footer{padding:40px 0 56px;border-top:1px solid var(--steel);color:var(--muted);font-size:15px}
@@ -104,7 +106,7 @@ footer a{color:var(--ink-2)}footer nav{display:flex;gap:18px;flex-wrap:wrap}
 .dl>div{padding:28px 28px 32px 0}.dl>div+div{padding-left:28px;border-left:1px solid var(--steel)}
 @media (max-width:860px){.dl{grid-template-columns:1fr}.dl>div,.dl>div+div{padding:24px 0;border-left:0}.dl>div+div{border-top:1px solid var(--steel)}}
 .meta{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin:16px 0 22px;font-size:15px}.meta dt{color:var(--muted)}.meta dd{margin:0;word-break:break-all}
-.badge{display:inline-flex;align-items:center;gap:12px;min-height:56px;padding:0 22px;border-radius:12px;background:var(--ink);color:#fff;text-decoration:none}
+.badge{display:inline-flex;align-items:center;gap:12px;min-height:56px;padding:0 22px;border-radius:12px;background:#000;border:1px solid var(--steel);color:#fff;text-decoration:none}
 .badge small{display:block;font-size:12px;opacity:.8;line-height:1.1}.badge strong{display:block;font:600 20px/1.1 var(--sans)}
 .badge[aria-disabled=true]{opacity:.6;cursor:not-allowed}
 .status{display:inline-block;padding:3px 10px;border-radius:99px;font-size:14px;background:var(--paper-2);border:1px solid var(--steel)}
@@ -122,4 +124,4 @@ ol.steps{padding-left:1.2em;margin:0}ol.steps li{margin:0 0 8px}
 .rel,.post{padding:28px 0;border-top:1px solid var(--steel);scroll-margin-top:80px}.rel:first-child,.post:first-child{border-top:0;padding-top:0}
 .rel h2,.post h2{margin:0 0 4px}.rel-date,.post-date{font:14px var(--mono);color:var(--muted);font-weight:400;margin:0 0 4px}.rel-date{margin-left:10px}.rel-title{margin:0 0 14px;color:var(--muted)}
 .rel-list{list-style:none;padding:0;margin:0}.rel-list li{display:grid;grid-template-columns:64px 1fr;gap:12px;margin:0 0 10px;align-items:baseline}
-.tag{font:12px var(--mono);padding:2px 0;text-align:center;border-radius:4px;border:1px solid var(--steel)}.tag.new{color:var(--cobalt);border-color:currentColor}.tag.fix{color:var(--ok);border-color:currentColor}
+.tag{font:12px var(--mono);padding:2px 0;text-align:center;border-radius:4px;border:1px solid var(--steel)}.tag.new{color:var(--link);border-color:currentColor}.tag.fix{color:var(--ok);border-color:currentColor}

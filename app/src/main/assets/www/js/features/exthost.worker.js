@@ -1,4 +1,4 @@
-/* CodeForge "lite" extension host — runs inside a dedicated Worker, one Worker per extension.
+/* CodeForge "lite" extension host , runs inside a dedicated Worker, one Worker per extension.
  *
  * Implements a pragmatic subset of the VS Code extension API (`require("vscode")`) on top of a small RPC to the IDE:
  * commands, window messages/input/quick-pick/status bar/output channels/decorations, workspace config + files,

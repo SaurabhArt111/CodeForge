@@ -259,7 +259,7 @@ async function paste(dir) {
 function emptyState() {
   return h("div.empty-state",
     h("div", { style: { color: "var(--fg)", fontWeight: 600, fontSize: "calc(14px * var(--fz))" } }, "No folder opened"),
-    h("div", "Open a project folder to start coding — like VS Code, with a real file system."),
+    h("div", "Open a project folder to start coding , like VS Code, with a real file system."),
     h("button.btn.primary.block", { onclick: () => handlers.openProjectMenu() }, icon("folder-opened"), "Open Folder…"),
     h("button.btn.block", { onclick: () => handlers.openZip() }, icon("file-zip"), "Open ZIP Project…"),
     h("button.btn.block", { onclick: () => handlers.cloneRepo() }, icon("repo-clone"), "Clone Repository…"),
@@ -300,8 +300,8 @@ function itemMenu(it, x, y) {
   items.push({ label: "New File", icon: "new-file", run: () => createEntry(dir, false) }, { label: "New Folder", icon: "new-folder", run: () => createEntry(dir, true) }, { separator: true });
   if (it.isDir && !multi) items.push({ label: "Open in Terminal", icon: "terminal", run: () => handlers.openTerminalAt(it.path) }, { label: "Live Server here", icon: "broadcast", run: () => handlers.liveServe(it.path) }, { label: "Open as Project", icon: "folder-opened", run: () => handlers.openFolder(it.path) }, { separator: true });
   items.push(
-    { label: "Cut", icon: "scissors", keys: "Ctrl+X", run: () => { state.clip = { mode: "cut", paths }; toast("Cut — paste into a folder", { timeout: 1500 }); } },
-    { label: "Copy", icon: "copy", keys: "Ctrl+C", run: () => { state.clip = { mode: "copy", paths }; toast("Copied — paste into a folder", { timeout: 1500 }); } },
+    { label: "Cut", icon: "scissors", keys: "Ctrl+X", run: () => { state.clip = { mode: "cut", paths }; toast("Cut , paste into a folder", { timeout: 1500 }); } },
+    { label: "Copy", icon: "copy", keys: "Ctrl+C", run: () => { state.clip = { mode: "copy", paths }; toast("Copied , paste into a folder", { timeout: 1500 }); } },
     { label: "Paste", icon: "clippy", keys: "Ctrl+V", disabled: !state.clip, run: () => paste(dir) }, { separator: true },
     { label: "Compress to ZIP", icon: "file-zip", run: () => zipPaths(paths) });
   if ((isZip || isTar) && !multi) items.push({ label: "Extract Here", icon: "package", run: () => extractHere(it.path, false) }, { label: "Extract to Folder", icon: "package", run: () => extractHere(it.path, true) }, { label: "Open Extracted as Project", icon: "folder-opened", run: () => handlers.openArchiveAsProject(it.path) });

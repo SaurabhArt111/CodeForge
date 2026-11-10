@@ -1,10 +1,10 @@
-// Browser backend for the web version of CodeForge (enabled only when `window.__CF_WEB` is set — see tools/web/build.sh).
+// Browser backend for the web version of CodeForge (enabled only when `window.__CF_WEB` is set , see tools/web/build.sh).
 // It implements the same JSON-RPC surface as the Android host / dev host, using browser APIs:
 //   files    → in-memory virtual filesystem persisted to IndexedDB (projects survive reloads; use ZIP export to back up)
 //   network  → fetch() (subject to CORS), streaming via ReadableStream
-//   terminal → a small built-in shell (ls, cd, cat, node, …) — no real processes in a browser
+//   terminal → a small built-in shell (ls, cd, cat, node, …) , no real processes in a browser
 //   secrets  → AES-GCM with a non-extractable WebCrypto key (protects against casual inspection only), PIN via PBKDF2
-// Not available: Linux/proot, npm/git CLI, GitHub device-flow (CORS) — paste a token instead. The live server is emulated by the service worker (tools/web/live-sw.js).
+// Not available: Linux/proot, npm/git CLI, GitHub device-flow (CORS) , paste a token instead. The live server is emulated by the service worker (tools/web/live-sw.js).
 import * as lazy from "./lazy.js";
 import { b64ToBytes, bytesToB64 } from "./util.js";
 
@@ -25,7 +25,7 @@ async function openDb() {
   await new Promise((res, rej) => { const tx = db.transaction("fs", "readonly"); const rq = tx.objectStore("fs").openCursor(); rq.onsuccess = () => { const c = rq.result; if (c) { link(c.key, c.value); c.continue(); } else res(); }; rq.onerror = () => rej(rq.error); });
   if (!files.has("/")) mkdirp("/");
   for (const d of [HOME, DATA, SHARED, DATA + "/extensions", DATA + "/plugins"]) if (!files.has(d)) await mkdirp(d);
-  if (!files.has(HOME + "/README.md")) { await put(HOME + "/README.md", enc.encode("# Welcome to CodeForge (web)\n\nFiles live in this browser (IndexedDB). Use **File → Compress Project to ZIP** to back up, and **Open Folder → Import ZIP** to restore.\n\nThe terminal here is a small built-in shell — type `help`. Install the Android app for a real Linux environment, npm and git.\n")); }
+  if (!files.has(HOME + "/README.md")) { await put(HOME + "/README.md", enc.encode("# Welcome to CodeForge (web)\n\nFiles live in this browser (IndexedDB). Use **File → Compress Project to ZIP** to back up, and **Open Folder → Import ZIP** to restore.\n\nThe terminal here is a small built-in shell , type `help`. Install the Android app for a real Linux environment, npm and git.\n")); }
 }
 function link(p, rec) { files.set(p, rec); if (p !== "/") { const d = dirOf(p); if (!kids.has(d)) kids.set(d, new Set()); kids.get(d).add(baseOf(p)); } }
 function unlink(p) { files.delete(p); if (p !== "/") kids.get(dirOf(p))?.delete(baseOf(p)); kids.delete(p); }
@@ -180,7 +180,7 @@ function createShell(emit, id, cwd, startLive) {
       else if (ch >= " ") { sh.line += ch; w(ch); }
     }
   };
-  setTimeout(() => { w("\x1b[2mCodeForge web shell — type `help`\x1b[0m\r\n"); prompt(); }, 30);
+  setTimeout(() => { w("\x1b[2mCodeForge web shell , type `help`\x1b[0m\r\n"); prompt(); }, 30);
   return sh;
 }
 

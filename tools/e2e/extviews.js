@@ -22,7 +22,8 @@ exports.activate = (ctx) => {
 (async () => {
   const z = new JSZip();
   z.file("extension/package.json", JSON.stringify({ name: "box", publisher: "tester", version: "1.0.0", displayName: "Box Client", browser: "./ext.js", activationEvents: ["onView:box.tree"],
-    contributes: { commands: [{ command: "box.add", title: "Box: Add" }, { command: "box.panel", title: "Box: Panel" }], viewsContainers: { activitybar: [{ id: "box", title: "Box Client", icon: "$(zap)" }] }, views: { box: [{ id: "box.tree", name: "Collections" }, { id: "box.web", name: "Console", type: "webview" }] } } }));
+    contributes: { commands: [{ command: "box.add", title: "Box: Add" }, { command: "box.panel", title: "Box: Panel" }], viewsContainers: { activitybar: [{ id: "box", title: "Box Client", icon: "$(zap)" }], panel: [{ id: "boxPanel", title: "Box Client", icon: "$(zap)" }], secondarySidebar: [{ id: "boxSecond", title: "Box Client", icon: "$(zap)" }] },
+      views: { box: [{ id: "box.tree", name: "Collections" }, { id: "box.web", name: "Console", type: "webview" }], boxPanel: [{ id: "box.web2", name: "Console", type: "webview" }], boxSecond: [{ id: "box.web3", name: "Console", type: "webview" }] } } }));
   z.file("extension/ext.js", EXT);
   const z2 = new JSZip();
   z2.file("extension/package.json", JSON.stringify({ name: "docky", publisher: "tester", version: "1.0.0", displayName: "Docky",
@@ -36,7 +37,7 @@ exports.activate = (ctx) => {
     if (!mobile) await page.evaluate(async () => { const e = await import("/js/features/extensions.js"); await e.installVsix("/tmp/cf-dev/shared/box.vsix", { silent: true }); await e.installVsix("/tmp/cf-dev/shared/docky.vsix", { silent: true }); });
     await page.waitForSelector(".ab-btn.ext-ab", { state: "attached", timeout: 10000 });
     const sel = mobile ? "#side-nav .sn-btn.ext-ab" : "#activitybar .ab-btn.ext-ab";
-    ok(await page.locator(sel).count() === 2, tag + "two extension containers got icons: " + (await page.locator(sel).evaluateAll((b) => b.map((x) => x.title).join(" | "))));
+    ok(await page.locator(sel).count() === 2, tag + "one icon per extension (same container declared for activity bar, panel and secondary side bar is merged): " + (await page.locator(sel).evaluateAll((b) => b.map((x) => x.title).join(" | "))));
     if (mobile) { await page.click('#bottomnav [data-nav="explorer"]'); await page.waitForTimeout(300); }
     await page.click(sel + '[title^="Box Client"]');
     if (!mobile) { await page.waitForSelector(".modal:has-text('Run extension code')", { timeout: 8000 }); await page.click(".modal .btn.primary:has-text('Allow')"); }

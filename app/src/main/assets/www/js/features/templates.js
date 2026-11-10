@@ -18,13 +18,13 @@ const T = {
     "server.js": () => `const express = require("express");\nconst app = express();\napp.use(express.static("public"));\napp.get("/api/hello", (req, res) => res.json({ hello: "world" }));\nconst port = process.env.PORT || 3000;\napp.listen(port, () => console.log(\`http://localhost:\${port}\`));\n`,
     "public/index.html": (n) => `<!doctype html><meta charset="utf-8"><title>${n}</title><h1>${n}</h1><pre id="o"></pre>\n<script>fetch("/api/hello").then(r=>r.json()).then(j=>o.textContent=JSON.stringify(j))</script>\n`,
     ".gitignore": () => "node_modules\n" } },
-  vite: { label: "Vite (vanilla) — needs npm + network", files: {
+  vite: { label: "Vite (vanilla) , needs npm + network", files: {
     "package.json": (n) => JSON.stringify({ name: slug(n), private: true, version: "0.0.0", type: "module", scripts: { dev: "vite --host", build: "vite build", preview: "vite preview --host" }, devDependencies: { vite: "^5.4.0" } }, null, 2) + "\n",
     "index.html": (n) => `<!doctype html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${n}</title></head>\n  <body>\n    <div id="app"></div>\n    <script type="module" src="/src/main.js"></script>\n  </body>\n</html>\n`,
     "src/main.js": () => `import "./style.css";\n\ndocument.querySelector("#app").innerHTML = \`<h1>Hello Vite!</h1><button id="c">count is 0</button>\`;\nlet n = 0;\ndocument.querySelector("#c").onclick = (e) => (e.target.textContent = \`count is \${++n}\`);\n`,
     "src/style.css": () => `body { font-family: system-ui; display: grid; place-items: center; min-height: 100vh; margin: 0; }\n`,
     ".gitignore": () => "node_modules\ndist\n" } },
-  react: { label: "React + Vite — needs npm + network", files: {
+  react: { label: "React + Vite , needs npm + network", files: {
     "package.json": (n) => JSON.stringify({ name: slug(n), private: true, version: "0.0.0", type: "module", scripts: { dev: "vite --host", build: "vite build" }, dependencies: { react: "^18.3.1", "react-dom": "^18.3.1" }, devDependencies: { "@vitejs/plugin-react": "^4.3.1", vite: "^5.4.0" } }, null, 2) + "\n",
     "vite.config.js": () => `import { defineConfig } from "vite";\nimport react from "@vitejs/plugin-react";\nexport default defineConfig({ plugins: [react()] });\n`,
     "index.html": (n) => `<!doctype html>\n<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${n}</title></head>\n<body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>\n`,

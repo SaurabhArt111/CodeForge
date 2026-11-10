@@ -8,11 +8,11 @@ local.properties
 captures/
 node_modules/
 tools/devhost/node_modules/
-# *.apk
+*.apk
 *.aab
 *.jks
 *.keystore
 web-dist/
 website/dist/
 website/node_modules/
-# website/downloads/
+website/downloads/
