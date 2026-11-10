@@ -42,7 +42,7 @@ function siteConfig() {
 // ---- /api/info: what the download page needs, for scripts and monitoring
 function info() {
   let apk = null; try { const j = JSON.parse(fs.readFileSync(path.join(ROOT, "downloads", "apk.json"), "utf8")); if (j.file) apk = { ...j, url: "/downloads/" + j.file }; } catch {}
-  return { name: "CodeForge", version: env.APP_VERSION || "8.1.0", apk, playStoreUrl: env.PLAY_STORE_URL || null, proxy: PROXY_ON ? "/proxy" : null };
+  return { name: "CodeForge", version: env.APP_VERSION || "8.2.0", apk, playStoreUrl: env.PLAY_STORE_URL || null, proxy: PROXY_ON ? "/proxy" : null };
 }
 
 // ---- static files ---------------------------------------------------------------------------------------------------

@@ -9,6 +9,7 @@ export const DEFAULTS = {
   "ui.theme": "Dark Modern",
   "ui.iconTheme": "seti",
   "ui.mobileKeyBar": true,
+  "run.exposeHost": false,
   "ui.keyboard": "ask",
   "ui.kbdFab": true,
   "ui.fontScale": 100,

@@ -7,7 +7,8 @@ website/
   index.html            Vite entry; loads /site-config.js before the app
   src/
     main.jsx, App.jsx   router (BrowserRouter, base path from SITE_BASE)
-    pages/              Home, Download, Code, Privacy, NotFound
+    pages/              Home, Features, Docs, Updates (release notes), Blog, About, Download, Code, Privacy, NotFound
+    content/            features.js, releases.js, posts.js: edit these to change the Features list, add a release or a blog post
     components/         Layout (header/footer), Showcase (feature tabs), CopyBlock
     lib/site.js         config(), url(), useApk()
     lib/highlight.js    the code browser's syntax highlighter
@@ -25,7 +26,7 @@ website/
 ## What `npm run build` produces (`website/dist`)
 | Path | From |
 |---|---|
-| `/`, `/download`, `/code`, `/privacy` | Vite build of `src/` (single-page app; `404.html` is a copy of `index.html` so static hosts still route) |
+| `/`, `/features`, `/docs`, `/updates`, `/blog`, `/about`, `/download`, `/code`, `/privacy` | Vite build of `src/` (single-page app; `404.html` is a copy of `index.html` so static hosts still route) |
 | `/app/` | the web editor: `sh ../tools/web/build.sh` (same UI as the Android app on a browser backend) |
 | `/code-data/` | `tree.json` + the source files shown on `/code` |
 | `/downloads/` | `CodeForge-source.zip`, `apk.json`, and `CodeForge.apk` when one was found (`APK=…`, `website/downloads/`, or Gradle's output folder) |

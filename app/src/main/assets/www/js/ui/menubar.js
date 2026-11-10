@@ -46,7 +46,7 @@ const MENUS = {
     { separator: true }, { label: "Move Terminal to Bottom", icon: "arrow-down", run: run("sheet.terminalBottom") }, { label: "Move Terminal to Right Sheet", icon: "arrow-right", run: run("sheet.terminalRight") },
     { label: "Open Terminal as Page", icon: "screen-full", run: run("sheet.terminalPage") }, { label: "Move Terminal to Top", icon: "arrow-up", run: run("sheet.terminalTop") },
   ],
-  Help: () => [{ label: "Crash Reports", icon: "bug", run: run("sys.crashes") }, { label: "Diagnostics", icon: "pulse", run: run("sys.diagnostics") }, { label: "Linux Environment Setup", icon: "server-environment", run: run("env.setup") }],
+  Help: () => [{ label: "Crash Reports", icon: "bug", run: run("sys.crashes") }, { label: "Diagnostics", icon: "pulse", run: run("sys.diagnostics") }, { label: "Linux Environment Setup", icon: "server-environment", run: run("env.setup") }, { separator: true }, { label: "About CodeForge", icon: "info", run: run("help.about") }],
 };
 
 const MENU_ICONS = { File: "file", Edit: "edit", Selection: "selection", View: "eye", Go: "go-to-file", Run: "play", Terminal: "terminal", Help: "question" };

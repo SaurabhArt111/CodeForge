@@ -34,6 +34,7 @@ export default function Home() {
       <h2>Built for a small screen first</h2>
       <p className="sub">Everything below runs in the app today. Pick a topic to see it.</p>
       <Showcase />
+      <p style={{ marginTop: 28 }}><Link className="btn" to="/features">See all features</Link> <Link className="btn" to="/docs">Read the docs</Link></p>
     </div></section>
 
     <section id="move"><div className="wrap prose">

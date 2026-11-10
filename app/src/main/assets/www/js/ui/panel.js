@@ -96,11 +96,9 @@ const DEFAULT_RIGHT = ["ai"];
 function loadLayout() {
   let saved = settings.state.sheets || {};
   // layouts saved by older versions had nothing on the right: give the AI Assistant its place there once (it stays movable afterwards)
-  if (saved.v !== 2) {
-    const used = IDS.some((id) => (saved[id] || []).includes("ai"));
-    saved = { ...saved, v: 2, right: !used && !(saved.right || []).length ? [...DEFAULT_RIGHT] : saved.right || [] };
-    settings.state.sheets = saved;
-  }
+  // v3: every view goes back to its home once (Explorer / Search / Git / Run & Preview / Extensions in the side bar, Terminal / Preview / Output /
+  // Problems in the bottom panel, AI Assistant in the right side bar). Views stay movable afterwards.
+  if (saved.v !== 3) { saved = { v: 3, bottom: [...BASE], right: [...DEFAULT_RIGHT], top: [], page: [], active: {} }; settings.state.sheets = saved; }
   const seen = new Set();
   for (const id of IDS) {
     const base = id === "bottom" ? (saved.bottom || (saved.top ? [] : BASE)) : (saved[id] || []);
@@ -112,7 +110,7 @@ function loadLayout() {
 }
 const renderAllTabs = () => IDS.forEach(renderTabs);
 function saveLayout() {
-  const o = { v: 2, active: {} };
+  const o = { v: 3, active: {} };
   for (const id of IDS) { o[id] = [...sheets[id].items]; o.active[id] = sheets[id].active; }
   settings.state.sheets = o; settings.saveState();
 }

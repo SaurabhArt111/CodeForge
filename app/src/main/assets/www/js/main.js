@@ -49,7 +49,7 @@ async function loadFeature(name) {
 const feat = async (name) => { const f = await loadFeature(name); if (!f) throw new Error(`Feature “${name}” is not available`); return f; };
 
 // shared API handed to feature modules
-export const api = { output, N, settings, bus, ws, ed, term, panel, explorer, cmd, status, themes, icons, of, toast, toastError, modal, prompt, confirm, busy, quickPick, contextMenu, feat, showView: (v) => showView(v), openFolder, info: () => info, refreshExplorer: () => explorer.refresh(), registerView: (name, fn) => views.set(name, fn) };
+export const api = { output, N, settings, bus, ws, ed, term, panel, explorer, cmd, status, themes, icons, of, toast, toastError, modal, prompt, confirm, busy, quickPick, contextMenu, feat, showView: (v, o) => showView(v, o), openFolder, info: () => info, refreshExplorer: () => explorer.refresh(), registerView: (name, fn) => views.set(name, fn) };
 const views = new Map();
 
 window.addEventListener("error", (e) => { console.error(e.error || e.message); });
@@ -369,8 +369,38 @@ async function checkAllFiles() {
   if (ok) return toast("All-files access is granted", { kind: "success" });
   if (await confirm("CodeForge can browse your whole storage (Downloads, Documents, SD card) when “All files access” is granted.", { title: "Storage access", okLabel: "Open settings" })) N.sys.requestAllFiles();
 }
-function about() {
-  modal({ title: "About CodeForge", body: h("div", h("p.modal-text", `CodeForge ${info.version}\nNative Android IDE · Monaco ${ed.monaco?.editor ? "" : ""}editor, terminal (PTY / Alpine Linux), live server, Git, extensions and AI.`), h("p.modal-detail", `Android SDK ${info.sdk} · ${info.abi} · ${info.device}\nBridge: ${bridgeMode}\nWorkspace: ${info.paths.home}`)), buttons: [{ label: "Close", primary: true }] });
+// About: what CodeForge is, what it is built on and who inspired it. The same content is on the website (/about).
+export const CREDITS = {
+  inspired: [
+    ["Visual Studio Code", "https://code.visualstudio.com", "the workbench layout, command palette, settings, extension model and keyboard shortcuts CodeForge follows"],
+    ["Termux", "https://termux.dev", "proof that a real Linux userland on Android is practical"],
+    ["Acode", "https://acode.app", "a code editor made for phones; CodeForge's Linux launcher is adapted from Acode's sandbox script (MIT)"],
+  ],
+  built: [
+    ["Monaco Editor", "https://microsoft.github.io/monaco-editor/", "the editor that powers VS Code (MIT)"],
+    ["xterm.js", "https://xtermjs.org", "terminal emulator (MIT)"],
+    ["PRoot + Alpine Linux", "https://proot-me.github.io", "Linux environment without root: apk, Node.js, Python, Git, compilers"],
+    ["isomorphic-git", "https://isomorphic-git.org", "Git in JavaScript: clone, commit, branch, push, pull (MIT)"],
+    ["Open VSX", "https://open-vsx.org", "the open extension registry CodeForge installs from"],
+    ["Codicons · Seti icons", "https://github.com/microsoft/vscode-codicons", "icons (CC BY 4.0 / MIT)"],
+    ["Emmet · Prettier · marked · JSZip", "https://prettier.io", "abbreviations, formatting, Markdown, archives (MIT)"],
+    ["Android WebView · Kotlin", "https://developer.android.com", "the native shell: storage, PTY, services, Keystore"],
+  ],
+};
+async function about() {
+  const row = ([n, u, d]) => h("li", h("button.link", { type: "button", onclick: () => N.sys.openUrl(u) }, n), " – ", d);
+  const el = h("div.about-page.selectable",
+    h("div.about-hero", h("img.about-logo", { src: "assets/logo.svg", alt: "", onerror: (e) => e.target.remove() }), h("div", h("h1", "CodeForge"), h("div.muted", `Version ${info.version} · ${N.mode() === "web" ? "Web" : "Android " + info.sdk} · ${info.abi}`))),
+    h("p", "A complete code editor and development environment for phones, tablets and the browser: editor, terminal with real Linux, Git and GitHub, live preview, extensions and an AI assistant, in one app."),
+    h("p", "CodeForge is an independent project. It is not made by, affiliated with or endorsed by Microsoft, and it is not a copy of Visual Studio Code: the interface is written from scratch for touch screens, on top of the open-source parts listed below."),
+    h("h2", "Inspired by"), h("ul", ...CREDITS.inspired.map(row)),
+    h("h2", "Built with"), h("ul", ...CREDITS.built.map(row)),
+    h("h2", "Runs on"), h("p", "Android 8.0 and newer (phones, tablets, foldables, Chromebooks) as an app; Windows, macOS, Linux, iPadOS and ChromeOS through the web version in any modern browser."),
+    h("h2", "This device"), h("p.about-mono", `${info.device}
+Bridge: ${bridgeMode}
+Workspace: ${info.paths.home}`),
+    h("div.about-actions", h("button.btn", { onclick: () => cmd.run("sys.crashes") }, "Crash reports"), h("button.btn", { onclick: () => N.sys.openUrl("https://github.com/SaurabhArt111/CodeForge/blob/main/THIRD_PARTY_NOTICES.md") }, "Open-source licenses"), h("button.btn", { onclick: () => N.sys.openUrl("https://github.com/SaurabhArt111/CodeForge") }, "Source on GitHub")));
+  ed.openCustom("about", "About", { iconName: "info", render: (box) => { box.classList.add("about-wrap"); box.replaceChildren(el); } });
 }
 
 // ---------------------------------------------------------------------------------------------- welcome tab
@@ -472,6 +502,7 @@ function registerCommands() {
   R("run.stop", "Stop Live Server", async () => (await feat("live")).stopAll(), { category: "Live Server" });
   R("run.npm", "Run npm Script…", async () => (await feat("run")).npmScripts(), { category: "Run" });
   R("sys.files", "Grant All-Files Access", checkAllFiles, { category: "System" });
+  R("help.about", "About CodeForge", about, { category: "Help" });
   R("sys.crashes", "View Crash Reports", () => crashes.openReports(), { category: "Developer" });
   R("sys.diagnostics", "Copy Diagnostics", async () => { await copyText(await N.crash.diagnostics()); toast("Diagnostics copied"); }, { category: "Developer" });
   R("view.previewWindow", "Open Preview in Separate Window", async () => { const p = ed.activeTab()?.path; if (!p) return; const l = await feat("live"); const root = ws.isOpen && P.inside(ws.root, p) ? ws.root : P.dir(p); const s = await l.serve(root, { open: false }); if (s) l.openIsolated(s.url + P.rel(root, p).split("/").map(encodeURIComponent).join("/")); }, { category: "Live Server" });

@@ -34,11 +34,11 @@ async function devScript() {
   return ["dev", "start", "serve"].find((k) => pkg.scripts?.[k]) || null;
 }
 /** Start the project's dev server and open it as soon as it prints an address. In the web version the in-browser server does the same job. */
-export async function runDevServer() {
+export async function runDevServer({ host } = {}) {
   const live = await A.feat("live");
   if (A.N.mode() === "web") return live.serve(A.ws.root);
   const sc = await devScript(); if (!sc) return live.serve(A.ws.root);
-  live.autoOpenNext(); return runScript(sc);
+  live.autoOpenNext(); return runScript(sc, { host: host ?? !!A.settings.get("run.exposeHost") });
 }
 
 export async function runFile(file) {
@@ -69,11 +69,11 @@ async function pkgManager() {
   for (const [f, pm] of [["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"], ["bun.lockb", "bun"]]) if (await A.N.fs.exists(P.join(A.ws.root, f))) return pm;
   return "npm";
 }
-export async function runScript(name) {
+export async function runScript(name, { host = false } = {}) {
   if (A.N.mode() === "web") return (await A.feat("live")).serve(A.ws.root);   // no Node in a browser: the in-browser dev server previews the project
   const mode = await ensureLinuxFor("npm scripts"); if (!mode) return;
   const pm = await pkgManager(); const hasMods = await A.N.fs.exists(P.join(A.ws.root, "node_modules"));
-  const line = (hasMods ? "" : `${pm} install && `) + (pm === "npm" ? `npm run ${name}` : `${pm} ${name}`);
+  const line = (hasMods ? "" : `${pm} install && `) + (pm === "npm" ? `npm run ${name}` : `${pm} ${name}`) + (host ? (pm === "npm" ? " -- --host" : " --host") : "");   // --host: other devices on your Wi-Fi can open the Network address
   await A.term.run(line, { cwd: A.ws.root, title: `${pm}: ${name}`, mode, reuse: false });
 }
 export async function npmScripts() {

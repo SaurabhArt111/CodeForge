@@ -76,7 +76,10 @@ function build(el) {
   inputEl = h("textarea", { rows: 2, placeholder: "Ask anything…  (@ to add files, / for commands)", spellcheck: true, onkeydown: onKey, oninput: onInput });
   sendBtn = h("button.btn.primary.ai-send", { title: "Send", onclick: () => (streaming ? stop() : send()) }, icon("send"));
   el.append(h("div.view-head", h("span.title", "AI Assistant"), h("button.icon-btn", { title: "New chat", onclick: newChat }, icon("add")), h("button.icon-btn", { title: "History", onclick: history }, icon("history")), h("button.icon-btn", { title: "Coding CLIs", onclick: cliMenu }, icon("terminal")), h("button.icon-btn", { title: "AI settings (provider, API key, model, CLIs)", onclick: openSettings }, icon("settings-gear"))),
-    headEl, msgsEl, h("div.ai-compose", ctxEl, h("div.ai-inputrow", inputEl, sendBtn)));
+    (tabsEl = h("div.ai-tabs", { role: "tablist" })),
+    (chatEl = h("div.ai-chat", headEl, msgsEl, h("div.ai-compose", ctxEl, h("div.ai-inputrow", inputEl, sendBtn)))),
+    (cliEl = h("div.ai-cli-host.hidden")));
+  renderTabs();
   renderHead(); renderCtx(); renderMsgs();
   A.ed.editorEvents.on("active", renderCtx); A.ed.editorEvents.on("selection", debounce(renderCtx, 300));
 }
@@ -561,6 +564,37 @@ async function selectionAction(kind) {
   if (kind === "explain") return send("Explain this selected code.");
   if (kind === "fix") return send("Find and fix any bugs in the selected code. Reply with the corrected code in one code block, then a short explanation.");
   const ins = await A.prompt("What should the AI change?", { okLabel: "Go", placeholder: "e.g. convert to async/await" }); if (ins) send(`Edit the selected code: ${ins}\nReply with only the full replacement code in a single code block.`);
+}
+
+// ---------------------------------------------------------------- tabs in the AI side bar: Chat | Claude Code | Codex | Gemini | Copilot
+// Each CLI tab is the real tool running in its own Linux terminal inside this side bar (installed on first use), next to CodeForge's own chat.
+let tabsEl, chatEl, cliEl, aiTab = "chat"; const cliTerms = new Map();   // cli id -> { t, el }
+const TAB_CLIS = ["claude", "codex", "gemini", "copilot"];
+function renderTabs() {
+  if (!tabsEl) return;
+  const mk = (id, label) => h("button.ai-tab" + (aiTab === id ? ".on" : ""), { role: "tab", dataset: { tab: id }, onclick: () => selectTab(id), oncontextmenu: (e) => { e.preventDefault(); if (id !== "chat" && cliTerms.has(id)) A.contextMenu([{ label: "Restart " + label, icon: "refresh", run: () => { closeCli(id); selectTab(id); } }, { label: "Close " + label, icon: "close", run: () => { closeCli(id); selectTab("chat"); } }], e.clientX, e.clientY); } },
+    label, cliTerms.has(id) ? h("span.ai-tab-dot", { title: "running" }) : null);
+  tabsEl.replaceChildren(mk("chat", "Chat"), ...TAB_CLIS.map((id) => { const c = CLIS.find((x) => x.id === id); return c ? mk(id, c.name.replace(/^OpenAI | CLI$|^GitHub /g, "")) : null; }).filter(Boolean));
+}
+function closeCli(id) { const c = cliTerms.get(id); if (!c) return; cliTerms.delete(id); try { A.term.closeTerm(c.t.id); } catch { /* gone */ } c.el.remove(); renderTabs(); }
+export async function selectTab(id) {
+  if (!tabsEl) return;
+  aiTab = id; renderTabs();
+  chatEl.classList.toggle("hidden", id !== "chat"); cliEl.classList.toggle("hidden", id === "chat");
+  if (id === "chat") return;
+  for (const [k, c] of cliTerms) c.el.classList.toggle("hidden", k !== id);
+  if (cliTerms.has(id)) { setTimeout(() => cliTerms.get(id)?.t.xt.focus(), 50); return; }
+  const def = CLIS.find((x) => x.id === id);
+  const note = (...kids) => { cliEl.querySelector(".ai-cli-note")?.remove(); const n = h("div.ai-cli-note", ...kids); cliEl.append(n); return n; };
+  if (A.N.mode() === "web") { note(h("b", def.name), h("p", "Coding CLIs run in the Android app's Linux terminal. The browser version has no Linux environment, so use the Chat tab here.")); return; }
+  const st = await A.N.env.status().catch(() => ({ installed: false }));
+  if (!st.installed) { note(h("b", def.name), h("p", `${def.name} runs in CodeForge's Linux environment (it needs Node.js and npm). Set it up once, then this tab starts it for you.`), h("button.btn.primary", { onclick: async () => (await A.feat("env")).wizard() }, "Set up Linux")); return; }
+  cliEl.querySelector(".ai-cli-note")?.remove();
+  const el = h("div.ai-cli-term"); cliEl.append(el);
+  const t = await A.term.createEmbedded(el, { cwd: A.ws.root || undefined, mode: "linux", title: def.bin, line: `cf run ${def.bin}` });
+  if (!t) { el.remove(); note(h("b", def.name), h("p", "Could not start a Linux terminal.")); return; }
+  t.onClose = () => { if (cliTerms.get(id)?.t === t) { cliTerms.delete(id); el.remove(); renderTabs(); if (aiTab === id) selectTab("chat"); } };
+  cliTerms.set(id, { t, el }); renderTabs(); if (aiTab !== id) el.classList.add("hidden"); else t.xt.focus();
 }
 
 // ---------------------------------------------------------------- coding CLIs (real Claude Code / Codex / Copilot CLI inside the Linux terminal)

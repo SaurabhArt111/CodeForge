@@ -131,8 +131,25 @@ const cfgGet = (section) => {
   const get = (key, dflt) => { const k = section ? section + "." + key : key; if (k in vals) return vals[k]; const parts = k.split("."); for (let n = parts.length - 1; n > 0; n--) { const pre = parts.slice(0, n).join("."); if (pre in vals && vals[pre] && typeof vals[pre] === "object") { let cur = vals[pre]; for (const p of parts.slice(n)) cur = cur?.[p]; if (cur !== undefined) return cur; } } return dflt; };
   return { get, has: (k) => get(k, undefined) !== undefined, inspect: (k) => ({ key: k, globalValue: get(k, undefined), defaultValue: get(k, undefined) }), update: (k, v) => call("cfg.update", [section ? section + "." + k : k, v]).then(() => undefined) };
 };
+// ---- views: trees and webviews (rendered by the IDE in the side bar / a page)
+const trees = new Map(), webProviders = new Map(), webviews = new Map();
+class TreeItem { constructor(label, collapsibleState = 0) { if (label && typeof label === "object" && label.path !== undefined && !("label" in label)) this.resourceUri = label; else this.label = label; this.collapsibleState = collapsibleState; } }
+const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
+function regTree(viewId, prov) {
+  if (!prov) return new Disposable(() => {});
+  const t = { prov, els: new Map(), n: 1 }; trees.set(viewId, t);
+  let sub; try { sub = prov.onDidChangeTreeData && prov.onDidChangeTreeData(() => call("view.treeRefresh", [viewId]).catch(() => {})); } catch (e) { /* ignore */ }
+  call("view.register", [viewId, "tree"]).catch(() => {});
+  return new Disposable(() => { trees.delete(viewId); sub && sub.dispose && sub.dispose(); });
+}
+function mkWebview(k) {
+  const em = new EventEmitter(); let html = "";
+  const wv = { options: {}, cspSource: "'self'", get html() { return html; }, set html(v) { html = String(v); call("view.html", [k, html]).catch(() => {}); },
+    postMessage: (m) => call("view.post", [k, plain(m)]).then(() => true, () => false), onDidReceiveMessage: em.event, asWebviewUri: (u) => new Uri("cfres", "f", u.fsPath || u.path) };
+  return { wv, em };
+}
 const vscode = {
-  Disposable, EventEmitter, Position, Range, Selection, Uri, MarkdownString, TextEdit, WorkspaceEdit, ThemeColor, ThemeIcon, CompletionItem, CompletionList, Hover, Diagnostic, Location, CancellationTokenSource, SnippetString,
+  TreeItem, TreeItemCollapsibleState, Disposable, EventEmitter, Position, Range, Selection, Uri, MarkdownString, TextEdit, WorkspaceEdit, ThemeColor, ThemeIcon, CompletionItem, CompletionList, Hover, Diagnostic, Location, CancellationTokenSource, SnippetString,
   CompletionItemKind, DiagnosticSeverity, StatusBarAlignment, ConfigurationTarget, ViewColumn, EndOfLine, TextEditorRevealType, DecorationRangeBehavior, OverviewRulerLane, ProgressLocation, FileType, ExtensionMode,
   version: "1.95.0",
   env: noopProxy("env", { appName: "CodeForge", appRoot: "/", language: "en", machineId: "codeforge", sessionId: "s", uriScheme: "codeforge", shell: "/bin/bash", remoteName: undefined, uiKind: 2, isNewAppInstall: false, isTelemetryEnabled: false,
@@ -157,8 +174,16 @@ const vscode = {
     withProgress: async (o, task) => { const t = typeof o === "object" ? o.title || "" : ""; call("ui.busy", [t, true]).catch(() => {}); try { return await task({ report: (v) => v && v.message && call("ui.busy", [t + " " + v.message, true]).catch(() => {}) }, new CancellationTokenSource().token); } finally { call("ui.busy", [t, false]).catch(() => {}); } },
     showTextDocument: async (d, o) => { const p = d.uri ? d.uri.fsPath : d.fileName || String(d); await call("ed.open", [p, o && o.selection ? rangeJson(o.selection) : null]); return editorProxy; },
     createTerminal: (o = {}) => { const name = typeof o === "string" ? o : o.name || "terminal"; return { name, sendText: (t, nl = true) => call("term.send", [name, t + (nl === false ? "" : "\n")]).catch(() => {}), show() { call("term.show", [name]).catch(() => {}); }, hide() {}, dispose() {}, processId: Promise.resolve(0), exitStatus: undefined }; },
-    registerTreeDataProvider: () => new Disposable(() => {}), createTreeView: () => ({ dispose() {}, reveal: async () => {}, onDidChangeSelection: new EventEmitter().event, onDidExpandElement: new EventEmitter().event, onDidCollapseElement: new EventEmitter().event, visible: false, onDidChangeVisibility: new EventEmitter().event }),
-    registerWebviewViewProvider: () => { unimpl("window.registerWebviewViewProvider (webviews)"); return new Disposable(() => {}); }, createWebviewPanel: () => { unimpl("window.createWebviewPanel (webviews)"); throw new Error("Webviews are not supported in CodeForge"); },
+    registerTreeDataProvider: (viewId, prov) => regTree(viewId, prov),
+    createTreeView: (viewId, o = {}) => { const d = regTree(viewId, o.treeDataProvider); return { dispose: () => d.dispose(), reveal: async () => {}, onDidChangeSelection: new EventEmitter().event, onDidExpandElement: new EventEmitter().event, onDidCollapseElement: new EventEmitter().event, onDidChangeVisibility: new EventEmitter().event, onDidChangeCheckboxState: new EventEmitter().event, visible: true, selection: [], title: undefined, description: undefined, message: undefined, badge: undefined }; },
+    registerWebviewViewProvider: (viewId, prov) => { webProviders.set(viewId, prov); call("view.register", [viewId, "webview"]).catch(() => {}); return new Disposable(() => webProviders.delete(viewId)); },
+    createWebviewPanel: (viewType, title, _col, _opts) => {
+      const k = "panel:" + viewType + ":" + provSeq++; const { wv, em } = mkWebview(k); const disp = new EventEmitter(); webviews.set(k, { em, disp });
+      call("view.panel", [k, String(title || "")]).catch(() => {});
+      return { webview: wv, viewType, title, options: {}, viewColumn: 1, active: true, visible: true, iconPath: undefined, reveal() { call("view.panelShow", [k]).catch(() => {}); }, dispose() { call("view.panelClose", [k]).catch(() => {}); webviews.delete(k); disp.fire(); }, onDidDispose: disp.event, onDidChangeViewState: new EventEmitter().event };
+    },
+    registerWebviewPanelSerializer: () => new Disposable(() => {}), registerCustomEditorProvider: () => { unimpl("window.registerCustomEditorProvider"); return new Disposable(() => {}); },
+    registerUriHandler: () => new Disposable(() => {}), registerFileDecorationProvider: () => new Disposable(() => {}), registerTerminalLinkProvider: () => new Disposable(() => {}),
   }),
   workspace: noopProxy("workspace", {
     get workspaceFolders() { return state.root ? [{ uri: Uri.file(state.root), name: path.basename(state.root), index: 0 }] : undefined; }, get rootPath() { return state.root || undefined; }, get name() { return state.root ? path.basename(state.root) : undefined; },
@@ -293,6 +318,26 @@ async function handle(method, a) {
       if (p.kind === "definition") { const r = await p.prov.provideDefinition(doc, position, tok); const l = Array.isArray(r) ? r : r ? [r] : []; return l.map((x) => ({ path: (x.uri || x.targetUri).fsPath, range: rangeJson(x.range || x.targetRange) })); }
       return null;
     }
+    case "tree.children": {
+      const [viewId, hd] = a; const t = trees.get(viewId); if (!t) return null;
+      if (!hd) { t.els.clear(); t.n = 1; }
+      const kids = (await t.prov.getChildren(hd ? t.els.get(hd) : undefined)) || []; const out = [];
+      for (const k of kids.slice(0, 2000)) {
+        const it = (await t.prov.getTreeItem(k)) || {}; const id = "n" + t.n++; t.els.set(id, k);
+        const label = typeof it.label === "string" ? it.label : (it.label && it.label.label) || (it.resourceUri ? path.basename(it.resourceUri.path) : "");
+        out.push({ h: id, label, description: typeof it.description === "string" ? it.description : "", tooltip: it.tooltip ? mdText(it.tooltip) : "", collapsible: it.collapsibleState || 0,
+          icon: it.iconPath instanceof ThemeIcon ? it.iconPath.id : it.resourceUri ? (it.collapsibleState ? "folder" : "file") : null, command: it.command ? { command: it.command.command, args: plain(it.command.arguments || []) } : null, ctx: it.contextValue });
+      }
+      return out;
+    }
+    case "webview.resolve": {
+      const [viewId] = a; const p = webProviders.get(viewId); if (!p) throw new Error("No webview provider registered for " + viewId);
+      const { wv, em } = mkWebview(viewId); webviews.set(viewId, { em });
+      const view = { webview: wv, viewType: viewId, title: undefined, description: undefined, badge: undefined, visible: true, show() {}, onDidDispose: new EventEmitter().event, onDidChangeVisibility: new EventEmitter().event };
+      await p.resolveWebviewView(view, { state: undefined }, new CancellationTokenSource().token); return true;
+    }
+    case "webview.msg": { const w = webviews.get(a[0]); if (w) w.em.fire(a[1]); return true; }
+    case "webview.closed": { const w = webviews.get(a[0]); if (w) { webviews.delete(a[0]); w.disp && w.disp.fire(); } return true; }
     default: throw new Error("unknown host call " + method);
   }
 }

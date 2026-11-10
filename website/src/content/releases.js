@@ -1,0 +1,30 @@
+// Release notes, newest first. Dates are when the build was prepared.
+export const RELEASES = [
+  { v: "8.2", date: "November 2026", title: "Extension views, AI CLI tabs, touch scrolling",
+    items: [
+      ["new", "Extensions that contribute a side bar container now appear in the activity bar. Tree views, webview views, webview panels and welcome content are supported."],
+      ["new", "Chat, Claude Code, Codex, Gemini and Copilot are tabs in the AI side bar. Each CLI runs in its own Linux terminal and is installed on first use."],
+      ["new", "About page in the app and on the website, with credits."],
+      ["new", "Setting to start npm dev servers with “-- --host” so other devices on your network can open them."],
+      ["fix", "The terminal scrolls with one finger, with a short glide. Full-screen programs receive the scroll as wheel or arrow keys."],
+      ["fix", "Every view returns to its home once: Run & Preview and the other tools in the side bar, the terminal in the bottom panel, the AI assistant on the right."],
+      ["fix", "The shared CodeForge folder in device storage is now used: its projects are listed, and new projects can be created there."],
+    ] },
+  { v: "8.1", date: "November 2026", title: "Keyboard prompt, exit guard, VS Code layout",
+    items: [
+      ["new", "Tapping the editor or terminal offers the keyboard instead of opening it; a draggable floating button toggles it."],
+      ["new", "Leaving with unsaved files asks to save, leave or stay."],
+      ["new", "AI assistant in the right side bar by default; any view can be moved from its icon's menu."],
+      ["new", "The token sign-in dialog opens GitHub's token page with permissions pre-selected."],
+      ["new", "On phones the menu button opens File, Edit, Selection, View, Go, Run, Terminal and Help."],
+      ["fix", "Less background polling and lighter editor effects on touch devices."],
+    ] },
+  { v: "8.0", date: "November 2026", title: "Four sheets, React website, transfer bundles",
+    items: [
+      ["new", "Top, bottom, right and page sheets; a menu bar on tablets and desktops."],
+      ["new", "ZIP export with exclusions, a projects screen, and transfer bundles between the web editor and the app."],
+      ["new", "Any AI model can edit files through Apply, with optional auto-apply."],
+      ["new", "Website rebuilt with React and a small Node server."],
+      ["fix", "Terminal height survives the keyboard opening and closing; split editor no longer overflows the stack; minimap works on phones."],
+    ] },
+];

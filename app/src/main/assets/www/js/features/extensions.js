@@ -8,7 +8,7 @@ import * as host from "./exthost.js";
 let A, root, view, listEl, searchIn, filter = "installed", market = { q: "", items: [], total: 0, offset: 0, loading: false };
 const installed = new Map(); // id -> ext
 
-const SUPPORTED = ["themes", "iconThemes", "snippets", "languages", "commands", "configuration", "configurationDefaults", "jsonValidation"];
+const SUPPORTED = ["themes", "iconThemes", "snippets", "languages", "commands", "configuration", "configurationDefaults", "jsonValidation", "viewsContainers", "views", "viewsWelcome"];
 const SUPPORT_NOTES = { grammars: "TextMate grammars (syntax highlighting for new languages) are not supported; Monaco's built-in highlighting is used", debuggers: "debug adapters are not supported", languageServers: "language servers are not supported", views: "custom sidebar views are not supported", keybindings: "keybindings are not imported", productIconThemes: "product icon themes are not supported", taskDefinitions: "tasks are not supported", problemMatchers: "problem matchers are not supported", menus: "context/title menus are not shown (commands are available from the palette)", viewsContainers: "view containers are not supported", walkthroughs: "walkthroughs are not shown", colors: "custom theme colour ids are not registered", customEditors: "custom editors are not supported", notebooks: "notebooks are not supported", semanticTokenScopes: "semantic token scopes are not applied", typescriptServerPlugins: "TypeScript server plugins are not supported", submenus: "submenus are not supported", authentication: "authentication providers are not supported" };
 
 export async function init(api) {

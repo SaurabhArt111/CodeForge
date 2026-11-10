@@ -64,6 +64,14 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); 
     await page.click('#view-explorer .row[data-path$="/a.js"]'); await page.waitForSelector(".monaco-editor .view-lines", { timeout: 20000 }); ok(true, "app: Monaco loads from sub-path");
     ok(/let\sx/.test(await page.textContent(".monaco-editor .view-lines")), "app: file opens in the editor");
     const proxy = await page.evaluate(() => localStorage.getItem("cf.corsProxy")); ok(proxy === B + "/proxy", "app: Git proxy preset from the site config (" + proxy + ")");
+    // new pages: features, docs, release notes, blog, about (also reachable by direct URL)
+    for (const [path, h1, needle] of [["/features", "Features", "Keyboard on your terms"], ["/docs", "Docs and resources", "npm run dev -- --host"], ["/updates", "Release notes", "Extension views"], ["/blog", "Blog", "Why the keyboard asks first"], ["/about", "About CodeForge", "Termux"]]) {
+      const p2 = await page.context().newPage(); await p2.goto(B + path); await p2.waitForSelector("h1");
+      const t = await p2.locator("main").textContent();
+      ok((await p2.locator("h1").first().textContent()) === h1 && t.includes(needle), "page " + path + " renders");
+      ok(await p2.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "page " + path + " has no sideways scroll");
+      await p2.close();
+    }
     const sw = await page.evaluate(() => navigator.serviceWorker ? navigator.serviceWorker.getRegistration("./").then((r) => !!r) : false); console.log("INFO service worker registered: " + sw);
     const man = await page.evaluate(async () => { const l = document.querySelector('link[rel=manifest]'); const j = await (await fetch(l.href)).json(); return { start: j.start_url, scope: j.scope, href: l.href }; }); console.log("INFO manifest " + JSON.stringify(man));
     await page.screenshot({ path: "/tmp/site-app.png" });

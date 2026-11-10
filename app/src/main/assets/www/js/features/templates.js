@@ -43,7 +43,18 @@ export async function newProject() {
   const items = Object.entries(T).map(([id, t]) => ({ label: t.label, value: id }));
   const id = await A.quickPick(items, { placeholder: "Choose a project template" }); if (!id) return;
   const name = await A.prompt("Project name", { value: "my-" + id, okLabel: "Create", validate: (v) => (A.ws.validName(v) || null) }); if (!name) return;
-  const base = A.settings.state.projectsDir || P.join(A.info().paths.home, "projects");
+  let base = A.settings.state.projectsDir || P.join(A.info().paths.home, "projects");
+  // with "All files access" there is also the CodeForge folder in shared storage: let the user choose where the project lives
+  try {
+    const sh = (await A.N.sys.storageRoots()).find((r) => r.id === "shared");
+    if (sh && !A.settings.state.projectsDir) {
+      const where = await A.quickPick([
+        { label: "App storage (recommended)", description: "fastest; npm install and Linux tools work fully", value: base },
+        { label: "CodeForge folder on this device", description: sh.path + " · visible in your Files app; npm may not work there (no symlinks)", value: sh.path },
+      ], { placeholder: "Where should “" + name + "” be saved?" });
+      if (!where) return; base = where;
+    }
+  } catch { /* single location */ }
   await A.N.fs.mkdir(base);
   const dir = P.join(base, name);
   if (await A.N.fs.exists(dir)) return A.toast(`“${name}” already exists`, { kind: "error" });

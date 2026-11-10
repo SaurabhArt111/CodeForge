@@ -112,3 +112,14 @@ footer a{color:var(--ink-2)}footer nav{display:flex;gap:18px;flex-wrap:wrap}
 ol.steps{padding-left:1.2em;margin:0}ol.steps li{margin:0 0 8px}
 .note{border-left:4px solid var(--ember);padding:8px 16px;background:var(--paper-2);margin:20px 0}
 .prose{max-width:46em}.prose h2{font-size:26px;margin-top:36px}.prose p,.prose li{color:var(--ink-2)}
+
+/* ---- features, release notes, blog, docs */
+.toc{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:20px;font-size:15px}.toc a{color:var(--muted);text-underline-offset:4px}.toc a:hover{color:var(--ink)}
+.feat{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:8px 48px;padding:36px 0;border-top:1px solid var(--steel);scroll-margin-top:80px}
+.feat h2{margin:0 0 6px}.feat-lead{margin:0;color:var(--muted)}.feat ul{margin:0;padding-left:20px}.feat li{margin:0 0 8px}
+@media (max-width:760px){.feat{grid-template-columns:1fr;padding:28px 0}}
+.prose h2[id]{scroll-margin-top:80px}
+.rel,.post{padding:28px 0;border-top:1px solid var(--steel);scroll-margin-top:80px}.rel:first-child,.post:first-child{border-top:0;padding-top:0}
+.rel h2,.post h2{margin:0 0 4px}.rel-date,.post-date{font:14px var(--mono);color:var(--muted);font-weight:400;margin:0 0 4px}.rel-date{margin-left:10px}.rel-title{margin:0 0 14px;color:var(--muted)}
+.rel-list{list-style:none;padding:0;margin:0}.rel-list li{display:grid;grid-template-columns:64px 1fr;gap:12px;margin:0 0 10px;align-items:baseline}
+.tag{font:12px var(--mono);padding:2px 0;text-align:center;border-radius:4px;border:1px solid var(--steel)}.tag.new{color:var(--cobalt);border-color:currentColor}.tag.fix{color:var(--ok);border-color:currentColor}

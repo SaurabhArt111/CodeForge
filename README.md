@@ -43,6 +43,11 @@ Monaco editor, project explorer, real shell terminals, Git, live server + in-app
   opens in* picks window / in-app panel.
 - **Top and bottom sheets** – two dockable sheets, each holding any views: Terminal, Preview, Output, Problems, AI, Search, Git, Run, Extensions. Use the **+** in a
   sheet's header (or long-press a tab) to add, move or close views; the layout is remembered. Palette: *Move Terminal to Top Sheet*, *Reset Sheets Layout* …
+- **Extension views** – extensions that contribute a container (`viewsContainers` / `views` / `viewsWelcome`) get their icon in the activity bar and the phone drawer. Tree views (`registerTreeDataProvider`, `createTreeView`), webview views (`registerWebviewViewProvider`) and webview panels run in a sandboxed frame with `acquireVsCodeApi`, theme variables and no network. Extensions that need desktop Node.js still appear, with a note saying why they cannot start.
+- **AI side bar tabs** – *Chat · Claude Code · Codex · Gemini · Copilot*. The CLI tabs run the official tools in their own Linux terminal inside the side bar (installed on first use via `cf run`).
+- **Terminal touch scrolling** – one-finger drag with a short glide; inside full-screen programs the drag is sent as wheel / arrow keys.
+- **`-- --host`** – *Settings → Live Server → reachable from other devices* starts npm dev servers with `-- --host`.
+- **About** – *Help → About CodeForge*: credits (VS Code, Termux, Acode, Monaco, xterm.js, PRoot/Alpine, isomorphic-git, Open VSX) and the independence note. Same page on the website.
 - **Keyboard on your terms** – on touch devices tapping the editor or terminal places the cursor and offers an **Open keyboard** prompt instead of popping the keyboard up (Settings → Appearance → *On-screen keyboard*: `ask` / `auto`). A **floating keyboard button** you can drag anywhere opens and closes it (long-press for options); Android's back button closes an open keyboard first.
 - **Unsaved work is protected** – back (or *Quit*) with unsaved files asks *Save all & leave / Leave without saving / Stay*; with nothing unsaved the app simply goes to recents. In the browser the tab-close prompt does the same.
 - **VS Code-style layout** – side bar on the left, the **AI Assistant in the right ("secondary") side bar**, Terminal & friends in the bottom panel; the three toggles are in the title bar on wide screens. Right-click / long-press any view's icon (activity bar or phone drawer) for *Move to Right Sheet / Bottom / Top / Page / Sidebar*; *Reset Layout* restores the defaults. On phones ☰ opens File, Edit, Selection, View, Go, Run, Terminal, Help.
@@ -65,7 +70,7 @@ cd website && npm install
 npm run build        # -> website/dist   (React site, /app web editor, code data, source ZIP, APK if available)
 npm start            # http://localhost:8080  (Node 18+ server: static files, Git CORS proxy, env-driven config)
 ```
-Pages: `/` landing, `/app/` web editor, `/code` source browser, `/download` APK + Google Play (set `playStoreUrl` in `website/public/site-config.js` or `PLAY_STORE_URL` when you have the link), `/privacy`.
+Pages: `/` landing, `/features`, `/docs`, `/updates` (release notes), `/blog`, `/about`, `/app/` web editor, `/code` source browser, `/download` APK + Google Play (set `playStoreUrl` in `website/public/site-config.js` or `PLAY_STORE_URL` when you have the link), `/privacy`.
 See **DEPLOY.md** for static hosting, Docker, environment variables and the Git proxy, and **Site.md** for how the site is organised. Tests: `tools/e2e/site.js`.
 
 ## Honest limitations

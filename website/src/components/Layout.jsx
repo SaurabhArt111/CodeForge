@@ -17,15 +17,17 @@ export default function Layout() {
     <header className="top"><div className="wrap">
       <Link className="brand" to="/"><img src={url("assets/logo.svg")} alt="" width="26" height="26" />CodeForge</Link>
       <nav aria-label="Main">
-        <Link to="/#features">Features</Link>
-        <NavLink to="/code">Source code</NavLink>
+        <NavLink to="/features">Features</NavLink>
+        <NavLink to="/docs">Docs</NavLink>
+        <NavLink to="/updates">Release notes</NavLink>
+        <NavLink to="/blog">Blog</NavLink>
         <NavLink className="keep" to="/download">Download</NavLink>
         <a className="cta" href={url("app/")}>Open web editor</a>
       </nav></div></header>
     <main id="main"><Outlet /></main>
     <footer><div className="wrap">
       <div>CodeForge {c.version} · MIT licensed · Runs on Android and in your browser</div>
-      <nav aria-label="Footer"><a href={url("app/")}>Web editor</a><Link to="/download">Download</Link><Link to="/code">Source code</Link><Link to="/privacy">Privacy</Link>{c.githubUrl ? <a href={c.githubUrl}>GitHub</a> : null}</nav>
+      <nav aria-label="Footer"><a href={url("app/")}>Web editor</a><Link to="/features">Features</Link><Link to="/docs">Docs</Link><Link to="/updates">Release notes</Link><Link to="/blog">Blog</Link><Link to="/download">Download</Link><Link to="/code">Source code</Link><Link to="/about">About</Link><Link to="/privacy">Privacy</Link>{c.githubUrl ? <a href={c.githubUrl}>GitHub</a> : null}</nav>
     </div></footer>
   </>);
 }

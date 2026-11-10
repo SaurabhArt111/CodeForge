@@ -36,7 +36,7 @@ export const SCHEMA = [
   ]],
   ["Live Server", [
     S("preview.mode", "Run / Live Preview opens in", "select", { options: ["auto", "window", "inline"], hint: "window = separate crash-proof window (own process) · inline = Preview panel · auto = window on Android" }),
-    S("live.port", "Default Port", "number", { min: 1024, max: 65535 }), S("live.spa", "Single-page-app fallback (index.html)", "bool"), S("live.lan", "Allow access from other devices on the network", "bool"),
+    S("run.exposeHost", "npm dev servers: reachable from other devices (adds “-- --host”)", "bool", { hint: "Vite, Astro, SvelteKit and friends then print a Network address you can open from another phone or PC on the same Wi-Fi" }), S("live.port", "Default Port", "number", { min: 1024, max: 65535 }), S("live.spa", "Single-page-app fallback (index.html)", "bool"), S("live.lan", "Allow access from other devices on the network", "bool"),
   ]],
   ["Git", [S("git.userName", "User name", "text"), S("git.userEmail", "User email", "text"), S("git.autoFetch", "Auto fetch", "bool")]],
   ["AI Assistant", [

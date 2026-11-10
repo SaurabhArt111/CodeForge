@@ -209,21 +209,38 @@ export const get = (id = activeId) => terms.get(id) || null;
 export const list = () => [...terms.values()];
 export function select(id) {
   activeId = id;
-  for (const t of terms.values()) t.el.classList.toggle("on", t.id === id);
+  for (const t of terms.values()) if (!t.embedded) t.el.classList.toggle("on", t.id === id);
   refreshTabs(); const t = get(); if (t) { setTimeout(() => { fitOne(t); }, 30); }
 }
 function refreshTabs() {
-  tabsEl.replaceChildren(...[...terms.values()].map((t) => h("div.term-tab" + (t.id === activeId ? ".active" : "") + (t.alive ? "" : ".dead"), { onclick: () => { select(t.id); t.xt.focus(); }, oncontextmenu: (e) => { e.preventDefault(); termMenu(t, e.clientX, e.clientY); } },
+  tabsEl.replaceChildren(...[...terms.values()].filter((t) => !t.embedded).map((t) => h("div.term-tab" + (t.id === activeId ? ".active" : "") + (t.alive ? "" : ".dead"), { onclick: () => { select(t.id); t.xt.focus(); }, oncontextmenu: (e) => { e.preventDefault(); termMenu(t, e.clientX, e.clientY); } },
     icon(t.mode === "linux" ? "server-environment" : "terminal"), h("span", t.title || "terminal"), h("span.x", { onclick: (e) => { e.stopPropagation(); closeTerm(t.id); } }, icon("close")))));
 }
 export function closeTerm(id) {
   const t = terms.get(id); if (!t) return;
   crumb("terminal close " + id);
   N.term.close(id).catch(() => {}); clearTimeout(t.ackTimer); t.xt.dispose(); t.el.remove(); terms.delete(id);
-  if (activeId === id) { const n = [...terms.keys()].pop(); activeId = n || null; if (n) select(n); else panel.hide("terminal"); }
+  if (t.embedded) { t.ro?.disconnect(); t.onClose?.(); return; }
+  if (activeId === id) { const n = [...terms.values()].filter((x) => !x.embedded).map((x) => x.id).pop(); activeId = n || null; if (n) select(n); else panel.hide("terminal"); }
   refreshTabs();
 }
 function killActive() { const t = get(); if (t) closeTerm(t.id); }
+
+/** A terminal that lives inside another view (the AI side bar's Claude Code / Codex tabs) instead of the terminal panel. */
+export async function createEmbedded(container, { cwd, mode = "linux", title, line } = {}) {
+  await lazy.xterm();
+  let info;
+  try { info = await N.term.create({ cwd: cwd || ws.root || undefined, mode, title, rows: 24, cols: 80 }); }
+  catch (e) { if (/not installed/i.test(e.message)) { bus.emit("env:needed"); return null; } toastError(e); return null; }
+  const t = { id: info.id, title: title || info.title || "terminal", alive: true, mode: info.mode, cwd: info.cwd, embedded: true };
+  const el = h("div.term-embed"); container.append(el); t.el = el;
+  t.xt = newXterm(t); t.xt.open(el); terms.set(t.id, t);
+  currentTheme = currentTheme.foreground ? currentTheme : await computeTheme(); t.xt.options.theme = currentTheme; el.style.background = currentTheme.background || "";
+  let ft = 0; t.ro = new ResizeObserver(() => { clearTimeout(ft); ft = setTimeout(() => fitOne(t), 60); }); t.ro.observe(el);
+  fitOne(t);
+  if (line) setTimeout(() => N.term.writeStr(t.id, line + "\r").catch(() => {}), 500);
+  return t;
+}
 
 export function write(data, id = activeId) { return N.term.writeStr(id, data); }
 /** Run a shell command line in a (new or existing) terminal. */
@@ -295,6 +312,41 @@ function pinchZoom(xt) {
       if (size !== settings.get("terminal.fontSize")) settings.set("terminal.fontSize", size);
     }, { passive: false });
     host.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
+    touchScroll(xt, host);
   };
   attach();
+}
+
+/** One-finger drag scrolls the terminal (with a short glide), like any other list in the app.
+ *  Normal screen: moves through the scrollback. Full-screen programs (vim, less, AI CLIs): sends wheel / arrow keys to the program. */
+function touchScroll(xt, host) {
+  let y0 = 0, x0 = 0, acc = 0, active = false, moved = false, vel = 0, lastT = 0, raf = 0;
+  const lineH = () => { const r = xt.element?.querySelector(".xterm-rows > div")?.getBoundingClientRect().height; return r > 4 ? r : Math.max(12, (xt.options.fontSize || 13) * (xt.options.lineHeight || 1.2)); };
+  const send = (d) => (typeof xt.input === "function" ? xt.input(d, true) : xt._core?.coreService?.triggerDataEvent(d, true));
+  const step = (lines) => {
+    if (!lines) return;
+    const alt = xt.buffer.active.type === "alternate";
+    if (!alt) { xt.scrollLines(lines); return; }
+    const n = Math.min(Math.abs(lines), 12);
+    if (xt.modes?.mouseTrackingMode && xt.modes.mouseTrackingMode !== "none") {   // the program asked for mouse events: send wheel (SGR)
+      const b = lines < 0 ? 64 : 65; send(`\x1b[<${b};1;1M`.repeat(n));
+    } else send((xt.modes?.applicationCursorKeysMode ? (lines < 0 ? "\x1bOA" : "\x1bOB") : (lines < 0 ? "\x1b[A" : "\x1b[B")).repeat(n));
+  };
+  const feed = (dy) => { acc += dy; const h = lineH(); const n = Math.trunc(acc / h); if (n) { acc -= n * h; step(-n); } };
+  const glide = () => { vel *= 0.94; if (Math.abs(vel) < 0.02) return; feed(vel * 16); raf = requestAnimationFrame(glide); };
+  host.addEventListener("touchstart", (e) => {
+    cancelAnimationFrame(raf);
+    if (e.touches.length !== 1) { active = false; return; }
+    active = true; moved = false; acc = 0; vel = 0; y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; lastT = e.timeStamp;
+  }, { passive: true, capture: true });
+  host.addEventListener("touchmove", (e) => {
+    if (!active || e.touches.length !== 1) return;
+    const y = e.touches[0].clientY, dy = y - y0;
+    if (!moved) { if (Math.abs(dy) < 8 || Math.abs(dy) < Math.abs(e.touches[0].clientX - x0)) return; moved = true; }
+    if (xt.hasSelection()) return;                       // dragging a selection handle, not scrolling
+    e.preventDefault(); e.stopPropagation();
+    const dt = Math.max(1, e.timeStamp - lastT); vel = 0.7 * (dy / dt) + 0.3 * vel; lastT = e.timeStamp; y0 = y; feed(dy);
+  }, { passive: false, capture: true });
+  host.addEventListener("touchend", (e) => { if (active && moved && Math.abs(vel) > 0.25 && e.timeStamp - lastT < 80) raf = requestAnimationFrame(glide); active = false; }, { passive: true, capture: true });
+  host.addEventListener("touchcancel", () => { active = false; }, { passive: true, capture: true });
 }

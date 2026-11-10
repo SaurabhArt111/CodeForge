@@ -1,0 +1,23 @@
+// One source for the Features page and the home page list. Plain statements of what the app does today.
+export const FEATURES = [
+  { id: "editor", title: "Editor", lead: "Monaco, the editor inside VS Code, tuned for touch.",
+    points: ["Tabs, split view, diff, minimap, find and replace, multi-cursor", "IntelliSense for JavaScript, TypeScript, HTML, CSS and JSON; Emmet; snippets; Prettier formatting", "Text size from 70 to 170 % for the whole app; 12 px default on phones, 14 px on tablets and desktops"] },
+  { id: "keyboard", title: "Keyboard on your terms", lead: "Tapping code places the cursor. The keyboard opens when you ask for it.",
+    points: ["A small “Open keyboard” prompt after a tap, or switch to open-on-tap in Settings", "A floating keyboard button you can drag anywhere; tap to open or close", "An extra key row with Esc, Tab, Ctrl, Alt, arrows and brackets; hardware keyboards and shortcuts work as on a desktop"] },
+  { id: "terminal", title: "Terminal with real Linux", lead: "Native PTY sessions, and a full Alpine Linux without root.",
+    points: ["Install packages with apk: Node.js, Python, Git, compilers, and anything npm or pip offers", "Several terminals, split across the bottom panel, top sheet or a full page; drag to scroll, pinch to zoom", "Sessions keep running in the background; the panel size is remembered and does not jump when the keyboard opens"] },
+  { id: "explorer", title: "Explorer and projects", lead: "Open any folder on the device, a ZIP, or a Git repository.",
+    points: ["Create, rename, move, copy, multi-select, drag and drop, Git status colours", "A projects screen that recognises Node, React, Vite, Python and Git projects", "Download a project as a ZIP and choose what to leave out: node_modules, .git, .venv, build folders"] },
+  { id: "preview", title: "Run and preview", lead: "See the result next to the code, or in your browser.",
+    points: ["Live server with hot reload for plain HTML, CSS and JavaScript", "npm scripts for Vite, React, Next, Astro, SvelteKit and others; the preview opens when the server prints its address", "Open in the in-app preview or your default browser; localhost:5173, 0.0.0.0:8000 and LAN addresses are tappable", "Turn on “-- --host” to reach the dev server from another phone or PC on the same Wi-Fi"] },
+  { id: "git", title: "Git and GitHub", lead: "Source control without leaving the app.",
+    points: ["Clone, stage, commit, branch, diff, pull and push, with gutter change markers", "Sign in with GitHub's device flow or a personal access token; one button opens GitHub's token page with the right permissions ticked", "Browse and clone your repositories, including private ones; the full git CLI is available in the Linux terminal"] },
+  { id: "ai", title: "AI assistant", lead: "Your own API key, your choice of model.",
+    points: ["Chat and an agent mode that reads, searches and edits files and runs commands, with a diff before changes are applied", "Works with Anthropic, OpenAI, Google, OpenRouter and any OpenAI-compatible endpoint, including local models", "Claude Code, Codex, Gemini and Copilot CLIs run as tabs in the AI side bar, each in its own Linux terminal"] },
+  { id: "extensions", title: "Extensions", lead: "Install from Open VSX or a .vsix file.",
+    points: ["Colour themes, file icon themes, snippets, language configuration and JSON schemas apply fully", "Extension code runs in a sandboxed host with a subset of the VS Code API: commands, status bar, completions, hovers, formatting, diagnostics, tree views and webview views", "Extensions that add a side bar container get their icon in the activity bar, as in VS Code", "Extensions that need desktop Node.js (child processes, native modules, language servers) are listed honestly as not supported"] },
+  { id: "layout", title: "A workbench that fits the screen", lead: "The VS Code layout on tablets and desktops, a thumb-friendly one on phones.",
+    points: ["Side bar on the left, AI assistant on the right, terminal and preview at the bottom; three title-bar buttons toggle them", "Move any view to another side, a full page, or back; swipe from the screen edges on phones", "A menu bar on wide screens; on phones the menu button opens File, Edit, Selection, View, Go, Run, Terminal and Help"] },
+  { id: "safety", title: "Your work stays yours", lead: "No account, no analytics, no server in between.",
+    points: ["API keys live in the Android Keystore; an optional app lock uses your PIN or biometrics", "Leaving with unsaved files asks first; previews run in a separate process so a heavy page cannot take the editor down", "Move projects and settings between the web editor and the app with a transfer bundle"] },
+];

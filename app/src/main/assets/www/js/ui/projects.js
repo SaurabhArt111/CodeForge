@@ -33,8 +33,10 @@ async function storageProjects(info) {
     let items = []; try { items = await N.fs.list(dir); } catch { return; }
     for (const it of items) if ((it.t === "d" || (it.t === "l" && it.ld)) && !it.n.startsWith(".") && !["imported", "node_modules", "cf", "tmp"].includes(it.n)) out.push({ path: P.join(dir, it.n), at: it.m });
   };
-  await add(info.paths.home); await add(P.join(info.paths.home, "imported"));
-  return out;
+  await add(info.paths.home); await add(P.join(info.paths.home, "imported")); await add(P.join(info.paths.home, "projects"));
+  // the "CodeForge" folder in the device's shared storage (visible in the Files app): projects kept there are listed too
+  try { const sh = (await N.sys.storageRoots()).find((r) => r.id === "shared"); if (sh) { const n0 = out.length; await add(sh.path); for (let i = n0; i < out.length; i++) out[i].shared = true; } } catch { /* no shared folder */ }
+  return out.filter((x) => P.base(x.path) !== "projects" || P.dir(x.path) !== info.paths.home.replace(/\/+$/, ""));
 }
 
 export async function chooseProject({ openFolder, handlers }) {

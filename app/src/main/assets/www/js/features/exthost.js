@@ -5,6 +5,7 @@
 // It is best-effort: extensions that need Node.js (child_process, native modules), webviews, language servers or the
 // debug API cannot run. The user is asked once per extension before any extension code is executed.
 import { h, P } from "../core/util.js";
+import * as xviews from "./extviews.js";
 
 let A, workerSrc = null;
 const hosts = new Map();               // extId -> Host
@@ -15,7 +16,11 @@ const TIMEOUT = { activate: 25000, provide: 5000, cmd: 120000 };
 const KIND_NAMES = ["Text", "Method", "Function", "Constructor", "Field", "Variable", "Class", "Interface", "Module", "Property", "Unit", "Value", "Enum", "Keyword", "Snippet", "Color", "File", "Reference", "Folder", "EnumMember", "Constant", "Struct", "Event", "Operator", "TypeParameter"];
 const SEV = [8, 4, 2, 1]; // vscode Error,Warning,Information,Hint -> monaco MarkerSeverity
 
-export function init(api, listFn) { A = api; allExts = listFn; hookEvents(); registerCommands(); }
+export function init(api, listFn) {
+  A = api; allExts = listFn; hookEvents(); registerCommands();
+  xviews.init(api, { ensureRunning, rpc, statusOf: status, errorOf: (id) => hosts.get(id)?.error || null, allow: async (ext) => { delete trust()[ext.id]; A.settings.saveState(); await restart(ext); } });
+}
+export const viewContainers = () => xviews.list();
 export const status = (id) => hosts.get(id)?.status || "off";
 export const statusAll = () => [...hosts.values()].map((x) => ({ id: x.ext.id, name: x.ext.name, status: x.status, error: x.error }));
 const trust = () => (A.settings.state.extTrust ||= {});
@@ -27,7 +32,8 @@ const logOut = (ext, text) => A.output.append(outName(ext), text.endsWith("\n") 
 export async function register(ext) {
   unregister(ext);
   await applyStaticContributes(ext);
-  const entry = entryOf(ext); if (!entry || !ext.enabled) return;
+  const entry = entryOf(ext); if (!ext.enabled) return;
+  if (!entry) { xviews.add(ext, null); return; }
   const m = ext.manifest; const c = m.contributes || {};
   const ev = m.activationEvents || [];
   const langs = new Set([...ev.filter((e) => e.startsWith("onLanguage:")).map((e) => e.slice(11)), ...(c.languages || []).map((l) => l.id)].filter(Boolean));
@@ -35,6 +41,7 @@ export async function register(ext) {
   const lazy = { cmds: new Map(), langs, off: [] };
   const h0 = { ext, status: "idle", lazy, w: null, pending: new Map(), seq: 1, cmds: new Map(), providers: new Map(), statusItems: new Set(), decoKeys: new Set(), error: null, storage: P.join(A.settings.dataDir, "ext-data", ext.id) };
   hosts.set(ext.id, h0);
+  xviews.add(ext, h0);   // activity-bar containers / side bar views this extension contributes
   // stub commands so contributed commands show up in the palette and wake the extension
   for (const cm of c.commands || []) {
     const run = async (...args) => { const hh = await ensureRunning(h0); if (hh && h0.cmds.has(cm.command)) return rpc(h0, "cmd.run", [cm.command, args], TIMEOUT.cmd); if (hh) A.toast(`Command “${cm.command}” was not registered by ${ext.name}`, { kind: "warn" }); };
@@ -44,6 +51,7 @@ export async function register(ext) {
   else if (langs.size) { const check = () => { const d = A.ed.activeDoc?.(); if (d?.model && langs.has(d.model.getLanguageId())) ensureRunning(h0); }; lazy.off.push(A.ed.editorEvents.on("active", check)); check(); }
 }
 export function unregister(ext) {
+  xviews.remove(ext);
   const hh = hosts.get(ext.id); if (!hh) { removeStaticContributes(ext); return; }
   stop(hh); hh.lazy.cmds.forEach((off) => off()); hh.lazy.off.forEach((off) => off()); hosts.delete(ext.id); removeStaticContributes(ext);
 }
@@ -245,6 +253,7 @@ function applyDiagnostics(path) { for (const [key, map] of diagStore) { const ar
 
 // ------------------------------------------------------------------------------------------------ worker → IDE calls
 async function handle(hh, m, a) {
+  if (m.startsWith("view.")) return xviews.handle(hh, m, a);
   const ext = hh.ext; const mon = A.ed.monaco;
   switch (m) {
     case "cmd.register": { const id = a[0]; hh.cmds.get(id)?.(); const decl = (ext.manifest.contributes?.commands || []).find((c) => c.command === id); hh.lazy.cmds.get(id)?.();
