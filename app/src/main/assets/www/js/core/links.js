@@ -6,7 +6,7 @@ import { settings } from "./settings.js";
 import { toast } from "./ui.js";
 
 export const URL_RE = /https?:\/\/[^\s<>"'`\\^{}|]+/gi;
-// "localhost:5173", "0.0.0.0:8000/api", "192.168.1.20:3000", "[::1]:4000" , servers often print these without "http://"
+// "localhost:5173", "0.0.0.0:8000/api", "192.168.1.20:3000", "[::1]:4000" — servers often print these without "http://"
 const HOST_PORT = String.raw`(?:localhost|0\.0\.0\.0|\[::1?\]|(?:\d{1,3}\.){3}\d{1,3}):\d{2,5}(?![\w])(?:/[^\s<>"'` + "`" + String.raw`\\^{}|]*)?`;
 export const HOSTPORT_RE = new RegExp(String.raw`(?<![\w./:@\[-])` + HOST_PORT, "gi");
 const HOSTPORT_EXACT = new RegExp("^" + HOST_PORT + "$", "i");

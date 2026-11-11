@@ -1,4 +1,4 @@
-# CodeForge, a native Android code editor / IDE
+# CodeForge — a native Android code editor / IDE
 
 A real Android application (Kotlin, package `dev.codeforge.ide`, minSdk 26) with a VS Code-style workbench:
 Monaco editor, project explorer, real shell terminals, Git, live server + in-app preview, extensions, plugins and AI assistants.
@@ -76,14 +76,14 @@ See **DEPLOY.md** for static hosting, Docker, environment variables and the Git 
 ## Honest limitations
 - This source drop has **not been compiled into an APK or run on a device by its author's tooling** (the build sandbox had no Android SDK / Maven access).
   The Kotlin of earlier versions was type-checked against the Android 34 API; the **crash recorder, `:preview` process, PTY flow control and live-server changes of this
-  version were only parse-checked and reviewed** (no Android jar was available) , expect to fix small compile errors on first build. The whole web UI was tested end-to-end in headless Chromium against the dev host
+  version were only parse-checked and reviewed** (no Android jar was available) — expect to fix small compile errors on first build. The whole web UI was tested end-to-end in headless Chromium against the dev host
   (`tools/devhost`), which emulates the native bridge. Expect to fix small compile/runtime issues on first build.
 - The proot Linux environment, PTY, DocumentsProvider and GitHub device flow are untested on real hardware.
 - GitHub Copilot's private chat API is not implemented; use **GitHub Models** (free tier with a PAT) or the **Copilot CLI** helper.
 - The extension host is a **best-effort subset** of the VS Code API with no Node.js; many popular extensions (language servers, debuggers, anything
   using webviews or `child_process`) will load but not work. Check *Output → Extension: <name>* for what a given extension tried to use.
 - Biometrics, the app lock, `FLAG_SECURE`, the splash/adaptive icon on real devices and the proot/PTY paths could only be type-checked / emulated here.
-- The web version keeps files in the browser (clearing site data deletes them , export ZIPs). Its encryption of stored keys protects against
+- The web version keeps files in the browser (clearing site data deletes them — export ZIPs). Its encryption of stored keys protects against
   casual inspection only; use the Android app for real key storage.
 - Open VSX could not be reached from the build sandbox; the install path was tested against a mock registry.
 - Google Play restricts "All files access"; this build targets sideloading.

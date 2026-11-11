@@ -1,5 +1,5 @@
 #!/bin/sh
-# cf , talk to the CodeForge IDE from the terminal (works in the Linux environment and in the Android shell).
+# cf — talk to the CodeForge IDE from the terminal (works in the Linux environment and in the Android shell).
 # Uses a private terminal escape sequence (OSC 7770) that the IDE listens for.
 osc() { printf '\033]7770;%s;%s\007' "$1" "$2"; }
 b64() { if command -v base64 >/dev/null 2>&1; then base64 | tr -d '\n\r'; else openssl base64 -A 2>/dev/null; fi; }
@@ -14,8 +14,8 @@ cli_pkg() { case "$1" in
 cli_install() {
   spec=$(cli_pkg "$1") || { say "cf: unknown CLI '$1' (try: $CLIS)"; return 1; }
   case "$spec" in
-    npm:*) command -v npm >/dev/null 2>&1 || { say "cf: npm not found , set up the Linux environment first (Terminal ▸ Set up Linux)"; return 1; }; say "Installing ${spec#npm:}…"; npm i -g "${spec#npm:}" ;;
-    pip:*) command -v pip >/dev/null 2>&1 || { say "cf: pip not found , set up the Linux environment first"; return 1; }; say "Installing ${spec#pip:}…"; pip install --break-system-packages "${spec#pip:}" ;;
+    npm:*) command -v npm >/dev/null 2>&1 || { say "cf: npm not found — set up the Linux environment first (Terminal ▸ Set up Linux)"; return 1; }; say "Installing ${spec#npm:}…"; npm i -g "${spec#npm:}" ;;
+    pip:*) command -v pip >/dev/null 2>&1 || { say "cf: pip not found — set up the Linux environment first"; return 1; }; say "Installing ${spec#pip:}…"; pip install --break-system-packages "${spec#pip:}" ;;
   esac
 }
 need_text() { [ $# -gt 0 ] && { printf '%s' "$*"; return; }; if [ ! -t 0 ]; then head -c 60000; fi; }
@@ -60,7 +60,7 @@ $(head -c 60000)"; fi
   help|-h|--help|*)
     [ "$cmd" != help ] && [ "$cmd" != -h ] && [ "$cmd" != --help ] && say "cf: unknown command '$cmd'"
     cat <<'HELP'
-cf , control the CodeForge IDE from the terminal
+cf — control the CodeForge IDE from the terminal
 
   cf open <file>[:line] …    open files in the editor        (alias: code)
   cf project [dir]           open a folder as the project

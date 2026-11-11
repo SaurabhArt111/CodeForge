@@ -42,6 +42,7 @@ class TermSession(
 
     init {
         val pidArr = IntArray(1)
+        Pty.ensureLoaded()
         val fd = Pty.createSubprocess(
             spec.cmd, spec.cwd, spec.args.toTypedArray(), spec.env.toTypedArray(), pidArr, rows, cols
         )

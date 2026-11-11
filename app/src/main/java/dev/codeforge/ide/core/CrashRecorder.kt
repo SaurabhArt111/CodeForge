@@ -227,7 +227,7 @@ object CrashRecorder {
 
     private fun reasonHint(i: ApplicationExitInfo, fg: Boolean): String = when (i.reason) {
         ApplicationExitInfo.REASON_LOW_MEMORY -> "Android ran out of memory and stopped the process" + if (fg) " while CodeForge was in use." else " while CodeForge was in the background."
-        ApplicationExitInfo.REASON_SIGNALED -> if (i.status == 9) "The process received SIGKILL" + (if (fg) " while in the foreground , typically a low-memory kill or the OS' phantom-process limit (Android 12+ kills too many child processes such as node/proot)." else " while in the background (normal Android memory management; terminals stop with it).")
+        ApplicationExitInfo.REASON_SIGNALED -> if (i.status == 9) "The process received SIGKILL" + (if (fg) " while in the foreground — typically a low-memory kill or the OS' phantom-process limit (Android 12+ kills too many child processes such as node/proot)." else " while in the background (normal Android memory management; terminals stop with it).")
             else "The process was stopped by signal ${i.status}."
         ApplicationExitInfo.REASON_CRASH_NATIVE -> "A native (C/C++) crash: PTY/proot code or the WebView's own native code."
         ApplicationExitInfo.REASON_ANR -> "The app stopped responding (ANR)."

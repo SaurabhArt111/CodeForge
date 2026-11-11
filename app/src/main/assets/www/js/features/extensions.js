@@ -1,6 +1,6 @@
 // Extensions: Open VSX marketplace (search / install / update), local .vsix install, and contribution loading for the
 // declarative parts of VS Code extensions: colour themes, file-icon themes, snippets, language configuration.
-// Extension code (`browser`/`main`) runs in the sandboxed "lite" extension host (exthost.js) , a best-effort subset of the VS Code API;
+// Extension code (`browser`/`main`) runs in the sandboxed "lite" extension host (exthost.js) — a best-effort subset of the VS Code API;
 // extensions that need Node.js, webviews, language servers or debuggers cannot run, and the UI says so.
 import * as lazy from "../core/lazy.js";
 import { h, icon, P, fmtBytes, parseJsonc, debounce, esc } from "../core/util.js";
@@ -101,7 +101,7 @@ export async function installVsix(vsixPath, { silent = false } = {}) {
     A.settings.state.extDisabled = (A.settings.state.extDisabled || []).filter((x) => x !== ext.id); ext.enabled = true;
     await activate(ext); A.bus.emit("extensions:changed");
     const contributed = ext.contributes.filter((k) => SUPPORTED.includes(k)); const unsupported = ext.contributes.filter((k) => !SUPPORTED.includes(k));
-    if (!silent) A.toast(`Installed ${ext.name} ${ext.version}` + (contributed.length ? ` (${contributed.join(", ")})` : unsupported.length || ext.main ? " , no supported contributions" : ""), { kind: contributed.length ? "success" : "warn", timeout: 6000 });
+    if (!silent) A.toast(`Installed ${ext.name} ${ext.version}` + (contributed.length ? ` (${contributed.join(", ")})` : unsupported.length || ext.main ? " — no supported contributions" : ""), { kind: contributed.length ? "success" : "warn", timeout: 6000 });
     render(); return ext;
   } catch (e) { await A.N.fs.rm(tmp).catch(() => {}); throw e; }
 }
@@ -285,7 +285,7 @@ async function marketDetails(x) {
   const cats = (d.categories || []).join(", ");
   const rd = d.files?.readme ? await readmeFrame(d.files.readme) : frame(`<h2>${esc(d.displayName || d.name)}</h2><p>${esc(d.description || "")}</p><p class="muted">No README published for this extension.</p>`, "30vh");
   hold.replaceChildren(h("p.modal-detail", `${d.namespace}.${d.name}${cats ? " · " + cats : ""}${d.license ? " · " + d.license : ""}`), h("p.modal-text", d.description || ""), (d.repository ? h("p", h("a.link", { onclick: () => A.N.sys.openUrl(d.repository) }, d.repository)) : null),
-    h("div.ext-compat", h("div", icon("info"), " Themes, icon themes, snippets, language configuration, settings and commands are applied. Extension code runs in CodeForge's lite, sandboxed extension host (a subset of the VS Code API, no Node.js) , extensions that depend on Node, webviews or language servers won't work fully.")), rd);
+    h("div.ext-compat", h("div", icon("info"), " Themes, icon themes, snippets, language configuration, settings and commands are applied. Extension code runs in CodeForge's lite, sandboxed extension host (a subset of the VS Code API, no Node.js) — extensions that depend on Node, webviews or language servers won't work fully.")), rd);
   const r = await p;
   if (r === "install") installRemote(d);
 }

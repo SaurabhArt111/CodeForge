@@ -61,16 +61,24 @@ async function userSnippetsFile() {
 }
 
 // ---------------------------------------------------------------- language configuration (brackets, comments, indent, on-enter rules)
-const re = (s) => (typeof s === "string" ? new RegExp(s) : s && s.pattern ? new RegExp(s.pattern, s.flags || "") : undefined);
+const re = (s) => { try { return typeof s === "string" ? new RegExp(s) : s && s.pattern ? new RegExp(s.pattern, s.flags || "") : undefined; } catch { return undefined; } };
 function convertConfig(c) {
-  const o = { comments: c.comments, brackets: c.brackets, autoClosingPairs: c.autoClosingPairs, surroundingPairs: c.surroundingPairs, colorizedBracketPairs: c.colorizedBracketPairs, autoCloseBefore: c.autoCloseBefore };
+  // VS Code accepts pairs as ["(", ")"] or { open, close, notIn }; Monaco only takes objects for auto-closing / surrounding pairs and
+  // two-string arrays for brackets. Anything else (missing halves, numbers) made Monaco crash with "reading 'charAt'" when a file opened.
+  const str = (x) => typeof x === "string" && x.length > 0;
+  const pairObj = (p) => { const [open, close, notIn] = Array.isArray(p) ? [p[0], p[1]] : [p?.open, p?.close, p?.notIn]; if (!str(open) || !str(close)) return null; const r = { open, close }; if (notIn) r.notIn = (Array.isArray(notIn) ? notIn : [notIn]).filter(str); return r; };
+  const pairArr = (p) => { const [a, b] = Array.isArray(p) ? p : [p?.open, p?.close]; return str(a) && str(b) ? [a, b] : null; };
+  const list = (v, fn) => (Array.isArray(v) ? v.map(fn).filter(Boolean) : undefined);
+  const cm = c.comments && typeof c.comments === "object" ? { lineComment: str(c.comments.lineComment) ? c.comments.lineComment : undefined, blockComment: pairArr(c.comments.blockComment) || undefined } : undefined;
+  const o = { comments: cm, brackets: list(c.brackets, pairArr), autoClosingPairs: list(c.autoClosingPairs, pairObj), surroundingPairs: list(c.surroundingPairs, pairObj), colorizedBracketPairs: list(c.colorizedBracketPairs, pairArr), autoCloseBefore: typeof c.autoCloseBefore === "string" ? c.autoCloseBefore : undefined };
   if (c.wordPattern) o.wordPattern = re(c.wordPattern);
   if (c.indentationRules) o.indentationRules = { increaseIndentPattern: re(c.indentationRules.increaseIndentPattern), decreaseIndentPattern: re(c.indentationRules.decreaseIndentPattern), indentNextLinePattern: re(c.indentationRules.indentNextLinePattern), unIndentedLinePattern: re(c.indentationRules.unIndentedLinePattern) };
   if (c.folding?.markers) o.folding = { offSide: c.folding.offSide, markers: { start: re(c.folding.markers.start), end: re(c.folding.markers.end) } };
-  if (c.onEnterRules) o.onEnterRules = c.onEnterRules.map((r) => ({ beforeText: re(r.beforeText), afterText: re(r.afterText), previousLineText: re(r.previousLineText), action: { indentAction: { none: 0, indent: 1, indentOutdent: 2, outdent: 3 }[r.action.indent] ?? 0, appendText: r.action.appendText, removeText: r.action.removeText } }));
+  if (Array.isArray(c.onEnterRules)) o.onEnterRules = c.onEnterRules.filter((r) => r && r.beforeText).map((r) => ({ beforeText: re(r.beforeText), afterText: re(r.afterText), previousLineText: re(r.previousLineText), action: { indentAction: { none: 0, indent: 1, indentOutdent: 2, outdent: 3 }[r.action?.indent] ?? 0, appendText: r.action?.appendText, removeText: r.action?.removeText } }));
   for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
   return o;
 }
+export const _convertConfig = convertConfig;
 export function applyLanguageConfig(monacoLang, cfgJson) { try { mon.languages.setLanguageConfiguration(monacoLang, convertConfig(cfgJson)); } catch (e) { console.warn("langconfig", monacoLang, e); } }
 async function loadLangConfigs() {
   try {

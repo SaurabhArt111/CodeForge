@@ -119,7 +119,7 @@ addEventListener("unhandledrejection",function(e){call("log","unhandled rejectio
 // ---------------------------------------------------------------- install / create / UI
 export async function installDir(srcDir) {
   const mf = P.join(srcDir, "plugin.json"); const m = JSON.parse((await A.N.fs.readText(mf)).text); if (!m.id || !/^[\w.-]+$/.test(m.id)) throw new Error("plugin.json needs a valid \"id\"");
-  const perm = (m.permissions || []).map((x) => `• ${x}${PERMS[x.split(":")[0]] ? " , " + PERMS[x.split(":")[0]] : ""}`).join("\n") || "• none";
+  const perm = (m.permissions || []).map((x) => `• ${x}${PERMS[x.split(":")[0]] ? " — " + PERMS[x.split(":")[0]] : ""}`).join("\n") || "• none";
   if (!(await A.confirm(`Install plugin “${m.name || m.id}” ${m.version || ""}?\n\nIt will be able to:\n${perm}`, { title: "Install plugin", okLabel: "Install" }))) return false;
   const dest = P.join(root, m.id); if (await A.N.fs.exists(dest)) await A.N.fs.rm(dest);
   await A.N.fs.copy(srcDir, dest); await loadAll(); A.toast(`Installed plugin ${m.name || m.id}`, { kind: "success" }); return true;
@@ -139,7 +139,7 @@ export async function createTemplate() {
   await A.N.fs.mkdir(dir);
   await A.N.fs.writeText(P.join(dir, "plugin.json"), JSON.stringify({ id, name: id, version: "0.1.0", description: "My CodeForge plugin", main: "index.js", permissions: ["editor", "ui", "commands"] }, null, 2) + "\n");
   await A.N.fs.writeText(P.join(dir, "index.js"), `// CodeForge plugin: runs in a sandboxed iframe. API: cf.commands, cf.editor, cf.ui, cf.fs, cf.terminal, cf.net, cf.storage\ncf.commands.register("shout", "Make selection UPPERCASE", async () => {\n  const sel = await cf.editor.getSelection();\n  if (!sel) return cf.ui.toast("Select some text first", "warn");\n  await cf.editor.replaceSelection(sel.toUpperCase());\n});\n\ncf.ui.status("hello", { text: "${id}", tooltip: "Hello plugin loaded" });\ncf.log("ready");\n`);
-  await loadAll(); A.ed.openFile(P.join(dir, "index.js")); A.toast("Plugin created , open the palette and run “Make selection UPPERCASE”", { timeout: 6000 });
+  await loadAll(); A.ed.openFile(P.join(dir, "index.js")); A.toast("Plugin created — open the palette and run “Make selection UPPERCASE”", { timeout: 6000 });
 }
 
 export function renderInto(el) {

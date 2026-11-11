@@ -50,7 +50,7 @@ export async function chooseProject({ openFolder, handlers }) {
   const homeDir = norm(info.paths.home), importedDir = P.join(homeDir, "imported");
   const containers = [{ path: homeDir, label: "Home", note: "Everything CodeForge keeps on this device" }, { path: importedDir, label: "Imported", note: "Folders and ZIPs you brought in" }];
   const isContainer = (p) => containers.some((c) => c.path === norm(p));
-  const goInside = async (path) => { const r = await of.browse({ mode: "folder", title: "Choose a project folder", start: path }); if (r) done(typeof r === "object" ? { zip: r.zip } : { open: r }); };
+  const goInside = async (path) => { await N.fs.mkdir(path).catch(() => {}); /* "imported" only exists after the first import */ const r = await of.browse({ mode: "folder", title: "Choose a project folder", start: path }); if (r) done(typeof r === "object" ? { zip: r.zip } : { open: r }); };
   const recent = settings.state.recent.filter((p) => !isContainer(p)).map((p) => ({ path: p, at: settings.state.recentAt?.[p] || 0, recent: true }));
   const known = new Set(recent.map((r) => r.path));
   let stored = [];

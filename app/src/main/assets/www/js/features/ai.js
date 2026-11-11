@@ -318,7 +318,7 @@ function welcome() {
   const p = curProvider();
   return h("div.ai-welcome", icon("sparkle", "big"), h("div", { style: { fontWeight: 600, fontSize: "calc(14px * var(--fz))" } }, "CodeForge AI"), h("div.muted", `Using ${p.label} · ${curModel() || "no model"}`),
     h("div.ai-suggest", ...["Explain this file", "Find bugs in the selection", "Write unit tests", "Add comments and docs", "Refactor for readability"].map((t) => h("button.chip", { onclick: () => { inputEl.value = t; send(); } }, t))),
-    h("div.muted", { style: { fontSize: "calc(12px * var(--fz))" } }, "Agent mode lets the AI read, edit files and run commands. Add an API key via ⚙ , keys stay in the Android Keystore."));
+    h("div.muted", { style: { fontSize: "calc(12px * var(--fz))" } }, "Agent mode lets the AI read, edit files and run commands. Add an API key via ⚙ — keys stay in the Android Keystore."));
 }
 function addBubble(m) {
   if (m.role === "tool") return null;
@@ -489,7 +489,7 @@ async function streamOnce(p, asst, onText) {
     if (!err && head.status < 400) break;
     const status = err ? 0 : head.status; const transient = err || status === 429 || status === 408 || status >= 500;
     let t = ""; if (!err) { try { for await (const c of s.body) t += textDec.decode(c); } catch { /* ignore */ } }
-    if (transient && attempt < 3) { const wait = [1500, 4000, 9000][attempt]; note(`${status ? "Server busy (" + status + ")" : "Connection problem"} , retrying in ${Math.round(wait / 1000)}s…`); await new Promise((r) => setTimeout(r, wait)); if (streaming.cancelled) throw new Error("cancelled"); continue; }
+    if (transient && attempt < 3) { const wait = [1500, 4000, 9000][attempt]; note(`${status ? "Server busy (" + status + ")" : "Connection problem"} — retrying in ${Math.round(wait / 1000)}s…`); await new Promise((r) => setTimeout(r, wait)); if (streaming.cancelled) throw new Error("cancelled"); continue; }
     let msg = err ? err.message : t; try { const j = JSON.parse(t); msg = j.error?.message || j.message || t; } catch { /* raw */ }
     throw new Error(`${status || "network"}: ${String(msg).slice(0, 400)}`);
   }
