@@ -128,7 +128,7 @@ object LinuxEnv {
         "https://uk.alpinelinux.org/alpine"
     )
 
-    /** progress(stage, done, total, message) — stage is "download" | "verify" | "extract" | "configure". */
+    /** progress(stage, done, total, message) , stage is "download" | "verify" | "extract" | "configure". */
     fun install(progress: (String, Long, Long, String) -> Unit) {
         val arch = arch() ?: throw IllegalStateException("Unsupported CPU architecture: ${Paths.abi}")
         var lastError: Exception? = null

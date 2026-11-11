@@ -242,7 +242,7 @@ class PreviewActivity : Activity() {
                 view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                // Renderer died (OOM kill or crash). Record it, throw the view away, offer a reload — the IDE process is untouched.
+                // Renderer died (OOM kill or crash). Record it, throw the view away, offer a reload , the IDE process is untouched.
                 CrashRecorder.record("preview-renderer", if (detail.didCrash()) "Preview renderer crashed" else "Preview renderer killed (memory)",
                     "url=$currentUrl\ndidCrash=${detail.didCrash()}\n${CrashRecorder.memoryLine()}", fatal = false, withLogcat = true)
                 runOnUiThread {

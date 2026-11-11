@@ -360,7 +360,7 @@ function fmt(x){try{if(typeof x==='string')return cut(x);if(x instanceof Error)r
 ['log','info','warn','error','debug'].forEach(function(k){var o=console[k];console[k]=function(){if(ok()){var a=Array.prototype.slice.call(arguments,0,8).map(fmt);post({type:'console',level:k,args:a});}return o.apply(console,arguments);};});
 window.addEventListener('error',function(e){if(ok())post({type:'console',level:'error',args:[cut(e.message)+' ('+String(e.filename||'').split('/').pop()+':'+e.lineno+')']});});
 window.addEventListener('unhandledrejection',function(e){if(!ok())return;var r=e.reason;post({type:'console',level:'error',args:['Unhandled promise rejection: '+cut(r&&(r.stack||r.message)||r)]});});
-document.addEventListener('webglcontextlost',function(){post({type:'console',level:'error',args:['WebGL context lost (GPU memory exhausted?) — reduce canvas size / textures']});},true);
+document.addEventListener('webglcontextlost',function(){post({type:'console',level:'error',args:['WebGL context lost (GPU memory exhausted?) , reduce canvas size / textures']});},true);
 function nav(){post({type:'nav',url:location.href,title:document.title});}
 try{var cs=document.currentScript,nb=cs&&cs.getAttribute('data-needs-build');if(nb){post({type:'needsBuild',src:nb});
 document.addEventListener('DOMContentLoaded',function(){var b=document.createElement('div');b.setAttribute('style','position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#1e1e1e;color:#ddd;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 16px #0008');

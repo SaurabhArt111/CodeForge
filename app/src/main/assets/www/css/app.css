@@ -1,4 +1,4 @@
-/* CodeForge — theme variables are injected at runtime from the active VS Code colour theme (see js/features/themes.js). */
+/* CodeForge , theme variables are injected at runtime from the active VS Code colour theme (see js/features/themes.js). */
 @font-face{font-family:"JetBrains Mono";src:url("../assets/fonts/JetBrains-Mono.ttf") format("truetype");font-display:swap}
 @font-face{font-family:"Cascadia Code";src:url("../assets/fonts/CascadiaCode.ttf") format("truetype");font-display:swap}
 @font-face{font-family:"Fira Code";src:url("../assets/fonts/Fira-Code.ttf") format("truetype");font-display:swap}
@@ -98,7 +98,7 @@ body.resizing{user-select:none;-webkit-user-select:none}body.resizing-x{cursor:c
 .ptab.active{color:var(--fg);border-bottom-color:var(--accent)}.ptab .count{margin-left:6px;background:var(--badge);color:var(--badge-fg);border-radius:8px;padding:0 5px;font-size:calc(10px*var(--fz))}
 .sheet-actions{display:flex;gap:2px;align-items:center;flex:none}
 .sheet-body{flex:1;min-height:0;position:relative}.pane{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}.pane.on{display:flex}
-.pane.docked{overflow:hidden}.sheet.empty .sheet-body::after{content:"Empty sheet — tap + to add a view";position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)}
+.pane.docked{overflow:hidden}.sheet.empty .sheet-body::after{content:"Empty sheet , tap + to add a view";position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)}
 #sheet-top.sheet{box-shadow:0 4px 14px #0004}
 /* right sheet: fixed width (no resize handle) - sits opposite the aside */
 #sheet-right{width:var(--right-w);border-left:1px solid var(--border);min-height:0;max-height:none}
