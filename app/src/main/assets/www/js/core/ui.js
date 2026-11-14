@@ -169,6 +169,38 @@ export function contextMenu(items, x, y) {
   openMenu = { remove() { back.remove(); menu.remove(); } };
 }
 
+/** Phone menu: a list of pages that slide in place of each other (a submenu replaces the list, with a ‹ Back header)
+ *  instead of expanding inside the same box. Items are the contextMenu format; `submenu` makes a page. */
+export function navMenu(items, x, y, { title = "" } = {}) {
+  if (openMenu && !settled() && menuPos && Math.hypot(menuPos.x - x, menuPos.y - y) < 40) return;
+  closeMenu(); menuOpenedAt = Date.now(); menuPos = { x, y };
+  const menu = h("div.ctx.navmenu"), stack = [{ list: items, name: title }];   // stack[0] = the root list
+  const back = h("div.ctx-back", { onpointerdown: (e) => { if (settled()) { e.preventDefault(); closeMenu(); } }, oncontextmenu: (e) => { e.preventDefault(); if (settled()) closeMenu(); } });
+  const show = (list, name, dir) => {
+    const page = h("div.nm-page" + (dir ? (dir > 0 ? ".from-right" : ".from-left") : ""));
+    if (stack.length > 1) page.append(h("div.nm-head", h("button.nm-back", { type: "button", onclick: (e) => { e.stopPropagation(); if (!settled()) return; stack.pop(); const prev = stack[stack.length - 1]; show(prev.list, prev.name, -1); } }, icon("chevron-left"), h("span", stack[stack.length - 2].name || "Menu")), h("span.nm-title", name)));
+    else if (title) page.append(h("div.nm-head", h("span.nm-title", title)));
+    const body = h("div.nm-body");
+    for (const it of list) {
+      if (!it) continue;
+      if (it.separator) { body.append(h("div.ctx-sep")); continue; }
+      body.append(h(`div.ctx-item${it.disabled ? ".disabled" : ""}${it.danger ? ".danger" : ""}`, {
+        onclick: (e) => { e.stopPropagation(); if (!settled() || it.disabled) return; if (it.submenu) { stack.push({ list: it.submenu, name: it.label }); show(it.submenu, it.label, 1); return; } closeMenu(); it.run?.(); },
+      }, h("span.ctx-ico", it.icon ? icon(it.icon) : null), h("span.ctx-label", it.label), it.keys ? h("span.ctx-keys", it.keys) : null, it.submenu ? icon("chevron-right") : null));
+    }
+    page.append(body); menu.replaceChildren(page); place(); body.scrollTop = 0;
+  };
+  const place = () => {
+    const vv = window.visualViewport, VW = vv?.width || window.innerWidth, VH = vv?.height || window.innerHeight, M = 6;
+    const w = Math.min(320, VW - 2 * M); menu.style.width = w + "px";
+    menu.style.left = Math.max(M, Math.min(x, VW - w - M)) + "px"; menu.style.top = Math.min(y, VH - 120) + "px";
+    menu.style.maxHeight = Math.floor(VH - Math.min(y, VH - 120) - M) + "px";  
+  };
+  overlay().append(back, menu);
+  show(items, title, 0);
+  openMenu = { remove() { back.remove(); menu.remove(); } };
+}
+
 /** Touch long-press → callback(x, y). Returns disposer. */
 export function longPress(el, cb, ms = 480) {
   let t = null, sx = 0, sy = 0, fired = false;

@@ -21,7 +21,10 @@ import dev.codeforge.ide.BuildConfig
 import dev.codeforge.ide.core.Auth
 import dev.codeforge.ide.core.CrashRecorder
 import dev.codeforge.ide.core.FsOps
+import dev.codeforge.ide.core.Downloads
 import dev.codeforge.ide.core.GitHubAuth
+import dev.codeforge.ide.core.Jobs
+import dev.codeforge.ide.core.StorageOps
 import dev.codeforge.ide.core.LinuxEnv
 import dev.codeforge.ide.core.LiveServers
 import dev.codeforge.ide.core.Net
@@ -69,6 +72,16 @@ object Bridge {
         fun setSecure(on: Boolean)
         /** Opens [url] in the isolated preview window (separate process). */
         fun openPreview(url: String, title: String)
+        /** Starts CodeForge again from scratch (new process). Running terminals end. */
+        fun restartApp()
+        /** Opens the system Downloads app. */
+        fun openDownloads()
+        /** Are notifications allowed for CodeForge (always true before Android 13)? */
+        fun notificationsEnabled(): Boolean
+        /** Asks for the notification permission (Android 13+), or opens the app's notification settings when it was refused before. */
+        fun requestNotifications()
+        /** Opens the system settings page of this app (permissions, storage, battery). */
+        fun openAppSettings()
     }
 
     @Volatile var host: Host? = null
@@ -210,6 +223,45 @@ object Bridge {
         "sys.exportTree" -> exportTree(a.str(0), a.str(1), a.optJSONArray(2)?.let { ar -> (0 until ar.length()).map { ar.getString(it) } } ?: emptyList())
         "sys.moveToBack" -> { host?.moveToBack(); true }
         "sys.exit" -> { SessionManager.killAll(); LiveServers.stopAll(); host?.finishApp(); true }
+        "sys.restart" -> { host?.restartApp(); true }
+        "sys.openDownloads" -> { host?.openDownloads(); true }
+        "sys.notifyStatus" -> host?.notificationsEnabled() ?: false
+        "sys.requestNotify" -> { host?.requestNotifications(); true }
+        "sys.openAppSettings" -> { host?.openAppSettings(); true }
+
+        // ---------------- background tasks (progress notifications + keep-alive while the app is not on screen)
+        "jobs.begin" -> { Jobs.begin(a.str(0), a.str(1), a.optString(2, "")); true }
+        "jobs.update" -> { Jobs.update(a.str(0), a.optString(1, "").ifEmpty { null }, a.optLong(2, -1), a.optLong(3, -1)); true }
+        "jobs.end" -> { Jobs.end(a.str(0), a.optBoolean(1, true), a.optString(2, ""), a.optBoolean(3, false), a.optBoolean(4, false)); true }
+        "jobs.cancel" -> { Jobs.cancel(a.str(0)); true }
+
+        // ---------------- storage manager
+        "storage.scan" -> a.optString(0, "").ifEmpty { null }.let { job ->
+            StorageOps.scan(job) { files, bytes -> emit("storage.progress", JSONObject().put("files", files).put("bytes", bytes).put("job", job ?: "")) }
+        }
+        "storage.items" -> StorageOps.items(a.str(0), a.optInt(1, 60), a.optString(2, "").ifEmpty { null })
+        "storage.clean" -> a.optString(1, "").ifEmpty { null }.let { job ->
+            val ids = a.getJSONArray(0).let { ar -> (0 until ar.length()).map { ar.getString(it) } }
+            StorageOps.clean(ids, job) { id, freed ->
+                emit("storage.progress", JSONObject().put("cat", id).put("freed", freed).put("job", job ?: ""))
+                if (job != null) Jobs.update(job, "Cleaning…", -1, -1)
+            }
+        }
+        "storage.delete" -> JSONObject().put("freed", StorageOps.deletePath(a.str(0)))
+
+        // ---------------- export to the public Downloads folder
+        "export.toDownloads" -> a.obj(0).let { o ->
+            val src = File(o.getString("src"))
+            val job = o.optString("job", "").ifEmpty { null }
+            try {
+                val r = Downloads.save(src, o.optString("name", src.name), o.optString("mime", "").ifEmpty { null }) { done, total ->
+                    emit("net.progress", JSONObject().put("id", job ?: "export").put("job", job ?: "").put("done", done).put("total", total))
+                    if (job != null) Jobs.update(job, "Saving to Downloads…", done, total)
+                }
+                if (o.optBoolean("deleteSrc", false)) src.delete()
+                r
+            } catch (e: Throwable) { if (o.optBoolean("deleteSrc", false) && e !is SecurityException) src.delete(); throw e }
+        }
 
         // ---------------- files
         "fs.token" -> fsToken
@@ -239,14 +291,23 @@ object Bridge {
 
         // ---------------- archives
         "archive.zip" -> a.obj(0).let { o ->
-            val n = ZipTools.zip(o.strList("src").map { File(it) }, File(o.getString("dest")), o.optString("base", "").ifEmpty { null }?.let { File(it) }, o.strList("exclude")) { c ->
-                emit("archive.progress", JSONObject().put("count", c))
+            val job = o.optString("job", "").ifEmpty { null }
+            val prog = { c: Int, t: Int ->
+                emit("archive.progress", JSONObject().put("count", c).put("total", t).put("job", job ?: ""))
+                if (job != null) Jobs.update(job, "Compressing… $c" + (if (t > 0) " / $t files" else " files"), c.toLong(), t.toLong())
             }
+            val entries = o.optJSONArray("entries")
+            val n = if (entries != null)
+                ZipTools.zipEntries((0 until entries.length()).map { i -> entries.getJSONObject(i).let { e -> Pair(File(e.getString("src")), e.optString("as", "")) } }, File(o.getString("dest")), o.strList("exclude"), job, prog)
+            else
+                ZipTools.zip(o.strList("src").map { File(it) }, File(o.getString("dest")), o.optString("base", "").ifEmpty { null }?.let { File(it) }, o.strList("exclude"), job, prog)
             JSONObject().put("count", n)
         }
         "archive.unzip" -> a.obj(0).let { o ->
-            val n = ZipTools.unzip(File(o.getString("src")), File(o.getString("dest"))) { c ->
-                emit("archive.progress", JSONObject().put("count", c))
+            val job = o.optString("job", "").ifEmpty { null }
+            val n = ZipTools.unzip(File(o.getString("src")), File(o.getString("dest")), job) { c, t ->
+                emit("archive.progress", JSONObject().put("count", c).put("total", t).put("job", job ?: ""))
+                if (job != null) Jobs.update(job, "Extracting… $c / $t files", c.toLong(), t.toLong())
             }
             JSONObject().put("count", n)
         }
@@ -339,9 +400,11 @@ object Bridge {
 
         // ---------------- linux environment
         "env.status" -> envStatus()
-        "env.install" -> { LinuxEnv.install { stage, done, total, msg ->
-            emit("env.progress", JSONObject().put("stage", stage).put("done", done).put("total", total).put("msg", msg))
-        }; envStatus() }
+        "env.install" -> { val job = a.optString(0, "").ifEmpty { null }
+            LinuxEnv.install(job) { stage, done, total, msg ->
+                emit("env.progress", JSONObject().put("stage", stage).put("done", done).put("total", total).put("msg", msg).put("job", job ?: ""))
+                if (job != null) Jobs.update(job, msg, if (stage == "download") done else -1, if (stage == "download") total else -1)
+            }; envStatus() }
         "env.reset" -> { SessionManager.killAll(); LinuxEnv.reset(); envStatus() }
         "proc.exec" -> procExec(a.obj(0))
 
@@ -360,7 +423,7 @@ object Bridge {
             .put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
             .put("githubClientId", BuildConfig.GITHUB_CLIENT_ID)
             .put("allFiles", hasAllFiles())
-            .put("features", JSONObject().put("isolatedPreview", true).put("crashRecorder", true).put("termFlow", true))
+            .put("features", JSONObject().put("isolatedPreview", true).put("crashRecorder", true).put("termFlow", true).put("jobs", true).put("storage", true).put("downloads", true))
             .put("paths", JSONObject()
                 .put("home", Paths.home.path).put("files", Paths.files.path).put("data", Paths.data.path)
                 .put("env", Paths.env.path).put("rootfs", Paths.rootfs.path).put("native", Paths.nativeDir.path)
@@ -517,9 +580,11 @@ object Bridge {
 
     private fun netDownload(o: JSONObject): JSONObject {
         val id = o.optString("id", "dl")
+        val job = o.optString("job", "").ifEmpty { null }
         val dest = File(o.getString("dest"))
-        Net.download(o.getString("url"), dest, o.headerMap("headers")) { done, total ->
-            emit("net.progress", JSONObject().put("id", id).put("done", done).put("total", total))
+        Net.download(o.getString("url"), dest, o.headerMap("headers"), job) { done, total ->
+            emit("net.progress", JSONObject().put("id", id).put("job", job ?: "").put("done", done).put("total", total))
+            if (job != null) Jobs.update(job, "Downloading… ${done / 1024} KB" + (if (total > 0) " of ${total / 1024} KB" else ""), done, total)
         }
         return JSONObject().put("path", dest.path).put("size", dest.length())
     }

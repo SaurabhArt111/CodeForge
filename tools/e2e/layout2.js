@@ -79,7 +79,7 @@ for (const f of ["state.json", "settings.json"]) fs.rmSync("/tmp/cf-dev/cf/" + f
       await swipe(200, 380); await page.waitForTimeout(300);
       ok(await page.evaluate(() => document.getElementById("sheet-right").classList.contains("hidden")), tag + "swipe right closes the right sheet");
     } else {
-      ok(await page.evaluate(() => getComputedStyle(document.getElementById("menubar")).display !== "none" && document.querySelectorAll("#menubar .mb-item").length === 8), tag + "VS Code-style menu bar visible (8 menus)");
+      ok(await page.evaluate(() => getComputedStyle(document.getElementById("menubar")).display !== "none" && document.querySelectorAll("#menubar .mb-item").length === 9), tag + "VS Code-style menu bar visible (9 menus: File … Terminal, Security, Help)");
       await page.click('#menubar .mb-item:has-text("File")'); await page.waitForTimeout(250);
       ok(await page.evaluate(() => /Open Folder/.test(document.querySelector(".ctx")?.textContent || "")), tag + "File menu opens with items");
       await page.waitForTimeout(300); await page.mouse.click(640, 600); await page.waitForTimeout(300);

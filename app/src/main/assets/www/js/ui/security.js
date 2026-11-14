@@ -61,10 +61,27 @@ export async function setPinFlow() {
   if (!r.ok) { toast(r.error || (r.lockedMs ? "Locked – try again later" : "Could not set PIN"), { kind: "error" }); return false; }
   token = r.token; tokenAt = Date.now(); toast(st.pinSet ? "PIN changed" : "PIN set", { kind: "success" }); bus.emit("security:changed"); return true;
 }
-async function removePinFlow() {
-  const ok = await pinDialog({ title: "Remove PIN", message: "Enter your current PIN to remove it.", confirmLabel: "Remove", verify: false }); if (ok === undefined) return;
-  const r = await N.auth.clearPin(ok); if (!r.ok) return toast(r.error || "Wrong PIN", { kind: "error" });
-  token = null; settings.set("security.appLock", false); toast("PIN removed"); bus.emit("security:changed");
+export async function removePin() {
+  const ok = await pinDialog({ title: "Remove PIN", message: "Enter your current PIN to remove it.", confirmLabel: "Remove", verify: false }); if (ok === undefined) return false;
+  const r = await N.auth.clearPin(ok); if (!r.ok) { toast(r.error || "Wrong PIN", { kind: "error" }); return false; }
+  token = null; settings.set("security.appLock", false); toast("PIN removed"); bus.emit("security:changed"); return true;
+}
+
+/** Copies a secret and wipes the clipboard again after the time chosen in the Security Centre. */
+let clipT = null;
+export async function copySecret(text) {
+  await copyText(text);
+  const sec = +settings.get("security.clipboardClear") || 0;
+  clearTimeout(clipT); if (sec > 0) clipT = setTimeout(() => clearClipboard(true), sec * 1000);
+  return sec;
+}
+export async function clearClipboard(quiet = false) { clearTimeout(clipT); try { await N.sys.clipboardSet(""); } catch { try { await navigator.clipboard?.writeText(""); } catch { /* not allowed */ } } if (!quiet) toast("Clipboard cleared"); }
+
+/** Asks for PIN / fingerprint when the user turned `settingKey` on. Resolves true to go on. */
+export async function guard(reason, settingKey) {
+  if (!settings.get(settingKey)) return true;
+  const st = await status(); if (!st.pinSet && !st.biometric) return true;   // nothing to ask with: never lock the user out
+  return !!(await identify(reason));
 }
 
 // ---------------------------------------------------------------- app lock overlay
@@ -140,26 +157,10 @@ export async function renderKeyManager(host) {
         const t = await identify(`Reveal ${r.label}`); if (!t) return;
         try { const v = await N.secret.reveal(r.name, t); val.textContent = v; val.classList.add("shown"); clearTimeout(hideT); hideT = setTimeout(() => { val.textContent = masked; val.classList.remove("shown"); }, 15000); } catch (e) { toastError(e); }
       } }, icon("eye"), " Show"));
-      act.push(h("button.btn.small", { title: "Copy (needs PIN / biometrics)", onclick: async () => { const t = await identify(`Copy ${r.label}`); if (!t) return; try { await copyText(await N.secret.reveal(r.name, t)); toast("Copied – clipboard may be readable by other apps", { kind: "warn" }); } catch (e) { toastError(e); } } }, icon("copy")));
+      act.push(h("button.btn.small", { title: "Copy (needs PIN / biometrics)", onclick: async () => { const t = await identify(`Copy ${r.label}`); if (!t) return; try { const sec = await copySecret(await N.secret.reveal(r.name, t)); toast(sec ? `Copied – the clipboard is wiped in ${sec} s` : "Copied – the clipboard stays readable by other apps until you copy something else", { kind: sec ? "success" : "warn" }); } catch (e) { toastError(e); } } }, icon("copy")));
       act.push(h("button.btn.small.danger", { title: "Delete", onclick: async () => { if ((await status()).pinSet && !(await identify("Confirm to delete the key"))) return; if (await confirm(`Delete the ${r.label} key?`, { danger: true, okLabel: "Delete" })) { await N.secret.delete(r.name); renderKeyManager(host); } } }, icon("trash")));
     }
     list.append(h("div.key-row", h("div.key-info", h("div.set-label", r.label), val, h("div.muted.set-key", r.name)), h("div.key-actions", act)));
   }
   host.replaceChildren(list);
-}
-
-export async function renderSecurity(host) {
-  const st = await status();
-  const sw = (key, on) => { const el = h("div.switch" + (settings.get(key) ? ".on" : ""), { role: "switch", onclick: async () => { const n = !settings.get(key); if (key === "security.appLock" && n && !st.pinSet && !st.biometric) { toast("Set a PIN first", { kind: "warn" }); return; } if (key === "security.appLock" && n && !(await identify("Confirm to enable app lock"))) return; settings.set(key, n); el.classList.toggle("on", n); } }); return el; };
-  const row = (label, hint, ctl) => h("div.set-row", h("div.set-info", h("div.set-label", label), h("div.muted.set-key", hint)), ctl);
-  const method = h("select", { onchange: (e) => settings.set("security.method", e.target.value) }, ...[["auto", "Biometrics, then PIN"], ["pin", "PIN only"]].map(([v, l]) => h("option", { value: v, selected: settings.get("security.method") === v }, l)));
-  const after = h("select", { onchange: (e) => settings.set("security.lockAfter", +e.target.value) }, ...[[0, "Immediately"], [30, "After 30 seconds"], [60, "After 1 minute"], [300, "After 5 minutes"], [1800, "After 30 minutes"]].map(([v, l]) => h("option", { value: v, selected: settings.get("security.lockAfter") === v }, l)));
-  host.replaceChildren(
-    row("PIN", st.pinSet ? "A PIN is set (stored as a salted hash, never in plain text)" : "No PIN set", h("div", { style: { display: "flex", gap: "6px" } }, h("button.btn", { onclick: async () => { if (await setPinFlow()) renderSecurity(host); } }, st.pinSet ? "Change" : "Set PIN"), st.pinSet ? h("button.btn.danger", { onclick: async () => { await removePinFlow(); renderSecurity(host); } }, "Remove") : null)),
-    row("Fingerprint / face / screen lock", st.biometric ? "Available on this device" : "Not available (enroll one in Android settings)", h("span.muted", st.biometric ? "✓" : "–")),
-    row("Unlock method", "Order used to unlock the app and reveal keys", method),
-    row("Lock the app", "Ask to unlock when the app opens or is reopened", sw("security.appLock")),
-    row("Lock after leaving", "How long the app can stay in the background before it locks", after),
-    row("Hide content in app switcher", "Blocks screenshots and blanks the recent-apps preview", sw("security.secure")),
-  );
 }

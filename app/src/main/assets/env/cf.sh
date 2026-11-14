@@ -45,6 +45,14 @@ $(head -c 60000)"; fi
     osc ai "$send,$agent,$(printf '%s' "$txt" | b64)" ;;
   agent) exec "$0" ai -a "$@" ;;
   settings|prefs) osc settings "$*" ;;
+  storage|disk) osc storage "" ;;
+  clean)
+    # cf clean      -> clear download caches (npm, pip, apk, ~/.cache) from inside Linux; cf storage opens the full Storage Manager
+    before=$(du -sk "$HOME/.npm" "$HOME/.cache" /var/cache /tmp 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    command -v npm >/dev/null 2>&1 && npm cache clean --force >/dev/null 2>&1
+    rm -rf "$HOME/.npm/_cacache" "$HOME/.npm/_logs" "$HOME/.cache" /var/cache/npm/* /var/cache/pip/* /var/cache/xdg/* /var/cache/apk/* /tmp/* 2>/dev/null
+    after=$(du -sk "$HOME/.npm" "$HOME/.cache" /var/cache /tmp 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    say "Cleared caches: freed about $(( (before - after) / 1024 )) MB.   (cf storage = full Storage Manager)" ;;
   crashes|crash) osc crashes "" ;;
   toast|notify) osc toast "$*" ;;
   install)
@@ -70,6 +78,7 @@ cf , control the CodeForge IDE from the terminal
   cf ai <prompt>             put a prompt in the AI panel (-s sends it, -a runs the agent)
   git diff | cf ai -s review this      pipe text in as context
   cf settings [search]       open Settings         cf crashes   show crash reports
+  cf storage                 open the Storage Manager         cf clean   clear npm / pip / apk caches
   cf toast <message>         show a notification in the IDE
   cf install <cli>           install a coding CLI   cf run <cli>   install (if needed) and start it
   cf clis                    list coding CLIs: claude codex gemini opencode copilot qwen aider

@@ -1,5 +1,17 @@
 // Release notes, newest first. Dates are when the build was prepared.
 export const RELEASES = [
+  { v: "8.3", date: "November 2026", title: "Background tasks, Storage manager, Security Centre",
+    items: [
+      ["new", "ZIPs and bundles are saved straight into the Downloads folder, with a notification when they are ready (on Android 9 and older the system “Save as” picker is used instead)."],
+      ["new", "Compress & export in Open Folder: a button for the current folder and one on every row, also in the project menu and the File menu."],
+      ["new", "Downloads, installs, imports, extractions and exports run as background tasks with a progress bar. Cancel them, send them to the background, and find them again in the status bar. You get a notification when one finishes while the app is in the background."],
+      ["new", "Storage manager: see what takes the space (projects, node_modules, Linux, caches, leftovers, extensions…), clear what is safe, delete single items, set a free-space warning and a storage limit, and let CodeForge clean temporary files when it starts."],
+      ["new", "Security Centre and a Security menu: PIN and fingerprint lock, API keys, clipboard auto-clear, ask before exporting, permission and extension review, network exposure, privacy tools and a check-up."],
+      ["new", "The phone menu opens each submenu as its own page with a back button instead of expanding inside the same box."],
+      ["new", "After a Linux reset the app offers to restart; restarts are only offered where they are needed."],
+      ["fix", "Settings: duplicated entries are gone (provider and model, API keys, security, the two network switches, repeated font labels), and related options are grouped."],
+      ["fix", "Why 3 GB: npm, pip and other caches now live in one cleanable place inside Linux. Bundle export no longer copies your projects first, imported bundles and ZIPs are no longer kept twice, and half-finished downloads or extractions are removed."],
+    ] },
   { v: "8.2", date: "November 2026", title: "Extension views, AI CLI tabs, touch scrolling",
     items: [
       ["new", "Extensions that contribute a side bar container now appear in the activity bar. Tree views, webview views, webview panels and welcome content are supported."],

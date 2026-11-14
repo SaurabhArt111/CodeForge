@@ -3,6 +3,7 @@ package dev.codeforge.ide
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.DownloadManager
 import android.app.KeyguardManager
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
@@ -90,8 +91,13 @@ class MainActivity : Activity(), Bridge.Host {
         handleIntent(intent)
     }
 
+    /** True between onResume and onPause. While a background task runs the WebView is NOT paused, so the page can finish the task (install, notify) with the app closed. */
+    @Volatile private var resumed = false
+
     override fun onResume() {
         super.onResume()
+        resumed = true
+        dev.codeforge.ide.core.Jobs.onIdle = { runOnUiThread { if (!resumed && ::web.isInitialized && dev.codeforge.ide.core.Jobs.count() == 0) web.onPause() } }
         if (::web.isInitialized) {
             web.onResume()
             Bridge.setUiActive(true)
@@ -103,7 +109,8 @@ class MainActivity : Activity(), Bridge.Host {
     }
 
     override fun onPause() {
-        if (::web.isInitialized) { Bridge.emit("app.pause", JSONObject()); web.onPause(); Bridge.setUiActive(false) }
+        resumed = false
+        if (::web.isInitialized) { Bridge.emit("app.pause", JSONObject()); if (dev.codeforge.ide.core.Jobs.count() == 0) web.onPause(); Bridge.setUiActive(false) }
         CrashRecorder.crumb("pause")
         ui.removeCallbacks(heartbeat)
         super.onPause()
@@ -479,6 +486,46 @@ class MainActivity : Activity(), Bridge.Host {
 
     override fun moveToBack() {
         runOnUiThread { moveTaskToBack(true) }
+    }
+
+    /** Relaunches the app in a fresh process: a helper activity in its own process kills this one and starts CodeForge again. */
+    override fun restartApp() {
+        runOnUiThread {
+            try {
+                dev.codeforge.ide.core.SessionManager.killAll()
+                dev.codeforge.ide.core.LiveServers.stopAll()
+                startActivity(Intent(this, RestartActivity::class.java).putExtra(RestartActivity.EXTRA_PID, android.os.Process.myPid()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Throwable) {
+                CrashRecorder.crumb("restart failed: ${e.message}")
+                recreate()
+            }
+        }
+    }
+
+    override fun openDownloads() {
+        runOnUiThread {
+            try { startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        }
+    }
+
+    override fun notificationsEnabled(): Boolean {
+        return (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager).areNotificationsEnabled()
+    }
+
+    override fun requestNotifications() {
+        runOnUiThread {
+            val prefs = getSharedPreferences("cf", MODE_PRIVATE)
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && !prefs.getBoolean("notifAsked", false)) {
+                prefs.edit().putBoolean("notifAsked", true).apply()
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
+            } else openAppSettings()   // already refused once (or blocked): only the system settings page can change it now
+        }
+    }
+
+    override fun openAppSettings() {
+        runOnUiThread {
+            try { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        }
     }
 
     // ------------------------------------------------------------------ results & permissions

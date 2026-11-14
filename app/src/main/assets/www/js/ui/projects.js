@@ -5,6 +5,8 @@ import { h, icon, P, relTime } from "../core/util.js";
 import { modal, contextMenu, confirm, toast } from "../core/ui.js";
 import * as icons from "../features/icons.js";
 import * as of from "./openfolder.js";
+import * as exporter from "./exporter.js";
+import * as jobs from "../core/jobs.js";
 
 const MARKERS = [
   ["package.json", "Node"], ["index.html", "Web"], ["pubspec.yaml", "Flutter"], ["pom.xml", "Java"], ["build.gradle", "Gradle"], ["build.gradle.kts", "Gradle"],
@@ -68,6 +70,12 @@ export async function chooseProject({ openFolder, handlers }) {
     contextMenu([
       { label: "Open", icon: "folder-opened", run: () => done({ open: p.path }) },
       { label: "Browse inside…", icon: "list-tree", run: async () => { const r = await of.browse({ mode: "folder", title: "Open Folder", start: p.path }); if (r) done(typeof r === "object" ? { zip: r.zip } : { open: r }); } },
+      { label: "Compress & export to Downloads…", icon: "file-zip", run: () => exporter.compressAndExport([p.path], { name: P.base(p.path) }) },
+      ...(!p.recent ? [{ label: "Delete from CodeForge storage…", icon: "trash", danger: true, run: async () => {
+        if (!(await confirm(`Delete “${P.base(p.path)}” from CodeForge's storage? This cannot be undone. Export it first if you may need it again.`, { title: "Delete project", okLabel: "Delete", danger: true }))) return;
+        const r = await jobs.run({ title: `Deleting ${P.base(p.path)}`, kind: "storage", icon: "trash", silent: true, cancellable: false }, () => N.storage.delete(p.path));
+        if (r.ok) { toast(`Deleted ${P.base(p.path)}`, { kind: "success" }); const i = stored.findIndex((x) => x.path === p.path); if (i >= 0) stored.splice(i, 1); settings.removeRecent(p.path); render(); } }
+      }] : []),
       ...(p.recent ? [{ separator: true }, { label: "Remove from recent list", icon: "close", run: () => { settings.removeRecent(p.path); const i = recent.findIndex((r) => r.path === p.path); if (i >= 0) recent.splice(i, 1); render(); } }] : []),
     ], x, y);
   }

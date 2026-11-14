@@ -174,6 +174,76 @@ function termCreate(o) {
 // ------------------------------------------------------------------ RPC
 let ghPolls = 0;
 const ghUser = { login: "devuser", name: "Dev User", email: "dev@example.com", avatar_url: "", html_url: "https://github.com/devuser", scopes: "repo, read:user" };
+
+// ------------------------------------------------------------------ background-task state + storage manager emulation (mirrors core/StorageOps.kt)
+const jobsLive = new Map(), jobCancelled = new Set(), jobLog = [];
+function storageRpc() {
+  const CLEANABLE = new Set(["cache-pkg", "cache-home", "cache-app", "tmp", "leftovers", "exports", "node-modules", "ai", "crashes"]);
+  const home = P.home, rootfs = P.rootfs, cf = P.data, envDir = P.env, files = ROOT, dataRoot = ROOT;
+  const lst = (f) => { try { return fs.lstatSync(f); } catch { return null; } };
+  const isExport = (f) => /\.(zip|cfbundle|tar\.gz|tgz)$/i.test(f) && !!lst(f)?.isFile();
+  const classify = (f, parent) => {
+    const name = path.basename(f), pp = path.dirname(f);
+    if (f === rootfs) return "linux-system"; if (f === rootfs + "/var/cache") return "cache-pkg"; if (f === rootfs + "/tmp" || f === envDir + "/tmp") return "tmp";
+    if (f === home + "/.npm") return "cache-pkg"; if (f === home + "/.cache" || f === home + "/.node-gyp") return "cache-home"; if (f === home + "/.cf-share") return "leftovers";
+    if (pp === home) return name === "imported" ? "imported" : name === "inbox" ? "inbox" : name.startsWith(".") ? "linux-user" : isExport(f) ? "exports" : "projects";
+    if (pp === home + "/imported" && isExport(f)) return "exports";
+    if (name === "node_modules" && ["projects", "imported", "inbox"].includes(parent)) return "node-modules";
+    if (pp === files) return name === "home" ? "projects" : name === "rootfs-download.tar.gz" ? "leftovers" : name === "crashes" ? "crashes" : "app-data";
+    if (pp === cf) return name === "extensions" ? "extensions" : name === "plugins" ? "plugins" : name === "ai" ? "ai" : ["transfer-stage", "transfer-in", "incoming", "export-tmp"].includes(name) ? "leftovers" : (/\.(cfbundle|zip)$/.test(name) && lst(f)?.isFile()) ? "leftovers" : "app-data";
+    if (pp === cf + "/extensions" && (name.startsWith(".tmp-") || name.startsWith(".dl-"))) return "leftovers";
+    return null;
+  };
+  const walk = (root, rootCat, acc, tick) => {
+    const stack = [[root, rootCat]];
+    while (stack.length) {
+      const [f, cat] = stack.pop(); const st = lst(f); if (!st) continue; const dir = st.isDirectory();
+      acc.bytes[cat] = (acc.bytes[cat] || 0) + (st.blocks || 0) * 512; if (!dir) acc.files[cat] = (acc.files[cat] || 0) + 1; acc.total += (st.blocks || 0) * 512; if (!dir) acc.nfiles++;
+      if (dir) { let names = []; try { names = fs.readdirSync(f); } catch { continue; } for (const n of names) { const c = path.join(f, n); const cc = classify(c, cat); if (cc === "node-modules" && cat !== "node-modules") acc.nm.push(c); stack.push([c, cc || cat]); } }
+    }
+  };
+  const mk = () => ({ bytes: {}, files: {}, nm: [], total: 0, nfiles: 0 });
+  const kids = (d, flt = () => true) => { try { return fs.readdirSync(d).map((n) => path.join(d, n)).filter(flt); } catch { return []; } };
+  const findNm = () => { const out = []; const scan = (d, depth) => { if (depth > 8) return; for (const c of kids(d)) { const st = lst(c); if (!st?.isDirectory()) continue; if (path.basename(c) === "node_modules") { out.push(c); continue; } if (path.basename(c) === ".git") continue; scan(c, depth + 1); } }; for (const t of kids(home)) { const st = lst(t); if (path.basename(t).startsWith(".") || !st?.isDirectory()) continue; if (path.basename(t) === "node_modules") out.push(t); else scan(t, 0); } return out; };
+  const roots = (id) => ({
+    projects: () => kids(home, (f) => classify(f, "projects") === "projects"), imported: () => kids(home + "/imported", (f) => !isExport(f)), inbox: () => kids(home + "/inbox"),
+    "node-modules": findNm, "linux-system": () => kids(rootfs), "linux-user": () => kids(home, (f) => path.basename(f).startsWith(".") && classify(f, "projects") === "linux-user"),
+    "cache-pkg": () => [home + "/.npm", rootfs + "/var/cache"].filter(fs.existsSync), "cache-home": () => [home + "/.cache", home + "/.node-gyp"].filter(fs.existsSync),
+    tmp: () => [...kids(rootfs + "/tmp"), ...kids(envDir + "/tmp")], exports: () => [...kids(home, isExport), ...kids(home + "/imported", isExport)],
+    leftovers: () => [files + "/rootfs-download.tar.gz", home + "/.cf-share", ...kids(cf, (f) => classify(f, "app-data") === "leftovers"), ...kids(cf + "/extensions", (f) => /^\.(tmp|dl)-/.test(path.basename(f)))].filter(fs.existsSync),
+    extensions: () => kids(cf + "/extensions", (f) => !/^\.(tmp|dl)-/.test(path.basename(f))), plugins: () => kids(cf + "/plugins"), ai: () => kids(cf + "/ai"), crashes: () => kids(files + "/crashes"),
+    "cache-app": () => [], webview: () => [], "app-data": () => [...kids(cf, (f) => classify(f, "app-data") === "app-data"), ...kids(envDir, (f) => path.basename(f) !== "tmp")],
+  }[id]?.() || []);
+  const sizeCat = (r, cat) => { const a = mk(); walk(r, cat, a); return [a.bytes[cat] || 0, a.files[cat] || 0]; };
+  const rmTree = (f) => fs.rmSync(f, { recursive: true, force: true });
+  const protectedRoot = (f) => [dataRoot, files, home, cf, envDir, rootfs, cf + "/extensions", cf + "/plugins"].includes(f.replace(/\/+$/, "")) || f.length < 10 || f.includes("/../");
+  return {
+    "storage.scan": async (job) => {
+      const acc = mk(); walk(dataRoot, "app-data", acc); emit("storage.progress", { files: acc.nfiles, bytes: acc.total, job: job || "" });
+      const sf = fs.statfsSync ? fs.statfsSync(ROOT) : null;
+      return { cats: Object.keys(acc.bytes).sort().map((id) => ({ id, bytes: acc.bytes[id], files: acc.files[id] || 0, cleanable: CLEANABLE.has(id) })), total: acc.total, files: acc.nfiles, device: { free: sf ? sf.bavail * sf.bsize : 0, total: sf ? sf.blocks * sf.bsize : 0 }, nodeModules: acc.nm, at: Date.now() };
+    },
+    "storage.items": async (id, limit = 60) => roots(id).map((r) => { const [b, n] = sizeCat(r, id); const st = lst(r); return { path: r, name: path.basename(r), bytes: b, files: n, dir: !!st?.isDirectory(), mtime: st ? Math.floor(st.mtimeMs) : 0 }; }).sort((a, b) => b.bytes - a.bytes).slice(0, limit),
+    "storage.clean": async (ids, job) => {
+      let freed = 0; const cleaned = [], errors = [];
+      for (const id of ids) {
+        if (!CLEANABLE.has(id)) { errors.push(id + " cannot be cleared in bulk"); continue; }
+        if (id === "tmp" && globalThis.__cfAliveTerms) { errors.push("Close your terminals first – they use the temporary files"); continue; }
+        if (jobCancelled.has(job)) throw new Error("Cancelled");
+        for (const r of roots(id)) { const [b] = sizeCat(r, id); if (protectedRoot(r)) for (const k of kids(r)) rmTree(k); else rmTree(r); freed += b; }
+        if (id === "tmp") { fs.mkdirSync(rootfs + "/tmp", { recursive: true }); fs.mkdirSync(envDir + "/tmp", { recursive: true }); }
+        emit("storage.progress", { cat: id, freed, job: job || "" }); cleaned.push(id);
+      }
+      return { freed, cleaned, errors };
+    },
+    "storage.delete": async (p) => {
+      if (!path.isAbsolute(p) || !(p + "/").startsWith(dataRoot + "/")) throw new Error("Not inside CodeForge's storage");
+      if (protectedRoot(p)) throw new Error("This folder cannot be deleted from here");
+      const a = mk(); walk(p, "x", a); rmTree(p); return { freed: a.total };
+    },
+  };
+}
+
 const methods = {
   "sys.info": async () => ({ version: "8.0.0-devhost", pkg: "dev.codeforge.ide", sdk: 34, abi: "x86_64", device: "DevHost", githubClientId: process.env.CF_GITHUB_CLIENT_ID || "dev-client-id", allFiles: true, paths: P, linux: { installed: false, version: null, arch: "x86_64", setupDone: false, supported: true }, devhost: true }),
   "sys.hasAllFiles": async () => true, "sys.requestAllFiles": async () => true,
@@ -231,8 +301,17 @@ const methods = {
   "archive.zip": async (o) => {
     const zip = new JSZip(); let count = 0;
     const ex = o.exclude || [], skip = (n) => ex.some((p) => (p.startsWith("*") ? n.endsWith(p.slice(1)) : p.endsWith("*") ? n.startsWith(p.slice(0, -1)) : n === p));
-    async function add(f, base) { if (!o.src.includes(f) && skip(path.basename(f))) return; const rel = path.relative(base, f).split(path.sep).join("/"); const st = await fsp.lstat(f); if (st.isSymbolicLink()) return; if (st.isDirectory()) { if (rel) zip.folder(rel); for (const n of (await fsp.readdir(f)).sort()) await add(path.join(f, n), base); } else { zip.file(rel, await fsp.readFile(f)); count++; } }
-    for (const s of o.src) await add(s, o.base || path.dirname(s));
+    // entries: [{src, as}] packs folders under chosen names without copying them first (same as ZipTools.zipEntries)
+    const entries = o.entries ? o.entries.map((e) => [e.src, e.as || ""]) : o.src.map((s) => [s, path.relative(o.base || path.dirname(s), s).split(path.sep).join("/")]);
+    const total = await (async () => { let n = 0; const c = async (f, top) => { const st = await fsp.lstat(f); if (st.isSymbolicLink()) return; if (!top && skip(path.basename(f))) return; if (st.isDirectory()) { for (const k of await fsp.readdir(f)) await c(path.join(f, k), false); } else n++; }; for (const [f] of entries) await c(f, true); return n; })();
+    async function add(f, rel, top) {
+      if (jobCancelled.has(o.job)) throw new Error("Cancelled");
+      if (!top && skip(path.basename(f))) return; const st = await fsp.lstat(f); if (st.isSymbolicLink()) return;
+      if (st.isDirectory()) { if (rel) zip.folder(rel); for (const n of (await fsp.readdir(f)).sort()) await add(path.join(f, n), rel ? rel + "/" + n : n, false); }
+      else { zip.file(rel, await fsp.readFile(f)); if (++count % 20 === 0) emit("archive.progress", { count, total, job: o.job || "" }); }
+    }
+    for (const [f, as] of entries) await add(f, as, true);
+    emit("archive.progress", { count, total, job: o.job || "" });
     await fsp.mkdir(path.dirname(o.dest), { recursive: true }); await fsp.writeFile(o.dest, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })); return { count };
   },
   "archive.unzip": async (o) => {
@@ -264,7 +343,17 @@ const methods = {
     return true;
   },
   "net.abort": async (id) => { streams.get(id)?.abort(); return true; },
-  "net.download": async (o) => { const r = await fetch(o.url, { headers: o.headers || {} }); if (!r.ok) throw new Error("HTTP " + r.status); const b = Buffer.from(await r.arrayBuffer()); await fsp.mkdir(path.dirname(o.dest), { recursive: true }); await fsp.writeFile(o.dest, b); emit("net.progress", { id: o.id, done: b.length, total: b.length }); return { path: o.dest, size: b.length }; },
+  "net.download": async (o) => {
+    const ctl = new AbortController(); if (o.job) streams.set(o.job, ctl);
+    await fsp.mkdir(path.dirname(o.dest), { recursive: true });
+    try {
+      const r = await fetch(o.url, { headers: o.headers || {}, signal: ctl.signal }); if (!r.ok) throw new Error("HTTP " + r.status);
+      const total = Number(r.headers.get("content-length")) || -1; let done = 0; const out = fs.createWriteStream(o.dest);
+      for await (const chunk of r.body) { if (jobCancelled.has(o.job)) { ctl.abort(); throw new Error("Cancelled"); } out.write(chunk); done += chunk.length; emit("net.progress", { id: o.id, job: o.job || "", done, total }); }
+      await new Promise((res) => out.end(res)); emit("net.progress", { id: o.id, job: o.job || "", done, total: total > 0 ? total : done }); return { path: o.dest, size: done };
+    } catch (e) { fs.rmSync(o.dest, { force: true }); throw new Error(jobCancelled.has(o.job) ? "Cancelled" : e.message); }   // never leave a half-downloaded file
+    finally { if (o.job) streams.delete(o.job); }
+  },
   // ---- auth emulation (mirrors core/Auth.kt: salted PBKDF2 PIN, escalating lockout, 90 s unlock tokens, no biometrics)
   ...(() => {
     const lockFile = `${P.data}/lock.json`; const tokens = new Map();
@@ -313,9 +402,24 @@ const methods = {
   "term.attach": async (id) => { const t = terms.get(id); return t ? { ...termInfo(t), b64: t.buf.toString("base64") } : null; },
   "term.rename": async (id, title) => { const t = terms.get(id); if (t) t.title = title; return true; },
   "env.status": async () => ({ installed: false, version: null, arch: "x86_64", setupDone: false, supported: true }),
-  "env.install": async () => { for (const [i, st] of ["download", "extract", "configure"].entries()) { emit("env.progress", { stage: st, done: i + 1, total: 3, msg: st }); await new Promise((r) => setTimeout(r, 100)); } return { installed: false, supported: true }; },
+  "env.install": async (job) => { for (const [i, st] of ["download", "extract", "configure"].entries()) { emit("env.progress", { stage: st, done: i + 1, total: 3, msg: st, job: job || "" }); await new Promise((r) => setTimeout(r, 100)); } return { installed: false, supported: true }; },
   "env.reset": async () => ({ installed: false }),
   "proc.exec": async (o) => new Promise((res) => { const args = o.command || ["/bin/sh", "-c", o.line]; execFile(args[0], args.slice(1), { cwd: o.cwd || P.home, timeout: o.timeoutMs || 120000, maxBuffer: 4e6 }, (e, so, se) => res({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: so + se, timedOut: !!e?.killed })); }),
+  // ---- background tasks / restart / downloads (native: core/Jobs.kt, MainActivity)
+  "jobs.begin": async (id, title) => { jobsLive.set(id, title); jobCancelled.delete(id); return true; },
+  "jobs.update": async () => true, "jobs.end": async (id, ok, text) => { jobsLive.delete(id); jobCancelled.delete(id); jobLog.push({ id, ok, text }); return true; },
+  "jobs.cancel": async (id) => { jobCancelled.add(id); streams.get(id)?.abort(); return true; },
+  "sys.restart": async () => { emit("devhost.restart", {}); return true; }, "sys.openDownloads": async () => true,
+  "sys.notifyStatus": async () => true, "sys.requestNotify": async () => true, "sys.openAppSettings": async () => true,
+  "export.toDownloads": async (o) => {
+    const dl = path.join(ROOT, "Download"); await fsp.mkdir(dl, { recursive: true });
+    let name = path.basename(o.name || o.src), dest = path.join(dl, name), i = 1; const ext = path.extname(name), base = path.basename(name, ext);
+    while (fs.existsSync(dest)) dest = path.join(dl, `${base} (${i++})${ext}`);
+    const size = fs.statSync(o.src).size; await fsp.copyFile(o.src, dest); emit("net.progress", { id: o.job || "export", job: o.job || "", done: size, total: size });
+    if (o.deleteSrc) fs.rmSync(o.src, { force: true });
+    return { name: path.basename(dest), path: "Download/" + path.basename(dest), uri: "file://" + dest, size };
+  },
+  ...storageRpc(),
   "devhost.setPick": async (o) => { Object.assign(nextPick, o); return true; },
 };
 let clip = ""; const nextPick = {}; const streams = new Map();

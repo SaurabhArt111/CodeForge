@@ -26,50 +26,77 @@ object ZipTools {
     }
 
     /** Zips [sources]; entry names are relative to [base] (defaults to each source's parent). [exclude] = name patterns left out. */
-    fun zip(sources: List<File>, dest: File, base: File?, exclude: List<String> = emptyList(), progress: (Int) -> Unit = {}): Int {
+    fun zip(sources: List<File>, dest: File, base: File?, exclude: List<String> = emptyList(), job: String? = null, progress: (Int, Int) -> Unit = { _, _ -> }): Int =
+        zipEntries(sources.map { Pair(it, it.relativeTo(base ?: (it.parentFile ?: it)).path.replace(File.separatorChar, '/')) }, dest, exclude, job, progress)
+
+    /**
+     * Zips each (file or folder, name inside the archive) pair, so two folders can be packed under chosen names without copying them first.
+     * [progress] gets (files done, files in total); the total comes from a quick pre-walk so the UI can show a real percentage.
+     * Stops with CancellationException when [job] is cancelled and then removes the half-written archive.
+     */
+    fun zipEntries(entries: List<Pair<File, String>>, dest: File, exclude: List<String> = emptyList(), job: String? = null, progress: (Int, Int) -> Unit = { _, _ -> }): Int {
         dest.parentFile?.mkdirs()
-        var count = 0
-        ZipOutputStream(BufferedOutputStream(FileOutputStream(dest), 1 shl 16)).use { zos ->
-            zos.setLevel(6)
-            val buf = ByteArray(1 shl 16)
-            fun add(f: File, root: File) {
-                if (isLink(f)) return
-                if (f !in sources && skipped(f.name, exclude)) return
-                val rel = f.relativeTo(root).path.replace(File.separatorChar, '/')
-                if (f.isDirectory) {
-                    if (rel.isNotEmpty()) {
-                        zos.putNextEntry(ZipEntry("$rel/").also { it.time = f.lastModified() })
-                        zos.closeEntry()
-                    }
-                    f.listFiles()?.sortedBy { it.name }?.forEach { add(it, root) }
-                } else if (f.isFile) {
-                    if (f.canonicalPath == dest.canonicalPath) return
-                    zos.putNextEntry(ZipEntry(rel).also { it.time = f.lastModified() })
-                    FileInputStream(f).use { ins ->
-                        while (true) {
-                            val n = ins.read(buf)
-                            if (n < 0) break
-                            zos.write(buf, 0, n)
-                        }
-                    }
-                    zos.closeEntry()
-                    if (++count % 100 == 0) progress(count)
-                }
-            }
-            for (s in sources) add(s, base ?: (s.parentFile ?: s))
+        val roots = entries.map { it.first }
+        val destCanon = try { dest.canonicalPath } catch (_: Exception) { dest.path }
+        fun countIn(f: File, top: Boolean): Int {
+            if (isLink(f)) return 0
+            if (!top && skipped(f.name, exclude)) return 0
+            if (f.isFile) return if (f.canonicalPath == destCanon) 0 else 1
+            var n = 0
+            f.listFiles()?.forEach { n += countIn(it, false) }
+            return n
         }
-        progress(count)
+        val total = try { entries.sumOf { countIn(it.first, true) } } catch (_: Exception) { 0 }
+        var count = 0
+        var ok = false
+        try {
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(dest), 1 shl 16)).use { zos ->
+                zos.setLevel(6)
+                val buf = ByteArray(1 shl 16)
+                fun add(f: File, rel: String, top: Boolean) {
+                    if (isLink(f)) return
+                    if (!top && skipped(f.name, exclude)) return
+                    if (f.isDirectory) {
+                        if (rel.isNotEmpty()) {
+                            zos.putNextEntry(ZipEntry("$rel/").also { it.time = f.lastModified() })
+                            zos.closeEntry()
+                        }
+                        f.listFiles()?.sortedBy { it.name }?.forEach { add(it, if (rel.isEmpty()) it.name else rel + "/" + it.name, false) }
+                    } else if (f.isFile) {
+                        if (f.canonicalPath == destCanon) return
+                        Jobs.check(job)
+                        zos.putNextEntry(ZipEntry(rel).also { it.time = f.lastModified() })
+                        FileInputStream(f).use { ins ->
+                            while (true) {
+                                val n = ins.read(buf)
+                                if (n < 0) break
+                                zos.write(buf, 0, n)
+                            }
+                        }
+                        zos.closeEntry()
+                        if (++count % 50 == 0) progress(count, total)
+                    }
+                }
+                for ((f, name) in entries) add(f, name, true)
+            }
+            ok = true
+        } finally {
+            if (!ok) dest.delete()
+        }
+        progress(count, total)
         return count
     }
 
-    fun unzip(zip: File, dest: File, progress: (Int) -> Unit = {}): Int {
+    fun unzip(zip: File, dest: File, job: String? = null, progress: (Int, Int) -> Unit = { _, _ -> }): Int {
         dest.mkdirs()
         val rootCanon = dest.canonicalFile
         var count = 0
         ZipFile(zip).use { zf ->
             val buf = ByteArray(1 shl 16)
+            val total = zf.size()
             val entries = zf.entries()
             while (entries.hasMoreElements()) {
+                Jobs.check(job)
                 val e = entries.nextElement()
                 val out = File(dest, e.name)
                 val canon = out.canonicalFile
@@ -92,11 +119,11 @@ object ZipTools {
                     if (e.time > 0) out.setLastModified(e.time)
                     // Scripts inside archives are usually meant to be runnable.
                     if (e.name.endsWith(".sh")) out.setExecutable(true, false)
-                    if (++count % 100 == 0) progress(count)
+                    if (++count % 100 == 0) progress(count, total)
                 }
             }
+            progress(count, total)
         }
-        progress(count)
         return count
     }
 

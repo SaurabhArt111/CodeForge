@@ -1,5 +1,6 @@
 // Linux environment (proot + Alpine): status, setup wizard, package presets. Gives the terminal real npm / node / python / git / gcc.
 import { h, icon, P, fmtBytes } from "../core/util.js";
+import * as jobs from "../core/jobs.js";
 let A;
 export async function init(api) { A = api; }
 
@@ -43,9 +44,14 @@ export async function wizard() {
 }
 
 async function install() {
-  const b = A.busy("Downloading Alpine Linux…"); b.progress(-1);
-  const off = A.N.on("env.progress", (d) => { b.update(`${d.msg || d.stage}`); if (d.total) b.progress(d.done / d.total); });
-  try { await A.N.env.install(); return true; } catch (e) { A.toastError(e); return false; } finally { off(); b.close(); }
+  const r = await jobs.run({ title: "Installing Linux environment", kind: "linux", icon: "server-environment", blocking: true, cancellable: true, doneText: "Linux environment installed" }, async (job) => {
+    job.update("Downloading Alpine Linux…", -1);
+    job.on("env.progress", (d) => job.update(`${d.msg || d.stage}`, d.total ? d.done / d.total : -1));
+    job.watchBytes("Downloading Alpine Linux");
+    return A.N.env.install(job.id);
+  });
+  if (!r.ok && !r.cancelled) A.toastError(new Error(r.error));
+  return r.ok;
 }
 
 export async function runSetup(pkgs) {
@@ -59,4 +65,5 @@ export async function runSetup(pkgs) {
 export async function reset() {
   if (!(await A.confirm("Remove the Linux environment and all packages installed in it? Your projects are not affected.", { title: "Reset Linux", okLabel: "Remove", danger: true }))) return;
   await A.N.env.reset(); A.toast("Linux environment removed");
+  await jobs.askRestart("The Linux environment was removed. Restarting closes terminals that were still using it and frees what they held.", { mode: "app", title: "Restart CodeForge?" });
 }

@@ -20,6 +20,7 @@ export LANG=C.UTF-8
 export COLORTERM=truecolor
 export EDITOR=nano
 export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+export npm_config_cache=/var/cache/npm PIP_CACHE_DIR=/var/cache/pip XDG_CACHE_HOME=/var/cache/xdg
 case "$-" in *i*)
   alias ll='ls -lah --color=auto'
   alias ls='ls --color=auto'
@@ -48,6 +49,6 @@ if command -v git >/dev/null 2>&1; then
   git config --global init.defaultBranch main 2>/dev/null
   git config --global --get-all safe.directory >/dev/null 2>&1 || git config --global --add safe.directory '*'
 fi
-mkdir -p /root/.npm-global
+mkdir -p /root/.npm-global /var/cache/npm /var/cache/pip /var/cache/xdg
 touch /root/.codeforge-setup-done
 ok "Setup finished. Type 'code .' to open the current folder in CodeForge."

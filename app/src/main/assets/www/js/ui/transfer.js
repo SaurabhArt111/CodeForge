@@ -5,7 +5,11 @@
 import { N } from "../core/bridge.js";
 import { settings, DEFAULTS } from "../core/settings.js";
 import { h, icon, P } from "../core/util.js";
-import { modal, toast, toastError, busy } from "../core/ui.js";
+import { modal, toast, toastError } from "../core/ui.js";
+import * as jobs from "../core/jobs.js";
+import * as exporter from "./exporter.js";
+import * as security from "./security.js";
+import * as storage from "./storage.js";
 import { askZipOptions } from "./zipdialog.js";
 import * as of from "./openfolder.js";
 import { mode as bridgeMode } from "../core/bridge.js";
@@ -34,53 +38,62 @@ export async function exportBundle() {
   const o = await askZipOptions({ name: `CodeForge-${stamp()}.cfbundle`, paths: projects.filter((p) => sel.has(p.name)).map((p) => p.path), title: "Transfer to another CodeForge", okLabel: "Create bundle", before: { el, collect: () => ({ names: [...sel], withSettings }) } });
   if (!o) return;
   const names = o.extra.names; if (!names.length && !o.extra.withSettings) return toast("Nothing selected", { kind: "warn" });
-  const b = busy("Packing…");
-  const stage = P.join(info.paths.data, "transfer-stage"); const bundle = P.join(info.paths.data, o.name.replace(/\.zip$/i, ""));
+  if (!(await security.guard("Confirm to export your projects", "security.authExport"))) return;
+  if (!(await storage.ensure(0, "this bundle"))) return;
+  // only two tiny files are staged; the projects are packed straight from where they are (no second copy of your work on disk)
+  const stage = P.join(info.paths.data, "transfer-stage"); await N.fs.rm(stage).catch(() => {}); await N.fs.mkdir(stage);
+  const entries = [];
   try {
-    await N.fs.rm(stage).catch(() => {}); await N.fs.rm(bundle).catch(() => {}); await N.fs.mkdir(P.join(stage, "projects"));
-    for (const n of names) { const p = projects.find((x) => x.name === n); b.update(`Packing ${n}…`); await N.fs.copy(p.path, P.join(stage, "projects", n)); }
-    if (o.extra.withSettings) { const s = {}; for (const k of Object.keys(settings.values)) if (portable(k) && settings.values[k] !== DEFAULTS[k]) s[k] = settings.values[k]; await N.fs.writeText(P.join(stage, "settings.json"), JSON.stringify(s, null, 2)); }
+    if (o.extra.withSettings) { const s = {}; for (const k of Object.keys(settings.values)) if (portable(k) && settings.values[k] !== DEFAULTS[k]) s[k] = settings.values[k]; await N.fs.writeText(P.join(stage, "settings.json"), JSON.stringify(s, null, 2)); entries.push({ src: P.join(stage, "settings.json"), as: "settings.json" }); }
     await N.fs.writeText(P.join(stage, "manifest.json"), JSON.stringify({ format: FORMAT, app: "codeforge", from: bridgeMode === "android" ? "android" : "web", version: info.version, createdAt: new Date().toISOString(), projects: names, settings: !!o.extra.withSettings }, null, 2));
-    b.update("Compressing…");
-    const r = await N.archive.zip({ src: [P.join(stage, "manifest.json"), ...(o.extra.withSettings ? [P.join(stage, "settings.json")] : []), P.join(stage, "projects")], dest: bundle, base: stage, exclude: o.exclude });
-    toast(`Bundle ready (${r.count} files)`, { kind: "success" });
-    if (bridgeMode === "android") await of.exportFileToDevice(bundle); else await N.sys.exportFile(bundle);
-    return bundle;
-  } catch (e) { toastError(e); } finally { await N.fs.rm(stage).catch(() => {}); b.close(); }
+    entries.unshift({ src: P.join(stage, "manifest.json"), as: "manifest.json" });
+    for (const n of names) entries.push({ src: projects.find((x) => x.name === n).path, as: "projects/" + n });
+  } catch (e) { await N.fs.rm(stage).catch(() => {}); return toastError(e); }
+  return exporter.zipToDownloads(entries, o.name, { exclude: o.exclude, title: "Packing transfer bundle", mime: "application/octet-stream", cleanup: [stage] });
 }
 
 /** Open a bundle: `path` (already on this device) or ask for one. `openFolder` is called with the first imported project. */
 export async function importBundle({ path, openFolder, confirmDialog = true } = {}) {
   const info = await N.sys.info();
-  if (!path) { const r = await of.importFilesFromDevice(null, P.join(info.paths.data, "incoming")); path = r?.[0]; }
+  const incoming = P.join(info.paths.data, "incoming");
+  if (!path) { const r = await of.importFilesFromDevice(null, incoming); path = r?.[0]; }
   if (!path) return;
+  const ownCopy = P.dir(path) === incoming;                       // the bundle was copied here by the file picker: remove that copy when done
   const tmp = P.join(info.paths.data, "transfer-in");
-  const b = busy("Reading bundle…");
+  const cleanup = async () => { await N.fs.rm(tmp).catch(() => {}); if (ownCopy) await N.fs.rm(path).catch(() => {}); };
+  if (!(await storage.ensure(0, "this bundle"))) { await cleanup(); return; }
   try {
-    await N.fs.rm(tmp).catch(() => {}); await N.archive.unzip({ src: path, dest: tmp });
-    let man; try { man = JSON.parse((await N.fs.readText(P.join(tmp, "manifest.json"))).text); } catch { throw new Error("This is not a CodeForge bundle (manifest.json is missing)."); }
-    if (man.app !== "codeforge" || man.format > FORMAT) throw new Error("This bundle was made by a newer CodeForge. Update the app and try again.");
-    let sets = {}; try { sets = JSON.parse((await N.fs.readText(P.join(tmp, "settings.json"))).text || "{}"); } catch { /* no settings in bundle */ }
-    const keys = Object.keys(sets).filter(portable);
-    b.close();
+    const read = await jobs.run({ title: "Reading bundle", kind: "import", icon: "package", blocking: true, cancellable: false, silent: true }, async (job) => {
+      job.watchFiles("Unpacking"); job.update("Unpacking…", -1);
+      await N.fs.rm(tmp).catch(() => {}); await N.archive.unzip({ src: path, dest: tmp, job: job.id });
+      let man; try { man = JSON.parse((await N.fs.readText(P.join(tmp, "manifest.json"))).text); } catch { throw new Error("This is not a CodeForge bundle (manifest.json is missing)."); }
+      if (man.app !== "codeforge" || man.format > FORMAT) throw new Error("This bundle was made by a newer CodeForge. Update the app and try again.");
+      let sets = {}; try { sets = JSON.parse((await N.fs.readText(P.join(tmp, "settings.json"))).text || "{}"); } catch { /* no settings in bundle */ }
+      return { man, sets };
+    });
+    if (!read.ok) { if (!read.cancelled) toastError(new Error(read.error)); await cleanup(); return; }
+    const { man, sets } = read.result; const keys = Object.keys(sets).filter(portable);
     if (confirmDialog) {
       const ok = await modal({ title: "Import CodeForge bundle", width: 480, body: h("div", h("p.modal-text", `From ${man.from || "another CodeForge"} · ${new Date(man.createdAt).toLocaleString()}`),
         h("div.xfer-title", `${man.projects.length} project${man.projects.length === 1 ? "" : "s"}`), h("ul.ai-apply-list", ...man.projects.map((n) => h("li", n))),
         keys.length ? h("p.modal-text", `${keys.length} setting${keys.length === 1 ? "" : "s"} will be applied (theme, fonts, editor…).`) : null,
-        h("p.muted", "Projects are copied next to your other imported folders; nothing is overwritten.")), buttons: [{ label: "Cancel", value: false }, { label: "Import", primary: true, value: true }] });
-      if (ok !== true) return;
+        h("p.muted", "Projects are placed next to your other imported folders; nothing is overwritten.")), buttons: [{ label: "Cancel", value: false }, { label: "Import", primary: true, value: true }] });
+      if (ok !== true) { await cleanup(); return; }
     }
-    const b2 = busy("Importing…"); const dest0 = of.importDir(); let first = null;
-    try {
-      await N.fs.mkdir(dest0);
+    const dest0 = of.importDir(); let first = null;
+    const r = await jobs.run({ title: "Importing projects", kind: "import", icon: "package", blocking: true, cancellable: false, doneText: `Imported ${man.projects.length} project${man.projects.length === 1 ? "" : "s"}${keys.length ? " and settings" : ""}` }, async (job) => {
+      await N.fs.mkdir(dest0); let i = 0;
       for (const n of man.projects) {
-        let name = n, i = 2; while (await N.fs.exists(P.join(dest0, name))) name = `${n} ${i++}`;
-        b2.update(`Importing ${n}…`); await N.fs.copy(P.join(tmp, "projects", n), P.join(dest0, name)); first ||= P.join(dest0, name);
+        let name = n, k = 2; while (await N.fs.exists(P.join(dest0, name))) name = `${n} ${k++}`;
+        job.update(`Importing ${n}…`, i++ / man.projects.length);
+        const from = P.join(tmp, "projects", n), to = P.join(dest0, name);
+        try { await N.fs.rename(from, to); } catch { await N.fs.copy(from, to); }   // moving needs no extra space; copy only as a fallback
+        first ||= to;
       }
       for (const k of keys) settings.set(k, sets[k]);
-    } finally { b2.close(); }
-    toast(`Imported ${man.projects.length} project${man.projects.length === 1 ? "" : "s"}${keys.length ? " and settings" : ""}`, { kind: "success" });
+    });
+    if (!r.ok) { if (!r.cancelled) toastError(new Error(r.error)); return; }
     if (first && openFolder) openFolder(first);
     return { projects: man.projects, settings: keys.length };
-  } catch (e) { toastError(e); } finally { b.close(); await N.fs.rm(tmp).catch(() => {}); }
+  } catch (e) { toastError(e); } finally { await cleanup(); }
 }

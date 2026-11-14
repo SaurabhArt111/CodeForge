@@ -129,7 +129,7 @@ object LinuxEnv {
     )
 
     /** progress(stage, done, total, message) , stage is "download" | "verify" | "extract" | "configure". */
-    fun install(progress: (String, Long, Long, String) -> Unit) {
+    fun install(job: String? = null, progress: (String, Long, Long, String) -> Unit) {
         val arch = arch() ?: throw IllegalStateException("Unsupported CPU architecture: ${Paths.abi}")
         var lastError: Exception? = null
         val tmp = File(Paths.files, "rootfs-download.tar.gz")
@@ -141,7 +141,7 @@ object LinuxEnv {
                 val yaml = Net.getText("$base/latest-releases.yaml")
                 val (file, sha) = parseRelease(yaml) ?: throw IllegalStateException("No minirootfs listed for $arch")
                 progress("download", 0, 0, "Downloading $file")
-                Net.download("$base/$file", tmp, emptyMap()) { done, total -> progress("download", done, total, file) }
+                Net.download("$base/$file", tmp, emptyMap(), job) { done, total -> progress("download", done, total, file) }
                 if (sha != null) {
                     progress("verify", 0, 0, "Verifying checksum…")
                     val md = MessageDigest.getInstance("SHA-256")
@@ -154,17 +154,20 @@ object LinuxEnv {
                 }
                 ok = true
                 break
+            } catch (e: java.util.concurrent.CancellationException) {
+                tmp.delete(); throw e
             } catch (e: Exception) {
                 lastError = e
             }
         }
-        if (!ok) throw (lastError ?: IllegalStateException("Download failed"))
+        if (!ok) { tmp.delete(); throw (lastError ?: IllegalStateException("Download failed")) }
 
         progress("extract", 0, 0, "Extracting root filesystem…")
         deleteTree(Paths.rootfs)
         Paths.rootfs.mkdirs()
-        TarGz.extract(tmp, Paths.rootfs, trusted = true) { n -> progress("extract", n.toLong(), 0, "$n files") }
-        tmp.delete()
+        var extracted = false
+        try { TarGz.extract(tmp, Paths.rootfs, trusted = true) { n -> Jobs.check(job); progress("extract", n.toLong(), 0, "$n files") }; extracted = true }
+        finally { tmp.delete(); if (!extracted) deleteTree(Paths.rootfs) }   // no half-extracted system left behind       // the 4 MB archive is not needed any more, even when extracting failed
 
         progress("configure", 0, 0, "Configuring…")
         for (d in listOf("tmp", "root", "proc", "sys", "dev", "run", "etc/profile.d", "usr/local/bin")) File(Paths.rootfs, d).mkdirs()

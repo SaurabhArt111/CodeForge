@@ -13,11 +13,12 @@ import android.os.IBinder
 import android.os.PowerManager
 import dev.codeforge.ide.MainActivity
 import dev.codeforge.ide.R
+import dev.codeforge.ide.core.Jobs
 import dev.codeforge.ide.core.LiveServers
 import dev.codeforge.ide.core.Paths
 import dev.codeforge.ide.core.SessionManager
 
-/** Foreground service: keeps terminals, `npm run dev` servers and the live server running in the background. */
+/** Foreground service: keeps terminals, `npm run dev` servers, the live server and background tasks (downloads, compressing …) running in the background. */
 class SessionService : Service() {
     private var wake: PowerManager.WakeLock? = null
 
@@ -87,9 +88,11 @@ class SessionService : Service() {
         private fun buildNotification(c: Context): Notification {
             val terms = SessionManager.aliveCount()
             val servers = LiveServers.count()
+            val tasks = Jobs.count()
             val text = buildString {
                 append(if (terms == 1) "1 terminal" else "$terms terminals")
                 if (servers > 0) append(" · ").append(if (servers == 1) "1 server" else "$servers servers")
+                if (tasks > 0) append(" · ").append(if (tasks == 1) "1 background task" else "$tasks background tasks")
             }
             val open = PendingIntent.getActivity(
                 c, 0, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -112,7 +115,7 @@ class SessionService : Service() {
         /** Start / refresh / stop the service according to what is currently running. */
         fun sync() {
             val c = try { Paths.app } catch (_: Throwable) { return }
-            val active = SessionManager.aliveCount() > 0 || LiveServers.count() > 0
+            val active = SessionManager.aliveCount() > 0 || LiveServers.count() > 0 || Jobs.count() > 0
             try {
                 if (active) {
                     val i = Intent(c, SessionService::class.java)

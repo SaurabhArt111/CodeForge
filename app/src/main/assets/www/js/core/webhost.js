@@ -184,6 +184,50 @@ function createShell(emit, id, cwd, startLive) {
   return sh;
 }
 
+
+// ------------------------------------------------------------------------------------------ Storage Manager (browser: the virtual file system in IndexedDB)
+const cancelled = new Set();
+const sizeOfPrefix = (p) => underPrefix(p).reduce((n, k) => n + (files.get(k)?.d?.length || 0), 0);
+function catOf(k) {
+  const rel = k.startsWith(HOME + "/") ? k.slice(HOME.length + 1).split("/") : null;
+  if (k.startsWith(DATA + "/extensions/")) return /^\.(tmp|dl)-/.test(k.split("/")[3] || "") ? "leftovers" : "extensions";
+  if (k.startsWith(DATA + "/plugins/")) return "plugins"; if (k.startsWith(DATA + "/ai/")) return "ai";
+  if (/^\/data\/(transfer-stage|transfer-in|incoming|export-tmp)(\/|$)/.test(k)) return "leftovers";
+  if (k.startsWith(DATA + "/")) return /\.(zip|cfbundle)$/.test(k) && k.split("/").length === 3 ? "leftovers" : "app-data";
+  if (!rel) return "app-data";
+  if (rel[0].startsWith(".")) return rel[0] === ".cache" || rel[0] === ".node-gyp" ? "cache-home" : rel[0] === ".npm" ? "cache-pkg" : "linux-user";
+  if (/\.(zip|cfbundle|tgz|tar\.gz)$/i.test(rel[rel.length - 1]) && (rel.length === 1 || (rel[0] === "imported" && rel.length === 2))) return "exports";
+  if (rel.includes("node_modules")) return "node-modules";
+  return rel[0] === "imported" ? "imported" : rel[0] === "inbox" ? "inbox" : "projects";
+}
+const CLEANABLE_WEB = new Set(["cache-pkg", "cache-home", "leftovers", "exports", "node-modules", "ai"]);
+function storageScan() {
+  const bytes = {}, nfiles = {}; let total = 0, n = 0, nm = new Set();
+  for (const [k, r] of files) { if (r.t !== "f") continue; const c = catOf(k); const b = r.d?.length || 0; bytes[c] = (bytes[c] || 0) + b; nfiles[c] = (nfiles[c] || 0) + 1; total += b; n++; if (c === "node-modules") nm.add(k.slice(0, k.indexOf("/node_modules") + 13)); }
+  return { cats: Object.keys(bytes).sort().map((id) => ({ id, bytes: bytes[id], files: nfiles[id], cleanable: CLEANABLE_WEB.has(id) })), total, files: n, device: { free: 0, total: 0 }, nodeModules: [...nm], at: Date.now() };
+}
+function storageItems(id, limit) {
+  const m = new Map();
+  for (const [k, r] of files) {
+    if (r.t !== "f" || catOf(k) !== id) continue;
+    let key;
+    if (id === "node-modules") key = k.slice(0, k.indexOf("/node_modules") + 13);
+    else if (id === "exports" || id === "leftovers") key = k;
+    else { const base = id === "imported" || id === "inbox" ? HOME + "/" + id : id.startsWith("linux") || id.startsWith("cache") ? HOME : k.startsWith(DATA) ? k.split("/").slice(0, 4).join("/") : HOME; const parts = k.slice(base.length + 1).split("/"); key = base + "/" + parts[0]; }
+    const e = m.get(key) || { path: key, name: baseOf(key), bytes: 0, files: 0, dir: true, mtime: r.m }; e.bytes += r.d?.length || 0; e.files++; m.set(key, e);
+  }
+  return [...m.values()].sort((a, b) => b.bytes - a.bytes).slice(0, limit);
+}
+async function storageClean(ids) {
+  let freed = 0; const cleaned = [], errors = [];
+  for (const id of ids) {
+    if (!CLEANABLE_WEB.has(id)) { errors.push(id + " cannot be cleared in bulk"); continue; }
+    for (const it of storageItems(id, 100000)) { freed += it.bytes; await rm(it.path); }
+    cleaned.push(id);
+  }
+  return { freed, cleaned, errors };
+}
+
 // ------------------------------------------------------------------------------------------ dispatcher
 export function create(emit) {
   const ready = openDb();
@@ -203,6 +247,13 @@ export function create(emit) {
     "sys.exportFile": async (src) => { const r = need(src); download(baseOf(src), r.d, mimeOf(src)); return true; },
     "sys.exportTree": async (src, _uri, ex) => { const z = await zipOut([src], null, ex || []); download(baseOf(src) + ".zip", z.bytes, "application/zip"); return true; },
     "sys.exit": async () => true, "sys.moveToBack": async () => true, "sys.setSecure": async () => true,
+    "sys.restart": async () => { setTimeout(() => location.reload(), 50); return true; }, "sys.openDownloads": async () => true,
+    "sys.notifyStatus": async () => (typeof Notification !== "undefined" ? Notification.permission === "granted" : false),
+    "sys.requestNotify": async () => { try { await Notification.requestPermission(); } catch { /* unsupported */ } return true; }, "sys.openAppSettings": async () => true,
+    "jobs.begin": async () => true, "jobs.update": async () => true, "jobs.end": async (id, ok, text, _dl, silent) => { if (!silent && typeof Notification !== "undefined" && Notification.permission === "granted") try { new Notification("CodeForge", { body: text }); } catch { /* ignore */ } return true; }, "jobs.cancel": async (id) => { cancelled.add(id); streams.get(id)?.abort(); return true; },
+    "export.toDownloads": async (o) => { const r = need(o.src); const name = o.name || baseOf(o.src); download(name, r.d, o.mime || mimeOf(name)); if (o.deleteSrc) await rm(o.src); return { name, path: "Downloads/" + name, uri: "", size: r.d.length }; },
+    "storage.scan": async () => storageScan(), "storage.items": async (id, limit = 60) => storageItems(id, limit), "storage.clean": async (ids) => storageClean(ids),
+    "storage.delete": async (p) => { p = abs(p); if (!p.startsWith(HOME + "/") && !p.startsWith(DATA + "/")) throw new Error("Not inside CodeForge's storage"); const b = sizeOfPrefix(p); await rm(p); return { freed: b }; },
 
     "fs.list": async (p) => { p = abs(p); const r = files.get(p); if (!r) throw new Error("No such directory: " + p); if (r.t !== "d") throw new Error("Not a directory: " + p); return [...(kids.get(p) || [])].map((n) => ({ n, ...statObj(files.get(norm(p + "/" + n))) })); },
     "fs.stat": async (p) => { const r = files.get(abs(p)); return r ? statObj(r) : null; }, "fs.lstat": async (p) => H["fs.stat"](p), "fs.exists": async (p) => files.has(abs(p)),
@@ -215,7 +266,20 @@ export function create(emit) {
     "fs.realpath": async (p) => abs(p), "fs.chmod": async () => true, "fs.token": async () => "web",
     "fs.symlink": async () => { throw new Error("Symlinks are not supported in the web version"); }, "fs.readlink": async () => { throw new Error("Not a symlink"); },
     "search.text": async (o) => searchText(o), "search.cancel": async () => true,
-    "archive.zip": async (o) => { const z = await zipOut(o.src, o.base, o.exclude || []); await put(abs(o.dest), z.bytes); return { count: z.count }; },
+    "archive.zip": async (o) => {
+      if (o.entries) {   // [{src, as}]: pack folders under chosen names (same contract as the native ZipTools.zipEntries)
+        await lazy.jszip(); const zip = new window.JSZip(); let count = 0;
+        const total = o.entries.reduce((n, e) => n + underPrefix(abs(e.src)).filter((k) => files.get(k)?.t === "f").length, 0);
+        for (const e of o.entries) for (const k of underPrefix(abs(e.src)).sort()) {
+          const rel0 = k.slice(abs(e.src).length).replace(/^\//, ""); const rel = [e.as, rel0].filter(Boolean).join("/"); if (!rel) continue;
+          if ((o.exclude || []).length && rel0.split("/").some((seg) => skipName(seg, o.exclude))) continue;
+          const r = files.get(k); if (r.t === "d") zip.folder(rel); else { zip.file(rel, r.d); count++; if (count % 20 === 0) emit("archive.progress", { count, total, job: o.job || "" }); }
+        }
+        emit("archive.progress", { count, total, job: o.job || "" });
+        await put(abs(o.dest), await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" })); return { count };
+      }
+      const z = await zipOut(o.src, o.base, o.exclude || []); await put(abs(o.dest), z.bytes); return { count: z.count };
+    },
     "archive.unzip": async (o) => { await lazy.jszip(); const zip = await window.JSZip.loadAsync(need(o.src).d); let count = 0; const root = abs(o.dest); for (const [name, e] of Object.entries(zip.files)) { const out = norm(root + "/" + name); if (out !== root && !out.startsWith(root + "/")) throw new Error("Blocked unsafe path in archive: " + name); if (e.dir) await mkdirp(out); else { await put(out, await e.async("uint8array")); count++; } } return { count }; },
     "archive.listZip": async (p) => { await lazy.jszip(); const zip = await window.JSZip.loadAsync(need(p).d); return Object.values(zip.files).map((e) => ({ name: e.name, size: 0, dir: e.dir })); },
     "archive.untar": async () => { throw new Error("tar archives are not supported in the web version"); },

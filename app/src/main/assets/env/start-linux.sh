@@ -79,11 +79,15 @@ export BROWSER=/usr/local/bin/cf-open-url
 export PROMPT_DIRTRIM=2
 export PS1='\[\033[2m\]\w\[\033[0m\] \$ '
 export CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING:-1}
+# download caches live in the Linux system (/var/cache), not in ~ (which is the visible workspace): Settings > Storage can clear them in one tap
+export npm_config_cache=/var/cache/npm PIP_CACHE_DIR=/var/cache/pip XDG_CACHE_HOME=/var/cache/xdg npm_config_update_notifier=false npm_config_fund=false
 if [ -n "$CF_ENV" ] && [ -f "$CF_ENV/node-patch.js" ]; then
   case "$NODE_OPTIONS" in *node-patch.js*) ;; *) export NODE_OPTIONS="--require $CF_ENV/node-patch.js $NODE_OPTIONS" ;; esac
 fi
 PROF
 # non-login commands (npm run from tasks, `bash -c ...`) do not read profile.d, so export here as well
+export npm_config_cache=/var/cache/npm PIP_CACHE_DIR=/var/cache/pip XDG_CACHE_HOME=/var/cache/xdg npm_config_update_notifier=false npm_config_fund=false
+mkdir -p "$CF_ROOTFS/var/cache/npm" "$CF_ROOTFS/var/cache/pip" "$CF_ROOTFS/var/cache/xdg" 2>/dev/null
 export BROWSER=/usr/local/bin/cf-open-url
 export CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-1}"
 [ -f "$CF_ENV/node-patch.js" ] && export NODE_OPTIONS="--require $CF_ENV/node-patch.js ${NODE_OPTIONS:-}"

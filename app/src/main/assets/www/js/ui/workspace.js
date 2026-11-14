@@ -118,13 +118,13 @@ class Workspace extends Emitter {
     const r = await N.archive.zip({ src: paths, dest: destZip, base, exclude });
     this._changed(P.dir(destZip)); return r;
   }
-  async extractZip(zipPath, destDir) {
+  async extractZip(zipPath, destDir, job = "") {
     await N.fs.mkdir(destDir);
-    const r = await N.archive.unzip({ src: zipPath, dest: destDir });
+    const r = await N.archive.unzip({ src: zipPath, dest: destDir, job });
     this._changed(P.dir(destDir), destDir); return r;
   }
-  async extractArchive(path, destDir) {
-    if (/\.zip$|\.vsix$|\.jar$|\.apk$/i.test(path)) return this.extractZip(path, destDir);
+  async extractArchive(path, destDir, job = "") {
+    if (/\.zip$|\.vsix$|\.jar$|\.apk$/i.test(path)) return this.extractZip(path, destDir, job);
     await N.fs.mkdir(destDir); await N.archive.untar({ src: path, dest: destDir }); this._changed(destDir); return { count: 0 };
   }
   /** If an archive extracted into a single top-level folder, hoist it so the project root is the folder itself. */

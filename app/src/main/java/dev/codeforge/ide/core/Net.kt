@@ -67,8 +67,8 @@ object Net {
         live.remove(id)?.disconnect()
     }
 
-    fun release(id: String) {
-        live.remove(id)
+    fun release(id: String?) {
+        if (id != null) live.remove(id)
     }
 
     fun request(
@@ -94,25 +94,33 @@ object Net {
         return String(b, Charsets.UTF_8)
     }
 
-    fun download(url: String, dest: File, headers: Map<String, String>, progress: (Long, Long) -> Unit) {
-        val r = open(url, "GET", headers, null, 20_000, 60_000)
-        if (r.status !in 200..299) { r.stream?.close(); throw IOException("HTTP ${r.status} for $url") }
+    fun download(url: String, dest: File, headers: Map<String, String>, job: String? = null, progress: (Long, Long) -> Unit) {
+        Jobs.check(job)
+        val r = open(url, "GET", headers, null, 20_000, 60_000, trackId = job)
+        if (r.status !in 200..299) { r.stream?.close(); release(job); throw IOException("HTTP ${r.status} for $url") }
         val total = r.headers["content-length"]?.toLongOrNull() ?: -1L
         dest.parentFile?.mkdirs()
         var done = 0L
         var last = 0L
-        r.stream!!.use { ins ->
-            FileOutputStream(dest).use { out ->
-                val buf = ByteArray(1 shl 16)
-                while (true) {
-                    val n = ins.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    done += n
-                    val now = System.currentTimeMillis()
-                    if (now - last > 150) { last = now; progress(done, total) }
+        var ok = false
+        try {
+            r.stream!!.use { ins ->
+                FileOutputStream(dest).use { out ->
+                    val buf = ByteArray(1 shl 16)
+                    while (true) {
+                        val n = try { ins.read(buf) } catch (e: IOException) { if (Jobs.isCancelled(job)) throw java.util.concurrent.CancellationException("Cancelled"); throw e }
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        done += n
+                        val now = System.currentTimeMillis()
+                        if (now - last > 150) { last = now; Jobs.check(job); progress(done, total) }
+                    }
                 }
             }
+            ok = true
+        } finally {
+            release(job)
+            if (!ok) dest.delete()      // never leave a half-downloaded file behind
         }
         progress(done, if (total > 0) total else done)
     }

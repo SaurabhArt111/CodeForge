@@ -5,6 +5,7 @@
 import * as lazy from "../core/lazy.js";
 import { h, icon, P, fmtBytes, parseJsonc, debounce, esc } from "../core/util.js";
 import * as host from "./exthost.js";
+import * as jobs from "../core/jobs.js";
 let A, root, view, listEl, searchIn, filter = "installed", market = { q: "", items: [], total: 0, offset: 0, loading: false };
 const installed = new Map(); // id -> ext
 
@@ -107,13 +108,21 @@ export async function installVsix(vsixPath, { silent = false } = {}) {
 }
 export async function installFromFile() {
   const p = await A.of.browse({ mode: "file", title: "Install extension (.vsix)", filter: (it) => /\.vsix$/i.test(it.n), okLabel: "Install" }); if (!p) return;
-  const b = A.busy("Installing…"); try { await installVsix(p); } catch (e) { A.toastError(e); } finally { b.close(); }
+  await jobs.run({ title: `Installing ${P.base(p)}`, kind: "extension", icon: "extensions", cancellable: false, silent: true }, async (job) => { job.update("Unpacking…", -1); return installVsix(p); });
 }
+/** Downloads and installs from the marketplace as a background task: keep working, you get a notification when it is done. */
 export async function installRemote(item) {
   const url = item.files?.download; if (!url) return A.toast("No download available", { kind: "error" });
-  const dest = P.join(root, `.dl-${Date.now()}.vsix`); const b = A.busy(`Downloading ${item.displayName || item.name}…`); b.progress(-1);
-  const off = A.N.on("net.progress", (d) => { if (d.total) b.progress(d.done / d.total); });
-  try { await A.N.net.download({ url, dest }); b.update("Installing…"); await installVsix(dest); } catch (e) { A.toastError(e); } finally { off(); b.close(); await A.N.fs.rm(dest).catch(() => {}); }
+  const label = item.displayName || item.name;
+  const dest = P.join(root, `.dl-${Date.now()}.vsix`);
+  const r = await jobs.run({ title: `Installing ${label}`, kind: "extension", icon: "extensions", doneText: `${label} installed`, silent: true }, async (job) => {
+    job.watchBytes("Downloading");
+    job.update("Downloading…", -1);
+    try { await A.N.net.download({ url, dest, job: job.id }); if (job.cancelRequested) throw new Error("Cancelled"); job.update("Installing…", -1); return await installVsix(dest, { silent: true }); }
+    finally { await A.N.fs.rm(dest).catch(() => {}); }   // a cancelled or failed download never stays on disk
+  });
+  if (r.ok && r.result) { const ext = r.result; const c = ext.contributes?.filter((k) => SUPPORTED.includes(k)) || []; A.toast(`Installed ${ext.name} ${ext.version}` + (c.length ? ` (${c.join(", ")})` : " , no supported contributions"), { kind: c.length ? "success" : "warn", timeout: 6000 }); }
+  return r.ok;
 }
 export async function uninstall(ext) {
   if (!(await A.confirm(`Uninstall “${ext.name}”?`, { okLabel: "Uninstall", danger: true }))) return;
@@ -140,9 +149,17 @@ async function searchMarket(reset = true) {
   } catch (e) { market.error = e.message; } finally { market.loading = false; render(); }
 }
 async function checkUpdates() {
-  let n = 0; const b = A.busy("Checking for updates…");
-  try { for (const ext of [...installed.values()]) { try { const d = await api(`/api/${ext.publisher}/${ext.manifest.name}`); if (d.version && d.version !== ext.version && d.files?.download) { n++; if (await A.confirm(`Update ${ext.name} ${ext.version} → ${d.version}?`, { okLabel: "Update" })) { b.close(); await installRemote(d); } } } catch { /* skip */ } } } finally { b.close(); }
-  if (!n) A.toast("All extensions are up to date");
+  const r = await jobs.run({ title: "Checking extension updates", kind: "extension", icon: "sync", cancellable: false, silent: true }, async (job) => {
+    const found = []; let i = 0; const all = [...installed.values()];
+    for (const ext of all) {
+      job.update(`${ext.name}…`, i++ / Math.max(1, all.length));
+      try { const d = await api(`/api/${ext.publisher}/${ext.manifest.name}`); if (d.version && d.version !== ext.version && d.files?.download) found.push({ ext, d }); } catch { /* skip */ }
+    }
+    return found;
+  });
+  const found = r.result || [];
+  if (!found.length) { if (r.ok) A.toast("All extensions are up to date"); return; }
+  for (const { ext, d } of found) if (await A.confirm(`Update ${ext.name} ${ext.version} → ${d.version}?`, { okLabel: "Update" })) await installRemote(d);
 }
 
 // ---------------------------------------------------------------- UI

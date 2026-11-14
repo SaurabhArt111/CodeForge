@@ -1,11 +1,12 @@
 // VS Code-style layout chrome for tablets / desktop (>= 900px wide): a menu bar (File, Edit, Selection, View, Go, Run, Terminal, Help)
 // plus layout toggles (sidebar / bottom panel / right sheet) in the title bar. Phones keep the compact toolbar and drawer.
 import { h, icon } from "../core/util.js";
-import { contextMenu } from "../core/ui.js";
+import { contextMenu, navMenu } from "../core/ui.js";
 import * as panel from "./panel.js";
 import * as cmd from "./commands.js";
 import * as ed from "./editor.js";
 import { bus } from "../core/events.js";
+import * as seccenter from "./securitycenter.js";
 
 const run = (id) => () => cmd.run(id);
 const act = (id) => () => { const e = ed.activeEditor(); if (!e) return; e.focus(); e.trigger("menu", id, null); };
@@ -14,7 +15,7 @@ const MENUS = {
     { label: "New File", icon: "new-file", keys: "Ctrl+N", run: run("file.new") }, { label: "New Folder", icon: "new-folder", run: run("file.newFolder") }, { label: "New Project…", icon: "add", run: run("file.newProject") },
     { separator: true }, { label: "Open Folder…", icon: "folder-opened", run: run("file.openFolder") }, { label: "Clone Repository…", icon: "repo-clone", run: run("file.clone") }, { label: "Open Zip…", icon: "file-zip", run: run("file.openZip") },
     { separator: true }, { label: "Save", icon: "save", keys: "Ctrl+S", run: run("file.save") }, { label: "Save All", icon: "save-all", run: run("file.saveAll") }, { label: "Save As…", icon: "save-as", run: run("file.saveAs") },
-    { separator: true }, { label: "Download Project as Zip…", icon: "cloud-download", run: run("file.zipProject") }, { label: "Transfer to another CodeForge…", icon: "export", run: run("file.transferOut") }, { label: "Import bundle (.cfbundle)…", icon: "package", run: run("file.transferIn") }, { label: "Close Editor", icon: "close", run: run("file.close") }, { label: "Close Folder", icon: "close-all", run: run("file.closeFolder") },
+    { separator: true }, { label: "Compress & Export to Downloads…", icon: "cloud-download", run: run("file.exportDownloads") }, { label: "Export Folder to Device…", icon: "export", run: run("file.export") }, { label: "Transfer to another CodeForge…", icon: "export", run: run("file.transferOut") }, { label: "Import bundle (.cfbundle)…", icon: "package", run: run("file.transferIn") }, { label: "Close Editor", icon: "close", run: run("file.close") }, { label: "Close Folder", icon: "close-all", run: run("file.closeFolder") },
   ],
   Edit: () => [
     { label: "Undo", icon: "discard", keys: "Ctrl+Z", run: act("undo") }, { label: "Redo", icon: "redo", keys: "Ctrl+Shift+Z", run: act("redo") }, { separator: true },
@@ -33,6 +34,7 @@ const MENUS = {
     { label: "Toggle Sidebar", icon: "layout-sidebar-left", keys: "Ctrl+B", run: run("view.sidebar") }, { label: "Toggle Bottom Panel", icon: "layout-panel", run: run("sheet.toggleBottom") },
     { label: "Toggle Secondary Side Bar (AI Assistant)", icon: "layout-sidebar-right", run: run("sheet.toggleRight") }, { label: "Split Editor", icon: "split-horizontal", run: run("view.split") },
     { separator: true }, { label: "Word Wrap", icon: "word-wrap", run: run("view.wordWrap") }, { label: "Minimap", icon: "map", run: run("view.minimap") }, { label: "Settings", icon: "settings-gear", run: run("view.settings") },
+    { label: "Storage Manager", icon: "database", run: run("storage.open") }, { label: "Background Tasks", icon: "sync", run: run("jobs.open") },
   ],
   Go: () => [
     { label: "Go to File…", icon: "go-to-file", keys: "Ctrl+P", run: run("nav.quickOpen") }, { label: "Go to Symbol…", icon: "symbol-class", run: run("nav.symbol") }, { label: "Go to Line…", icon: "arrow-right", keys: "Ctrl+G", run: run("nav.line") },
@@ -46,13 +48,14 @@ const MENUS = {
     { separator: true }, { label: "Move Terminal to Bottom", icon: "arrow-down", run: run("sheet.terminalBottom") }, { label: "Move Terminal to Right Sheet", icon: "arrow-right", run: run("sheet.terminalRight") },
     { label: "Open Terminal as Page", icon: "screen-full", run: run("sheet.terminalPage") }, { label: "Move Terminal to Top", icon: "arrow-up", run: run("sheet.terminalTop") },
   ],
+  Security: () => seccenter.menuItems(run),
   Help: () => [{ label: "Crash Reports", icon: "bug", run: run("sys.crashes") }, { label: "Diagnostics", icon: "pulse", run: run("sys.diagnostics") }, { label: "Linux Environment Setup", icon: "server-environment", run: run("env.setup") }, { separator: true }, { label: "About CodeForge", icon: "info", run: run("help.about") }],
 };
 
-const MENU_ICONS = { File: "file", Edit: "edit", Selection: "selection", View: "eye", Go: "go-to-file", Run: "play", Terminal: "terminal", Help: "question" };
+const MENU_ICONS = { File: "file", Edit: "edit", Selection: "selection", View: "eye", Go: "go-to-file", Run: "play", Terminal: "terminal", Security: "shield", Help: "question" };
 /** Phones and narrow tablets have no menu bar: the ☰ button opens this list instead (each entry opens its menu in place). */
 export function openMainMenu(x, y) {
-  contextMenu(Object.keys(MENUS).map((name) => ({ label: name, icon: MENU_ICONS[name], submenu: MENUS[name]() })), x, y);
+  navMenu(Object.keys(MENUS).map((name) => ({ label: name, icon: MENU_ICONS[name], submenu: MENUS[name]() })), x, y, { title: "Menu" });
 }
 export const hasMenuBar = () => window.innerWidth >= 900;
 

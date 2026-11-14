@@ -72,7 +72,22 @@ export const N = {
     importUri: (uri, dest) => c("sys.importUri", uri, dest), importTree: (uri, dest) => c("sys.importTree", uri, dest),
     exportFile: (src, uri) => c("sys.exportFile", src, uri), exportTree: (src, uri, exclude) => c("sys.exportTree", src, uri, exclude || []),
     exit: () => c("sys.exit"), moveToBack: () => c("sys.moveToBack"), setSecure: (on) => c("sys.setSecure", !!on),
+    /** Starts the whole app again (new process on Android, page reload elsewhere). */
+    restart: () => c("sys.restart"), openDownloads: () => c("sys.openDownloads"),
+    notifyStatus: () => c("sys.notifyStatus"), requestNotify: () => c("sys.requestNotify"), openAppSettings: () => c("sys.openAppSettings"),
   },
+  /** Background tasks: native keeps the process alive and shows a progress notification for each one. */
+  jobs: {
+    begin: (id, title, text = "") => c("jobs.begin", id, title, text), update: (id, text, done = -1, total = -1) => c("jobs.update", id, text || "", done, total),
+    end: (id, ok = true, text = "", openDownloads = false, silent = false) => c("jobs.end", id, ok, text, openDownloads, silent), cancel: (id) => c("jobs.cancel", id),
+  },
+  /** Storage Manager: scan / list / clean CodeForge's private storage. */
+  storage: {
+    scan: (job = "") => c("storage.scan", job), items: (cat, limit = 60, job = "") => c("storage.items", cat, limit, job),
+    clean: (ids, job = "") => c("storage.clean", ids, job), delete: (path) => c("storage.delete", path),
+  },
+  /** Saves a file into the public Downloads folder: {src, name, mime?, job?, deleteSrc?} → {name, path, uri, size} */
+  export: { toDownloads: (o) => c("export.toDownloads", o) },
   fs: {
     list: (p) => c("fs.list", p), stat: (p) => c("fs.stat", p), lstat: (p) => c("fs.lstat", p), exists: (p) => c("fs.exists", p),
     readText: (p, o = {}) => c("fs.readText", p, o), readB64: (p, off = 0, len = -1) => c("fs.readB64", p, off, len),
@@ -169,7 +184,7 @@ export const N = {
     diagnostics: () => c("crash.diagnostics"), takeRecovery: () => c("crash.takeRecovery"), test: () => c("crash.testNative"),
   },
   preview: { open: (o) => c("preview.open", o) },
-  env: { status: () => c("env.status"), install: () => c("env.install"), reset: () => c("env.reset") },
+  env: { status: () => c("env.status"), install: (job = "") => c("env.install", job), reset: () => c("env.reset") },
   proc: { exec: (o) => c("proc.exec", o) },
   on: (name, fn) => ev.on(name, fn),
 };
@@ -195,6 +210,8 @@ async function demoCall(method, a) {
     case "sys.hasAllFiles": case "secret.has": case "github.signedIn": return false;
     case "env.status": return { installed: false, supported: false };
     case "sys.takeIntent": return null;
+    case "sys.notifyStatus": return true;
+    case "jobs.begin": case "jobs.update": case "jobs.end": case "jobs.cancel": return true;
     default: if (method.startsWith("sys.")) return true; throw new Error("Not available in demo mode: " + method);
   }
 }

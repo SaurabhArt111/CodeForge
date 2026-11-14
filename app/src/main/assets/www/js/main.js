@@ -30,6 +30,10 @@ import * as menubar from "./ui/menubar.js";
 import { askZipOptions } from "./ui/zipdialog.js";
 import * as projects from "./ui/projects.js";
 import * as transfer from "./ui/transfer.js";
+import * as jobs from "./core/jobs.js";
+import * as storage from "./ui/storage.js";
+import * as seccenter from "./ui/securitycenter.js";
+import * as exporter from "./ui/exporter.js";
 
 crash.install();   // JS errors + breadcrumbs go to the crash recorder from the very first line
 
@@ -74,9 +78,10 @@ async function boot() {
       if (name === "*") { showView("explorer", { silent: true }); return; }
       if (to !== "sidebar" && name === currentView) showView("explorer", { silent: true });   // the view just left the sidebar
     });
-    output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); keybar.init(); keyboard.init(); cmd.initKeys();
+    output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); jobs.init(status); keybar.init(); keyboard.init(); cmd.initKeys();
     layout(); registerCommands(); wireEvents(); menubar.init(); mobileNav();
     // keep the splash on screen long enough for its animation to play, then fade it out
+    setTimeout(() => storage.autoClean().catch(() => {}), 8000);   // optional: clear temp files / caches once the app is up (Settings → Storage)
     setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 900 - performance.now()));
     // restore last project
     const last = settings.state.lastWorkspace;
@@ -316,6 +321,8 @@ function wireEvents() {
         const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
         const a = await feat("ai"); a.external(text, { send: send === "1", agent: agent === "1" }); return;
       }
+      if (verb === "storage") { storage.open(); return; }
+      if (verb === "security") { seccenter.open(); return; }
       if (verb === "settings") { sv.open(); return; }
       if (verb === "crashes") { crashes.openReports(); return; }
       if (verb === "toast") { toast(arg || "cf"); return; }
@@ -438,12 +445,18 @@ function registerCommands() {
   R("file.transferOut", bridgeMode === "android" ? "Transfer: Export bundle for CodeForge Web…" : "Transfer: Export bundle for the CodeForge app…", () => transfer.exportBundle(), { category: "File" });
   R("file.transferIn", "Transfer: Import bundle (.cfbundle)…", () => transfer.importBundle({ openFolder }), { category: "File" });
   R("file.export", "Export Project Folder to Device…", () => ws.root && of.exportFolderToDevice(ws.root), { category: "File" });
-  R("file.zipProject", "Compress Project to ZIP…", async () => {
-    if (!ws.root) return;
-    const o = await askZipOptions({ name: P.base(ws.root) + ".zip", paths: [ws.root] }); if (!o) return;
-    const dest = P.join(P.dir(ws.root), o.name); const b = busy("Compressing…");
-    try { const r = await ws.zip([ws.root], dest, o.exclude); toast(`Created ${o.name} (${r.count} files)`, { kind: "success" }); if (bridgeMode !== "android") await N.sys.exportFile(dest); else of.exportFileToDevice(dest); } catch (e) { toastError(e); } finally { b.close(); }
-  }, { category: "File" });
+  R("file.zipProject", "Compress Project to ZIP and Export…", () => ws.root && exporter.compressAndExport([ws.root], { name: P.base(ws.root) }), { category: "File" });
+  R("file.exportDownloads", "Compress & Export to Downloads…", () => ws.root && exporter.compressAndExport([ws.root], { name: P.base(ws.root) }), { category: "File" });
+  R("jobs.open", "Show Background Tasks", () => jobs.openCenter(), { category: "View" });
+  R("storage.open", "Storage Manager", () => storage.open(), { category: "Preferences" });
+  R("storage.clean", "Free Up Space (clear caches & leftovers)…", async () => { await storage.open(); }, { category: "Preferences" });
+  R("sec.open", "Security Centre", () => seccenter.open(), { category: "Security" });
+  R("sec.lock", "Lock CodeForge Now", () => security.showLock(), { category: "Security" });
+  R("sec.pin", "Set or Change PIN…", async () => { await security.setPinFlow(); }, { category: "Security" });
+  R("sec.keys", "API Keys…", () => seccenter.open("API keys"), { category: "Security" });
+  R("sec.clipboard", "Clear Clipboard", () => security.clearClipboard(), { category: "Security" });
+  R("sec.perms", "Permissions & Access", () => seccenter.open("Permissions & access"), { category: "Security" });
+  R("sec.privacy", "Privacy: Clear Data…", () => seccenter.open("Privacy"), { category: "Security" });
   R("nav.quickOpen", "Go to File…", () => cmd.quickOpen(), { category: "Go", keys: "Ctrl+P" });
   R("nav.line", "Go to Line…", () => cmd.gotoLine(), { category: "Go", keys: "Ctrl+G" });
   R("nav.symbol", "Go to Symbol in Editor…", () => cmd.gotoSymbol(), { category: "Go" });

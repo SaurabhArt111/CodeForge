@@ -76,6 +76,16 @@
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|fontScale|navigation|colorMode|layoutDirection"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- "Restart CodeForge": kills the main process and starts the app again (own process so it can outlive it). -->
+        <activity
+            android:name=".RestartActivity"
+            android:exported="false"
+            android:process=":restart"
+            android:taskAffinity="${applicationId}.restart"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Keeps terminals and dev servers alive while the app is in the background. -->
         <service
             android:name=".service.SessionService"

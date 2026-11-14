@@ -74,8 +74,16 @@ export const DEFAULTS = {
   "github.clientId": "",
   "security.appLock": false,
   "security.lockAfter": 30,
-  "security.method": "auto",
+  "security.method": "auto",               // auto = fingerprint / face / screen lock first, then PIN · pin = PIN only · biometric = device lock only
   "security.secure": false,
+  "security.clipboardClear": 30,           // seconds until a copied key is wiped from the clipboard (0 = never)
+  "security.authExport": false,            // ask for PIN / fingerprint before projects leave the app (ZIP, bundle, export)
+  "security.authTerminal": false,          // ask before a Linux terminal opens (it can reach all your files)
+  "storage.limitMB": 0,                    // soft limit for CodeForge's own data (0 = none): warn before big imports / installs
+  "storage.minFreeMB": 500,                // warn before big operations when the device has less free space than this
+  "storage.autoClean": "off",              // off | temp (temp files + leftovers) | temp+caches (also npm / pip / apk caches)
+  "storage.exportTo": "downloads",         // downloads = straight into the device's Downloads folder · ask = system "Save as" picker
+  "storage.deleteImportedZip": true,       // delete CodeForge's own copy of a ZIP after it was extracted as a project
   "extensions.registry": "https://open-vsx.org",
   "plugins.registry": "",
 };
