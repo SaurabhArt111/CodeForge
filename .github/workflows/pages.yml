@@ -1,5 +1,5 @@
-# ONE-TIME SETUP: repository Settings → Pages → Build and deployment → Source: “GitHub Actions”. Without it the deploy job fails with
-# “Failed to create deployment (status: 404) … Ensure GitHub Pages has been enabled”.
+# ONE-TIME SETUP: repository Settings → Pages → Build and deployment → Source: “GitHub Actions”.
+# Until that is done this workflow does NOT fail: it skips the build and deploy and shows a warning with the instructions on the run page.
 # Publishes the website (React site, /app web editor, /code browser, /download) to GitHub Pages on every push to main.
 # GitHub Pages is static, so the Git CORS proxy is not available there: set "proxy" in website/public/site-config.js to a deployed `npm start` server if you want cloning in the web editor.
 name: Website
@@ -11,13 +11,26 @@ concurrency: { group: pages, cancel-in-progress: true }
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs: { enabled: "${{ steps.pages.outputs.enabled }}" }
     steps:
       - uses: actions/checkout@v4
-      # fails in seconds, with a clear message, when Pages is not switched on yet (instead of after the whole build)
-      - uses: actions/configure-pages@v5
+      # asks GitHub whether Pages is switched on for this repository; a missing Pages site must not turn every push red
+      - id: pages
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" --silent 2>/dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=GitHub Pages is not enabled::Open Settings > Pages > Build and deployment > Source and choose GitHub Actions, then re-run this workflow. The website was not built or deployed."
+            echo "### GitHub Pages is not enabled yet" >> "$GITHUB_STEP_SUMMARY"
+            echo "Open **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**, then re-run this workflow." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.pages.outputs.enabled == 'true'
         with: { node-version: 22, cache: npm, cache-dependency-path: website/package-lock.json }
       - name: Build site
+        if: steps.pages.outputs.enabled == 'true'
         working-directory: website
         env:
           SITE_BASE: /${{ github.event.repository.name }}/
@@ -27,9 +40,11 @@ jobs:
           npm run build
           touch dist/.nojekyll
       - uses: actions/upload-pages-artifact@v3
+        if: steps.pages.outputs.enabled == 'true'
         with: { path: website/dist }
   deploy:
     needs: build
+    if: needs.build.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:

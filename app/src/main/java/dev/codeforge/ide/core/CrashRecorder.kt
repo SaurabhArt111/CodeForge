@@ -136,25 +136,25 @@ object CrashRecorder {
     fun record(
         kind: String, title: String, detail: String, fatal: Boolean,
         withLogcat: Boolean = false, sync: Boolean = false, atTime: Long = System.currentTimeMillis(), extraCrumbs: List<String>? = null,
-        process: String = procName
+        process: String = procName,
+        pid: Int = Process.myPid(), uptimeSec: Long? = (System.currentTimeMillis() - startedAt) / 1000, appVersion: String = BuildConfig.VERSION_NAME
     ): String {
         val id = "%013d-%s-%04x".format(atTime, kind.replace(Regex("[^a-z0-9-]"), ""), (Math.random() * 65535).toInt())
         val trail = extraCrumbs ?: synchronized(crumbs) { crumbs.toList() }
         val mem = if (extraCrumbs == null) memoryLine().removePrefix("mem ") else null
         val fg = foreground
-        val up = (System.currentTimeMillis() - startedAt) / 1000
-        val pid = Process.myPid()
+        val up = uptimeSec   // null for "previous run" reports: the dead process' uptime is unknown, and this process just started
         val job = Runnable {
             try {
                 val sb = StringBuilder()
                 sb.append("CodeForge report\n")
                 sb.append("Time:     ").append(SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date(atTime))).append('\n')
                 sb.append("Kind:     ").append(kind).append(if (fatal) "  (app stopped)" else "").append('\n')
-                sb.append("App:      ").append(BuildConfig.APPLICATION_ID).append(' ').append(BuildConfig.VERSION_NAME).append('\n')
+                sb.append("App:      ").append(BuildConfig.APPLICATION_ID).append(' ').append(appVersion).append(if (appVersion != BuildConfig.VERSION_NAME) "  (now installed: ${BuildConfig.VERSION_NAME})" else "").append('\n')
                 sb.append("Device:   ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append(" · Android ").append(Build.VERSION.RELEASE)
                     .append(" (SDK ").append(Build.VERSION.SDK_INT).append(") · ").append(Build.SUPPORTED_ABIS.firstOrNull()).append('\n')
                 sb.append("WebView:  ").append(webViewVersion()).append('\n')
-                sb.append("Process:  ").append(process).append(" pid=").append(pid).append(" up ").append(up).append("s").append(if (fg) " · foreground" else " · background").append('\n')
+                sb.append("Process:  ").append(process).append(" pid=").append(pid).append(if (up != null) " up ${up}s" else "").append(if (fg) " · foreground" else " · background").append('\n')
                 if (mem != null) sb.append("Memory:   ").append(mem).append('\n')
                 sb.append("\n== ").append(title).append(" ==\n").append(detail.take(30000)).append("\n")
                 if (trail.isNotEmpty()) sb.append("\n-- breadcrumbs (oldest first) --\n").append(trail.joinToString("\n")).append('\n')
@@ -233,6 +233,7 @@ object CrashRecorder {
         ApplicationExitInfo.REASON_ANR -> "The app stopped responding (ANR)."
         ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "Android stopped the process for using too many resources."
         ApplicationExitInfo.REASON_CRASH -> "Uncaught exception."
+        ApplicationExitInfo.REASON_OTHER -> "Not a CodeForge crash: the system or a phone-cleaner app (Xiaomi “OneKeyClean”, Samsung device care, …) ended the process" + (if (!i.description.isNullOrBlank()) " (“${i.description}”)." else ".")
         else -> ""
     }
 
@@ -246,13 +247,19 @@ object CrashRecorder {
             val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val infos = am.getHistoricalProcessExitReasons(app.packageName, 0, 12).filter { it.timestamp > seen }.sortedBy { it.timestamp }
             val existing = files().mapNotNull { load(it) }
+            val prevVersion = prefs.getString("ver", null) ?: BuildConfig.VERSION_NAME
             for (i in infos) {
                 val r = i.reason
                 if (r == ApplicationExitInfo.REASON_EXIT_SELF || r == ApplicationExitInfo.REASON_USER_REQUESTED || r == ApplicationExitInfo.REASON_USER_STOPPED ||
-                    r == ApplicationExitInfo.REASON_FREEZER) continue
+                    r == ApplicationExitInfo.REASON_FREEZER || r == 15 /* PACKAGE_STATE_CHANGE */ || r == 16 /* PACKAGE_UPDATED: the app was reinstalled */) continue
                 val pname = i.processName ?: app.packageName
                 val isPreview = pname.endsWith(":preview")
                 val fg = i.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+                val real = r == ApplicationExitInfo.REASON_CRASH || r == ApplicationExitInfo.REASON_CRASH_NATIVE || r == ApplicationExitInfo.REASON_ANR || r == ApplicationExitInfo.REASON_INITIALIZATION_FAILURE
+                // WebView helper processes (sandboxed renderers) that were reclaimed carry no information; only a crash of one does
+                if (!real && (pname.contains("sandboxed_process") || pname.contains("privileged_process") || pname.contains("zygote"))) continue
+                // a cached app process the system or a cleaner app ended in the background is routine, not something to keep a report of
+                if (!real && r == ApplicationExitInfo.REASON_OTHER && !fg) continue
                 // already recorded by the uncaught-exception handler
                 if (r == ApplicationExitInfo.REASON_CRASH && existing.any { it.optString("kind") == "crash" && Math.abs(it.optLong("ts") - i.timestamp) < 20_000 }) continue
                 // a cached preview process being reclaimed is normal housekeeping
@@ -266,11 +273,13 @@ object CrashRecorder {
                 if (!i.description.isNullOrBlank()) sb.append("description: ").append(i.description).append('\n')
                 if (r == ApplicationExitInfo.REASON_ANR) try { i.traceInputStream?.bufferedReader()?.use { sb.append("\n-- ANR trace (head) --\n").append(it.readText().take(6000)) } } catch (_: Throwable) {}
                 val trail = if (isPreview) emptyList() else previousCrumbs
-                record(kind = kind, title = title, detail = sb.toString(), fatal = fg || r == ApplicationExitInfo.REASON_CRASH_NATIVE || r == ApplicationExitInfo.REASON_ANR,
-                    atTime = i.timestamp, extraCrumbs = trail, process = pname, sync = true)
+                record(kind = kind, title = title, detail = sb.toString(), fatal = (fg && r != ApplicationExitInfo.REASON_OTHER) || r == ApplicationExitInfo.REASON_CRASH_NATIVE || r == ApplicationExitInfo.REASON_ANR,
+                    atTime = i.timestamp, extraCrumbs = trail, process = pname, sync = true, pid = i.pid, uptimeSec = null, appVersion = prevVersion)
                 n++
             }
-            if (infos.isNotEmpty()) prefs.edit().putLong("exitSeen", infos.maxOf { it.timestamp }).apply()
+            val ed = prefs.edit().putString("ver", BuildConfig.VERSION_NAME)
+            if (infos.isNotEmpty()) ed.putLong("exitSeen", infos.maxOf { it.timestamp })
+            ed.apply()
         } catch (_: Throwable) {}
         return n
     }

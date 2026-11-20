@@ -36,7 +36,7 @@ export function init() {
   N.on("term.data", (d) => { const t = terms.get(d.id); if (t) { const bytes = b64ToBytes(d.b64); t.xt.write(bytes, () => ack(t, bytes.length)); scanOutput(t, bytes); } });
   // output produced while the app was paused was kept natively: rebuild the screen from the replay buffer
   N.on("term.resync", async (d) => { const t = terms.get(d.id); if (!t) return; try { const a = await N.term.attach(d.id); t.xt.reset(); if (a?.b64) t.xt.write(b64ToBytes(a.b64)); fitOne(t); } catch { /* ignore */ } });
-  N.on("term.exit", (d) => { const t = terms.get(d.id); if (!t) return; t.alive = false; t.xt.write(`\r\n\x1b[2m[Process exited with code ${d.code}]  press any key to close\x1b[0m\r\n`); refreshTabs(); t.onExit?.(d.code); });
+  N.on("term.exit", (d) => { const t = terms.get(d.id); if (!t) return; t.alive = false; t.diedAt = Date.now(); crumb(`terminal exit ${d.id} code ${d.code} mode ${t.mode}`); t.xt.write(`\r\n\x1b[2m[Process exited with code ${d.code}]  press any key to close\x1b[0m\r\n`); refreshTabs(); t.onExit?.(d.code); });
   // xterm measures glyph cells once: if the web font arrives later the rows overlap. Re-measure when fonts are ready.
   try { document.fonts.load(`14px "${settings.get("terminal.fontFamily")}"`).then(() => document.fonts.ready).then(() => applyTheme()); } catch { /* ignore */ }
   themes.themeEvents.on("change", applyTheme);
@@ -102,7 +102,12 @@ function newXterm(t) {
   xt.parser.registerOscHandler(7, (data) => { try { const u = new URL(data); t.cwd = decodeURIComponent(u.pathname); } catch { /* ignore */ } return false; });
   xt.onTitleChange((title) => { t.title = title.slice(0, 40); refreshTabs(); });
   xt.onData((d) => {
-    if (!t.alive) { closeTerm(t.id); return; }
+    if (!t.alive) {
+      // only a real key press closes a finished terminal: xterm's automatic answers to the shell's queries (cursor position, device
+      // attributes, focus) and keystrokes in the first moments after exit used to close it before its error message could be read
+      if (/^\x1b[\[\]][?>=0-9;]*[cRnIO]?$/.test(d) || Date.now() - (t.diedAt || 0) < 800) return;
+      closeTerm(t.id); return;
+    }
     let out = d;
     if (mods.ctrl && d.length === 1) { const c = d.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) out = String.fromCharCode(c - 64); else if (d === " ") out = "\0"; setMod("ctrl", false); }
     if (mods.shift && d.length === 1) { out = out.toUpperCase(); setMod("shift", false); }

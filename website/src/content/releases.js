@@ -1,5 +1,12 @@
 // Release notes, newest first. Dates are when the build was prepared.
 export const RELEASES = [
+  { v: "8.3.1", date: "November 2026", title: "Cleaner diagnostics, terminal fix",
+    items: [
+      ["fix", "Diagnostics no longer fills up with routine process kills: reclaimed WebView helper processes, background kills by phone-cleaner apps and app updates are not recorded any more. A cleaner stopping the visible app is recorded and labelled as not a CodeForge crash."],
+      ["fix", "Diagnostics reports show the right process id and app version for the process that ended, and no longer print a made-up “up 0s”."],
+      ["fix", "A terminal whose process ended immediately (for example a Linux shell that failed to start) stays open with its message instead of closing itself, and the exit code is added to the report trail."],
+      ["fix", "The website workflow no longer fails when GitHub Pages is not enabled: it skips the build and shows a warning with the one-time setting."],
+    ] },
   { v: "8.3", date: "November 2026", title: "Background tasks, Storage manager, Security Centre",
     items: [
       ["new", "ZIPs and bundles are saved straight into the Downloads folder, with a notification when they are ready (on Android 9 and older the system “Save as” picker is used instead)."],

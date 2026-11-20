@@ -16,8 +16,8 @@ android {
         applicationId = "dev.codeforge.ide"
         minSdk = 26
         targetSdk = 34
-        versionCode = 830
-        versionName = "8.3.0"
+        versionCode = 831
+        versionName = "8.3.1"
 
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"$githubClientId\"")
 
