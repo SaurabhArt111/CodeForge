@@ -1,101 +1,156 @@
-# CodeForge , a native Android code editor / IDE
+<div align="center">
 
-A real Android application (Kotlin, package `dev.codeforge.ide`, minSdk 26) with a VS Code-style workbench:
-Monaco editor, project explorer, real shell terminals, Git, live server + in-app preview, extensions, plugins and AI assistants.
+<img src="app/src/main/assets/www/assets/logo.svg" alt="CodeForge" width="96" height="96" />
 
-## What you get
-- **System-level storage** – "All files access" for any folder on the device, a Storage Access Framework picker, and a
-  `DocumentsProvider` so the **Files app and other apps can see CodeForge's workspace**. Open any folder, **ZIP archives** (open as project,
-  extract, compress), import/export to the device, share files.
-- **Explorer** – lazy tree, inline create/rename, drag & drop, cut/copy/paste, multi-select, context menu, Git decorations, recents.
-- **Editor** – Monaco with split view, tabs, diff, find/replace, multi-file search, Emmet, VS Code snippets & language configs,
-  Prettier formatting (JS/TS/CSS/HTML/JSON/MD/YAML), themes (VS Code defaults + Termux:Styling schemes), Seti file icons.
-- **Terminal** – native PTY sessions (JNI). Android shell by default; optionally a full **Alpine Linux via proot** (apt-style `apk`,
-  `git`, `node`, `npm`, `python`, `gcc`, …). Extra-keys bar for phones. The `code <path>` command opens files/folders in the editor.
-- **Links** – `localhost:5173`, `0.0.0.0:8000`, `192.168.x.x:3000` (with or without `http://`) are clickable and tappable in the terminal and open in the browser (0.0.0.0 becomes localhost); ports printed by servers are detected.
-  *Run* on the `index.html` of a Vite/React/Next project starts the project's dev server and opens it automatically.
-- **Run & Preview** – run files by extension, `package.json` scripts, `tasks.json`; a **live server** (hot reload via SSE, SPA mode, console
-  forwarding, optional LAN access) and an **in-app preview** with device-size presets and a console.
-- **Git** – isomorphic-git (clone, stage, commit, branches, log, diff, pull, push) with gutter decorations. `git@github.com:` URLs are mapped to HTTPS.
-- **GitHub login** – OAuth Device Flow (needs your client id, see BUILD.md) or a Personal Access Token (the sign-in dialog has a **Create token on GitHub** button that opens the token page with the right permissions ticked). Tokens live in the Android Keystore
-  and are injected natively into requests, so scripts and extensions never see them.
-- **Extensions** – search/install from **Open VSX** or a local `.vsix`. Declarative parts are applied: themes, icon themes, snippets, language
-  configuration, `configuration` (editable per-extension settings), `configurationDefaults`, `jsonValidation`, `%nls%` strings, and commands in the palette.
-  Extension **code** (`browser`/`main`) runs in a sandboxed **lite extension host**: one Worker per extension with a `vscode` API subset
-  (commands, messages/input/quick-pick, status bar, output channels, text edits, decorations, diagnostics, completion/hover/format/definition providers,
-  scoped workspace files). You are asked once per extension before its code runs. Webviews, tree views, debuggers, language servers and native Node modules are not supported.
-- **Security** – API keys are stored in the Android Keystore; the key list shows masked previews, and **viewing a key requires your app PIN or
-  device biometrics/credential** (PBKDF2 PIN with lockout, 90 s unlock). Optional app lock and "hide from screenshots / recents".
-- **Touch-friendly workbench** – draggable sidebar/panel/split sashes with big touch targets, long-press context menus, pinch-to-zoom terminal, Undo/Redo
-  buttons in the title bar, a Shift key on the key bar (sticky; extends selection in the editor), animated splash and loaders.
-- **Links** – vite/webpack `o` + Enter, `xdg-open`, `$BROWSER` and `open` open your **default Android browser** (node's spawn of those helpers is intercepted, so no
-  exec errors under proot). Selecting a URL in the terminal or editor (or long-pressing one in the terminal) offers *Open in browser / Preview / Copy*.
-  *Settings → Appearance → Open links with* can keep local URLs in the in-app preview instead.
-- **Web version** – `tools/web/build.sh` builds a static PWA from the same UI (see BUILD.md): IndexedDB file system, ZIP import/export,
-  Monaco, Git over CORS-enabled hosts, extensions, AI, a mini shell, and an **in-browser live server** (service worker, `tools/web/live-sw.js`): HTML/CSS/JS, JSX/TSX/TS compiled on the fly (Sucrase),
-  npm packages from `package.json` mapped to esm.sh, live reload, console capture; `npm run dev` / `vite` in the mini shell start it. No real Linux, Node, server code or GitHub device flow in a browser.
-- **Crash recorder** – uncaught Kotlin/JS errors, renderer deaths, out-of-memory and Android's own "why was I killed" history (`ApplicationExitInfo`) are saved on the
-  device with the stack, memory state, logcat tail and the last actions (breadcrumbs). *Settings → Diagnostics → View reports* (or the notice shown after a crash) lets you
-  copy / share them. `cf crashes` opens the list.
-- **Crash-proof previews** – *Run ▸ Live Preview / Preview HTML* open the page in a **separate process** (`:preview`), so a heavy WebGL page, an infinite loop or a
-  renderer crash can only close that window, not the editor. The live server throttles console forwarding, the terminal uses flow control (a program that floods
-  the screen is slowed down instead of freezing the app) and the in-app preview is paused when Android reports low memory. *Settings → Live Server → Run / Live Preview
-  opens in* picks window / in-app panel.
-- **Top and bottom sheets** – two dockable sheets, each holding any views: Terminal, Preview, Output, Problems, AI, Search, Git, Run, Extensions. Use the **+** in a
-  sheet's header (or long-press a tab) to add, move or close views; the layout is remembered. Palette: *Move Terminal to Top Sheet*, *Reset Sheets Layout* …
-- **Extension views** – extensions that contribute a container (`viewsContainers` / `views` / `viewsWelcome`) get their icon in the activity bar and the phone drawer. Tree views (`registerTreeDataProvider`, `createTreeView`), webview views (`registerWebviewViewProvider`) and webview panels run in a sandboxed frame with `acquireVsCodeApi`, theme variables and no network. Extensions that need desktop Node.js still appear, with a note saying why they cannot start.
-- **AI side bar tabs** – *Chat · Claude Code · Codex · Gemini · Copilot*. The CLI tabs run the official tools in their own Linux terminal inside the side bar (installed on first use via `cf run`).
-- **Terminal touch scrolling** – one-finger drag with a short glide; inside full-screen programs the drag is sent as wheel / arrow keys.
-- **`-- --host`** – *Settings → Live Server → reachable from other devices* starts npm dev servers with `-- --host`.
-- **About** – *Help → About CodeForge*: credits (VS Code, Termux, Acode, Monaco, xterm.js, PRoot/Alpine, isomorphic-git, Open VSX) and the independence note. Same page on the website.
-- **Keyboard on your terms** – on touch devices tapping the editor or terminal places the cursor and offers an **Open keyboard** prompt instead of popping the keyboard up (Settings → Appearance → *On-screen keyboard*: `ask` / `auto`). A **floating keyboard button** you can drag anywhere opens and closes it (long-press for options); Android's back button closes an open keyboard first.
-- **Unsaved work is protected** – back (or *Quit*) with unsaved files asks *Save all & leave / Leave without saving / Stay*; with nothing unsaved the app simply goes to recents. In the browser the tab-close prompt does the same.
-- **VS Code-style layout** – side bar on the left, the **AI Assistant in the right ("secondary") side bar**, Terminal & friends in the bottom panel; the three toggles are in the title bar on wide screens. Right-click / long-press any view's icon (activity bar or phone drawer) for *Move to Right Sheet / Bottom / Top / Page / Sidebar*; *Reset Layout* restores the defaults. On phones ☰ opens File, Edit, Selection, View, Go, Run, Terminal, Help.
-- **Text size everywhere** – *Settings → Appearance → Text size* (70–170 %) scales the whole UI, the editor and the terminal together; editor and terminal sizes stay
-  adjustable on top. `View: Increase Text Size (whole app)` in the palette.
-- **`cf` command** – in any terminal: `cf open file:line`, `cf preview index.html`, `cf serve`, `cf ai "explain this"` / `git diff | cf ai -s review`, `cf install claude|codex|gemini|opencode|copilot|qwen|aider`,
-  `cf run <cli>`, `cf settings`, `cf toast`. Works in the Linux environment and the Android shell (`cf help`).
-- **Plugins** – small JS plugins in sandboxed iframes with a permission model (editor, ui, commands, fs.read, fs.write, terminal, net:host).
-- **AI** – chat and an agent mode (find/read/search/edit/delete files, diagnostics, run commands; edits are shown as a diff and can be allowed for the whole chat;
-  read-only tools run in parallel, transient errors are retried, long runs trim old tool output, `AGENTS.md` / `CLAUDE.md` of the project are used as instructions, replies can be regenerated, shell blocks run in the terminal) with **Anthropic**, **OpenAI**, **GitHub Models**, Gemini,
-  OpenRouter, Groq, Mistral, DeepSeek, xAI, Ollama or any OpenAI-compatible endpoint. One-tap helpers install and run the CLIs
-  (Claude Code, Codex, Copilot CLI, Gemini CLI, opencode, Qwen Code, aider) inside the Linux terminal.
+# CodeForge
 
-## Build
-See **BUILD.md**. Short version: `./gradlew assembleDebug`.
+**A real code editor and IDE for Android, with a web version. Monaco editor, Linux terminal, Git, live preview, VS Code extensions and AI agents in your pocket.**
 
-## Website (React + Node: landing page, web editor, code browser, download page)
+[![Stars](https://img.shields.io/github/stars/saurabhart111/codeforge?style=flat&logo=github&color=yellow)](https://github.com/saurabhart111/codeforge/stargazers)
+[![Build](https://img.shields.io/github/actions/workflow/status/saurabhart111/codeforge/android.yml?label=android%20build&logo=android)](https://github.com/saurabhart111/codeforge/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](#install)
+[![Web](https://img.shields.io/badge/web-PWA-5A0FC8?logo=pwa&logoColor=white)](#web-version)
+[![Kotlin](https://img.shields.io/badge/Kotlin-native%20bridge-7F52FF?logo=kotlin&logoColor=white)](app/src/main/java/dev/codeforge/ide)
+[![Monaco](https://img.shields.io/badge/editor-Monaco-0078d4?logo=visualstudiocode&logoColor=white)](https://microsoft.github.io/monaco-editor/)
+
+[Releases](https://github.com/saurabhart111/codeforge/releases) · [Issues](https://github.com/saurabhart111/codeforge/issues) · [Build guide](BUILD.md) · [Deploy the website](DEPLOY.md)
+
+<br />
+
+[![Get the APK](https://img.shields.io/badge/%E2%AC%87%20%20GET%20THE%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=black)](https://github.com/saurabhart111/codeforge/releases)
+
+<br />
+
+[Quick start](#quick-start) · [Screenshots](#screenshots) · [What's inside](#whats-inside) · [AI editing](#ai-and-cli-editing) · [Extensions](#vs-code-extensions) · [Web version](#web-version) · [Security](#security-and-storage) · [Limitations](#honest-limitations) · [Layout](#project-layout)
+
 ```sh
-cd website && npm install
-npm run build        # -> website/dist   (React site, /app web editor, code data, source ZIP, APK if available)
-npm start            # http://localhost:8080  (Node 18+ server: static files, Git CORS proxy, env-driven config)
+./gradlew assembleDebug
 ```
-Pages: `/` landing, `/features`, `/docs`, `/updates` (release notes), `/blog`, `/about`, `/app/` web editor, `/code` source browser, `/download` APK + Google Play (set `playStoreUrl` in `website/public/site-config.js` or `PLAY_STORE_URL` when you have the link), `/privacy`.
-See **DEPLOY.md** for static hosting, Docker, environment variables and the Git proxy, and **Site.md** for how the site is organised. Tests: `tools/e2e/site.js`.
+
+</div>
+
+> [!IMPORTANT]
+> **Only install CodeForge from this repository.** Download APKs from the [Releases](https://github.com/saurabhart111/codeforge/releases) page or build them yourself from source. CodeForge asks for powerful permissions (all-files access, a terminal, API keys), so do not install copies from other websites, chat groups or mirrors.
+
+<div align="center">
+<img src="docs/screenshots/desktop.png" alt="CodeForge on a wide screen: explorer, Monaco editor, menu bar" width="880" />
+</div>
+
+## Screenshots
+
+<div align="center">
+<img src="docs/screenshots/phone-editor.png" alt="CodeForge editor on a phone" width="260" />
+&nbsp;&nbsp;
+<img src="docs/screenshots/phone-menu.png" alt="The phone menu: project actions, quick access tiles, search" width="260" />
+</div>
+
+*The menu on a phone: the open project with Close / Switch / Delete, one-tap access to Storage, Background Tasks, Security, Extensions, AI, Terminal, Search and Settings, a search box for every command, then the usual File / Edit / View menus.*
+
+## Quick start
+
+| You want to… | Do this |
+|---|---|
+| **Use it on a phone** | Install the APK from [Releases](https://github.com/saurabhart111/codeforge/releases), open the app, choose **Open Folder** and pick a project (or **New project**, **Clone repo**, **Open ZIP**). |
+| **Build the Android app** | `./gradlew assembleDebug`. See [BUILD.md](BUILD.md) for the SDK, NDK and signing details. |
+| **Run it in a browser** | `sh tools/web/build.sh` writes a static PWA to `web-dist/`. Serve it over HTTPS (or `localhost`). See [Web version](#web-version). |
+| **Hack on the UI** | `cd tools/devhost && npm install && sh restart.sh`, then open `http://127.0.0.1:8780`. The dev host emulates the native bridge with plain Node. |
+| **Run the tests** | `node tools/e2e/v84.js` (needs Playwright). More suites live in `tools/e2e/`. |
+
+## What's inside
+
+| | |
+|---|---|
+| **Editor** | Monaco with tabs, split view, diff, find/replace, multi-file search, Emmet, VS Code snippets and language configs, Prettier formatting, VS Code themes, file icons. |
+| **Terminal** | Native PTY sessions. An Android shell by default, or a full **Alpine Linux via proot** with `git`, `node`, `npm`, `python`, `gcc` and `apk`. Extra-keys bar, pinch zoom, touch scrolling. |
+| **Run and preview** | Run files by extension, `package.json` scripts, `tasks.json`. A live server with hot reload and an in-app preview (device presets, console). Previews run in a **separate process**, so a heavy page cannot crash the editor. |
+| **Git and GitHub** | Clone, stage, commit, branches, log, diff, pull, push. Sign in with a token or OAuth device flow. Tokens are injected natively and never reach scripts. |
+| **AI assistant** | Chat and an agent mode with file tools, plus Claude Code, Codex, Gemini, Copilot and other CLIs inside the app. Works with OpenAI, Anthropic, Google, OpenRouter, Groq, Mistral, DeepSeek, xAI, Ollama or any OpenAI-compatible endpoint. |
+| **Extensions** | Install from Open VSX or a `.vsix`. Every extension gets a **compatibility report**. See [VS Code extensions](#vs-code-extensions). |
+| **Files and storage** | All-files access, a document provider (the Files app can see your workspace), ZIP open / extract / compress, export to Downloads, a **Storage Manager** that shows what uses space. |
+| **Background tasks** | Downloads, installs, ZIP exports and cleanups run as tasks with progress and notifications, so the editor never blocks. |
+| **Security** | A Security Centre, PIN and biometric lock, API keys in the Android Keystore, privacy cleanup. See [Security and storage](#security-and-storage). |
+| **Crash recorder** | Uncaught Kotlin and JS errors, renderer deaths and out-of-memory kills are saved on the device with a stack, memory state and recent actions. |
+| **Touch workbench** | Draggable sashes with big touch targets, long-press menus, dockable top and bottom sheets, a drill-in phone menu, text size from 70 % to 170 % for the whole UI. |
+
+## AI and CLI editing
+
+Edits made by the AI agent, by a pasted `FILE:` block, or by a CLI tool running in the terminal (Claude Code, Codex, Gemini) behave like edits you typed yourself:
+
+- **In place.** Only the changed lines are touched, so your cursor, folds, scroll position and syntax state stay where they were.
+- **One undo step.** `Ctrl+Z` takes a whole AI change back.
+- **Visible.** Changed lines flash and show in the overview ruler; the agent can open the files it edits so you watch the change appear (*Settings → AI Assistant → Open the files the agent edits*).
+- **Review in an editor tab.** Proposed changes open as a side-by-side diff in a normal tab (stacked on phones). Edit the right-hand side, revert single hunks, then **Apply** or **Reject**. A dialog review is still available in settings.
+- **Live from disk.** While an agent or a Linux-terminal CLI is working, CodeForge checks open files every 1.5 seconds. Clean files update in place. If you have unsaved changes in a file that changed on disk, you choose **Keep mine**, **Compare** or **Use the disk version**; nothing is discarded silently.
+
+The same code path serves the Android app and the web version.
+
+## VS Code extensions
+
+CodeForge uses the **Monaco** editor with its own interface. It is not a fork of the VS Code workbench, and it has no Node.js extension host. That is why a VS Code extension cannot simply be dropped in, and why CodeForge tells you what will and will not work.
+
+When you install an extension, and in the extension's detail page, a **compatibility report** shows one of three verdicts:
+
+| Verdict | Meaning |
+|---|---|
+| **Works** | Everything the extension declares is supported (themes, icon themes, snippets, languages, settings, commands, views, or a web extension). |
+| **Partly works** | Some parts are applied; the report lists what is missing, for example *grammars*, *debuggers*, a *language server*, `child_process`, *tasks*, *notebooks*. |
+| **Won't work** | Nothing useful can run, for example a native addon or a debug adapter only. |
+
+The report combines the manifest, a scan of the extension's code, and problems seen while it runs (unimplemented API calls, activation errors), with a badge on every row of the Extensions list.
+
+Extension code runs in a sandboxed Worker with a subset of the `vscode` API (commands, messages and quick-pick, status bar, output channels, text edits, decorations, diagnostics, completion / hover / format / definition providers, tree views, basic webviews, scoped workspace files). You are asked once per extension before its code runs.
+
+## Web version
+
+`tools/web/build.sh` builds a static PWA from the same UI: IndexedDB file system, ZIP import and export, Monaco, Git over CORS-enabled hosts, extensions, AI and a mini shell.
+
+**Can it run npm, Node and Vite projects?** Partly, and honestly:
+
+| Works in the browser | Needs the Android app (real Linux) |
+|---|---|
+| Vite-style front-end projects: HTML, CSS, JS, **JSX / TSX / TypeScript** compiled on the fly | `npm install`, `npm run build`, any build step |
+| Extension-less imports (`./App`, `./components`), `@/` and `tsconfig` path aliases | Node servers, Express, APIs, SSR, databases |
+| npm packages from `dependencies` / runtime `devDependencies`, loaded from esm.sh (needs internet) | Packages with native addons |
+| CSS modules, `?raw` and `?url` imports, JSON and asset imports | Vue `.vue` and Svelte components, Sass / Less |
+| `.env` files (`VITE_*`), `import.meta.env`, live reload, console capture | Next.js, Nuxt, Astro and other server frameworks |
+
+`npm run dev` or `vite` in the mini shell starts the in-browser dev server. Files that cannot be compiled (`.vue`, `.svelte`, `.scss`) fail with a message that says why, not with a blank page. Browser storage can be cleared by the browser, so export a ZIP of anything you care about.
+
+## Security and storage
+
+- **Security Centre** (menu → Security): lock now, set or change the PIN, API keys, permissions and access, privacy cleanup, hide from recents.
+- **PIN-protected deletion.** Deleting a project always asks for your PIN (or biometrics) when a lock is set, even right after unlocking. **Close Folder** never deletes anything.
+- **Delete Project** removes a folder inside CodeForge's own storage. Folders in shared device storage are never deleted by CodeForge; they are only removed from the recent list.
+- **Storage Manager**: scans CodeForge's private storage by category (projects, `node_modules`, caches, the Linux environment, leftovers), shows sizes, and cleans what is safe to clean.
+- **Keys**: API keys live in the Android Keystore. Viewing one needs your PIN or biometrics.
 
 ## Honest limitations
-- This source drop has **not been compiled into an APK or run on a device by its author's tooling** (the build sandbox had no Android SDK / Maven access).
-  The Kotlin of earlier versions was type-checked against the Android 34 API; the **crash recorder, `:preview` process, PTY flow control and live-server changes of this
-  version were only parse-checked and reviewed** (no Android jar was available) , expect to fix small compile errors on first build. The whole web UI was tested end-to-end in headless Chromium against the dev host
-  (`tools/devhost`), which emulates the native bridge. Expect to fix small compile/runtime issues on first build.
-- The proot Linux environment, PTY, DocumentsProvider and GitHub device flow are untested on real hardware.
-- GitHub Copilot's private chat API is not implemented; use **GitHub Models** (free tier with a PAT) or the **Copilot CLI** helper.
-- The extension host is a **best-effort subset** of the VS Code API with no Node.js; many popular extensions (language servers, debuggers, anything
-  using webviews or `child_process`) will load but not work. Check *Output → Extension: <name>* for what a given extension tried to use.
-- Biometrics, the app lock, `FLAG_SECURE`, the splash/adaptive icon on real devices and the proot/PTY paths could only be type-checked / emulated here.
-- The web version keeps files in the browser (clearing site data deletes them , export ZIPs). Its encryption of stored keys protects against
-  casual inspection only; use the Android app for real key storage.
-- Open VSX could not be reached from the build sandbox; the install path was tested against a mock registry.
-- Google Play restricts "All files access"; this build targets sideloading.
 
-## Layout
+- This source tree has **not been compiled into an APK by its author's tooling** (the build sandbox had no Android SDK). Kotlin is checked against the Android API where possible, but expect to fix small compile errors on a first build. The web UI is tested end to end in headless Chromium against the dev host (`tools/devhost`), which emulates the native bridge.
+- The proot Linux environment, PTY, document provider, biometrics, app lock and GitHub device flow are **not tested on real hardware**.
+- The extension host is a **best-effort subset** of the VS Code API with no Node.js. Language servers, debuggers, notebooks and anything using `child_process` will load but not work. The compatibility report says so before you rely on it.
+- GitHub Copilot's private chat API is not implemented. Use **GitHub Models** with a token, or the **Copilot CLI** helper.
+- The web version keeps files in the browser, and it cannot run a real Linux, Node, server code or the GitHub device flow.
+- Google Play restricts "All files access", so this build targets sideloading.
+
+## Project layout
+
 ```
-app/src/main/java/dev/codeforge/ide/   Kotlin: bridge, PTY sessions, FS/search/zip, secrets, GitHub auth, live server, DocumentsProvider
+app/src/main/java/dev/codeforge/ide/   Kotlin: bridge, PTY sessions, FS / search / zip, secrets, GitHub auth, live server, DocumentsProvider
 app/src/main/cpp/                      JNI pty
-app/src/main/assets/www/               the IDE UI (ES modules, vendored libs in vendor/)
+app/src/main/assets/www/               the IDE UI (ES modules, vendored libraries in vendor/)
 app/src/main/assets/env/               Linux setup scripts
-tools/devhost, tools/e2e               Node dev host + Playwright tests
-tools/web                              build script, PWA manifest and service worker for the web version
-website/                               React (Vite) site, Node server (static files + Git CORS proxy), build scripts
+tools/devhost, tools/e2e               Node dev host and Playwright tests
+tools/web                              build script, PWA manifest and service workers for the web version
+website/                               React (Vite) site, Node server (static files, Git CORS proxy)
+docs/screenshots/                      images used in this README
 ```
-Licenses: MIT (see LICENSE); third-party in THIRD_PARTY_NOTICES.md.
+
+The website (landing page, web editor, code browser, downloads) builds with `cd website && npm install && npm run build`; see [DEPLOY.md](DEPLOY.md) and [Site.md](Site.md).
+
+## Credits and license
+
+CodeForge stands on VS Code's Monaco editor, Termux, Acode, xterm.js, PRoot and Alpine Linux, isomorphic-git and Open VSX. It is an independent project and is not affiliated with or endorsed by Microsoft, Google or any of those projects. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Released under the [MIT License](LICENSE).

@@ -71,8 +71,8 @@ exports.activate = (ctx) => {
   await page.click("details.ext-settings summary"); await page.fill(".ext-set:has-text('fixture.greeting') input", "yo"); await page.locator(".ext-set:has-text('fixture.greeting') input").dispatchEvent("change");
   ok(await page.evaluate(async () => (await import("/js/features/exthost.js")).getCfg("fixture.greeting")) === "yo", "setting change stored");
   await page.screenshot({ path: "/tmp/cf-dev/x2.png" });
-  const compat = await page.locator(".ext-compat").first().innerText(); console.log(compat.replace(/\n/g, " | "));
-  ok(/Supported here:.*commands/.test(compat) && !/Not supported:.*commands/.test(compat), "compat panel lists commands/configuration as supported");
+  const compat = await page.locator(".compat-report").first().innerText(); console.log(compat.replace(/\n/g, " | "));
+  ok(/Works:.*commands/.test(compat) && !/commands: not supported/.test(compat), "compat report lists commands/configuration as supported");
   // jsonValidation: schema applied → a.json 'fixture.json' with a string for number gets a marker
   fs.writeFileSync("/tmp/cf-dev/home/exttest/fixture.json", '{"a":"x"}');
   await page.keyboard.press("Escape"); await page.evaluate(async () => { document.querySelector(".modal-wrap")?.remove(); const ed = await import("/js/ui/editor.js"); await ed.openFile("/tmp/cf-dev/home/exttest/fixture.json"); });

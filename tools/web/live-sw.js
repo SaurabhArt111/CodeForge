@@ -68,13 +68,34 @@ if(/\\.css$/i.test(d.rel||'')){document.querySelectorAll('link[rel=stylesheet]')
 
   // ---- npm packages → esm.sh import map ----------------------------------------------------------------------------------
   const importMapCache = new Map();
+  /** build tools and type packages that a Vite project lists as devDependencies: never loaded in the browser */
+  const TOOLING = /^(vite|vitest|typescript|eslint|prettier|sass|sass-embedded|less|stylus|postcss|autoprefixer|tailwindcss|esbuild|rollup|webpack|jest|babel|ts-node|tsx|nodemon|concurrently|@types\/|@vitejs\/|@eslint\/|@babel\/|@typescript-eslint\/|@testing-library\/|@sveltejs\/|@vue\/|eslint-|vite-plugin-|rollup-plugin-|postcss-|prettier-)/;
+  const stripJsonc = (t) => t.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str) => str || "").replace(/,(\s*[}\]])/g, "$1");
+  /** import aliases: compilerOptions.paths of tsconfig.json / jsconfig.json, a literal `alias` in vite.config.*, and "@" -> /src when src/ exists */
+  async function aliases(root) {
+    const out = {}, rel = (t) => { t = String(t).replace(/^\.\//, "").replace(/\/\*$/, "").replace(/\/$/, ""); return "/" + t.replace(/^\//, "") + "/"; };
+    for (const f of ["tsconfig.json", "tsconfig.app.json", "jsconfig.json"]) {
+      const r = await idbGet("fs", root + "/" + f).catch(() => null); if (!r || !r.d) continue;
+      try {
+        const co = JSON.parse(stripJsonc(dec.decode(r.d))).compilerOptions || {}, base = co.baseUrl && co.baseUrl !== "." && co.baseUrl !== "./" ? "/" + String(co.baseUrl).replace(/^\.?\//, "").replace(/\/$/, "") : "";
+        for (const [k, v] of Object.entries(co.paths || {})) { const t = Array.isArray(v) ? v[0] : v; if (!t || !/\*$/.test(k)) continue; const key = k.replace(/\*$/, ""); out[key] = (base + rel(t)).replace(/\/\//g, "/"); }
+      } catch (e) { /* invalid json */ }
+    }
+    for (const f of ["vite.config.js", "vite.config.ts", "vite.config.mjs", "vite.config.mts"]) {
+      const r = await idbGet("fs", root + "/" + f).catch(() => null); if (!r || !r.d) continue;
+      const t = dec.decode(r.d);
+      for (const m of t.matchAll(/["']?(@[\w-]*|~)["']?\s*:\s*(?:path\.(?:resolve|join)\([^,)]*,\s*|fileURLToPath\(new URL\()?["'`](?:\.\/|\/)?([\w./-]+)["'`]/g)) if (!out[m[1] + "/"]) out[m[1] + "/"] = rel(m[2]);
+    }
+    if (!out["@/"] && (await idbGet("fs", root + "/src").catch(() => null))?.t === "d") out["@/"] = "/src/";
+    return out;
+  }
   const cleanVer = (v) => (typeof v === "string" && /^[~^]?\d+(\.\d+){0,2}([-+.\w]*)$/.test(v.trim()) ? v.trim().replace(/^\^/, "^") : "");
   async function importMap(root, wantReact) {
     const rec = await idbGet("fs", root + "/package.json").catch(() => null);
     const key = root + ":" + wantReact + ":" + (rec ? rec.m : 0);
     if (importMapCache.has(key)) return importMapCache.get(key);
     let deps = {};
-    try { if (rec && rec.d) deps = JSON.parse(dec.decode(rec.d)).dependencies || {}; } catch (e) { /* invalid package.json */ }
+    try { if (rec && rec.d) { const pk = JSON.parse(dec.decode(rec.d)); deps = pk.dependencies || {}; for (const [n, v] of Object.entries(pk.devDependencies || {})) if (!TOOLING.test(n) && !(n in deps)) deps[n] = v; } } catch (e) { /* invalid package.json */ }
     if (wantReact && !deps.react) deps = { react: "18.3.1", "react-dom": "18.3.1", ...deps };
     const hasReact = !!deps.react, ext = hasReact ? "?external=react,react-dom" : "";
     const imports = {};
@@ -85,6 +106,7 @@ if(/\\.css$/i.test(d.rel||'')){document.querySelectorAll('link[rel=stylesheet]')
       else if (name === "react-dom") { imports["react-dom"] = base + "?external=react"; imports["react-dom/client"] = base + "/client?external=react"; imports["react-dom/server"] = base + "/server?external=react"; imports["react-dom/"] = base + "/"; }
       else { imports[name] = base + ext; imports[name + "/"] = base + "/"; }
     }
+    for (const [k, v] of Object.entries(await aliases(root))) imports[k] = v;   // "@/": "/src/"  (tsconfig / jsconfig paths, Vite's usual "@" alias)
     const out = Object.keys(imports).length ? JSON.stringify({ imports }) : "";
     importMapCache.set(key, out); if (importMapCache.size > 40) importMapCache.delete(importMapCache.keys().next().value);
     return out;
@@ -100,13 +122,22 @@ if(/\\.css$/i.test(d.rel||'')){document.querySelectorAll('link[rel=stylesheet]')
   }
 
   // ---- source transforms ----------------------------------------------------------------------------------------------------
-  function compile(text, path) {
+  const envCache = new Map();
+  async function envVars(root) {
+    const out = { MODE: "development", DEV: true, PROD: false, SSR: false, BASE_URL: "/" };
+    for (const f of [".env", ".env.development", ".env.local", ".env.development.local"]) {
+      const r = await idbGet("fs", root + "/" + f).catch(() => null); if (!r || !r.d) continue;
+      for (const line of dec.decode(r.d).split(/\r?\n/)) { const m = /^\s*(?:export\s+)?(VITE_[A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line); if (m) out[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2"); }
+    }
+    return out;
+  }
+  async function compile(text, path, root) {
     const ext = extOf(path);
     if (!self.sucrase) return js(`throw new Error(${jsString("CodeForge: the JSX/TypeScript compiler could not be loaded (" + path + ")")});`, 500);
     try {
       const transforms = ext === "jsx" ? ["jsx"] : ext === "tsx" ? ["typescript", "jsx"] : ["typescript"];
       let code = self.sucrase.transform(text, { transforms, jsxRuntime: "automatic", production: true, filePath: path }).code;
-      if (/import\.meta\.env/.test(code)) code = "import.meta.env=Object.assign({MODE:'development',DEV:true,PROD:false,SSR:false,BASE_URL:'/'},import.meta.env||{});\n" + code;
+      if (/import\.meta\.env/.test(code)) code = "import.meta.env=Object.assign(" + JSON.stringify(await envVars(root || "")) + ",import.meta.env||{});\n" + code;
       return js(code);
     } catch (e) {
       const msg = `${path}: ${e && e.message || e}`;
@@ -116,6 +147,11 @@ if(/\\.css$/i.test(d.rel||'')){document.querySelectorAll('link[rel=stylesheet]')
   /** `import "./a.css"`, `import data from "./a.json"`, `import url from "./a.png"` */
   function asModule(bytes, path, url) {
     const ext = extOf(path);
+    if (ext === "css" && /\.module\.css$/i.test(path)) {   // CSS modules: classes get a file-specific suffix, the default export maps the names
+      let h = 0; for (let i = 0; i < path.length; i++) h = (h * 31 + path.charCodeAt(i)) >>> 0; const sfx = "_" + h.toString(36).slice(0, 5), map = {};
+      const css = dec.decode(bytes).replace(/([^{};]+)\{/g, (m, sel) => (/^\s*@/.test(sel) ? m : sel.replace(/\.(-?[_a-zA-Z][\w-]*)/g, (mm, n) => { map[n] = n + sfx; return "." + n + sfx; }) + "{"));
+      return js(`const s=document.createElement("style");s.dataset.cfSrc=${jsString(path.slice(path.lastIndexOf("/") + 1))};s.textContent=${jsString(css)};document.head.append(s);export default ${JSON.stringify(map)};`);
+    }
     if (ext === "css") return js(`const s=document.createElement("style");s.dataset.cfSrc=${jsString(path.slice(path.lastIndexOf("/") + 1))};s.textContent=${jsString(dec.decode(bytes))};document.head.append(s);export default ${jsString(dec.decode(bytes))};`);
     if (ext === "json") return js(`export default ${dec.decode(bytes).trim() || "null"};`);
     return js(`export default ${jsString(url)};`);
@@ -144,12 +180,16 @@ if(/\\.css$/i.test(d.rel||'')){document.querySelectorAll('link[rel=stylesheet]')
     let decoded; try { decoded = decodeURIComponent(rel); } catch (e) { return page(400, "Bad request", "<p>Malformed URL.</p>"); }
     let path = inside(cfg.root, decoded); if (!path) return page(403, "Forbidden", "");
     let rec = await idbGet("fs", path).catch(() => null);
+    if (rec && rec.t === "d" && (fall || req.destination === "script") && !decoded.endsWith("/")) {   // `import "./components"` -> components/index.tsx
+      const hit = await resolveScript(path + "/index"); if (hit) { path = hit[0]; rec = hit[1]; }
+    }
     if (rec && rec.t === "d") {
       if (!decoded.endsWith("/")) return Response.redirect(LIVE + port + rel + "/" + search, 301);
       let hit = null; for (const n of ["index.html", "index.htm"]) { const r = await idbGet("fs", path + "/" + n).catch(() => null); if (r && r.t === "f") { hit = [path + "/" + n, r]; break; } }
       if (!hit) { if (fall) return null; return listing(cfg.root, path, decoded, port); }
       [path, rec] = hit;
     }
+    if ((!rec || rec.t !== "f") && (fall || req.destination === "script")) { const hit = await resolveScript(path); if (hit) { path = hit[0]; rec = hit[1]; } }   // `import App from "./App"` -> App.tsx
     if (!rec || rec.t !== "f") {
       const last = decoded.slice(decoded.lastIndexOf("/") + 1);
       const wantsDoc = req.mode === "navigate" || req.destination === "document" || req.destination === "iframe";
@@ -157,10 +197,23 @@ if(/\\.css$/i.test(d.rel||'')){document.querySelectorAll('link[rel=stylesheet]')
       if (!rec || rec.t !== "f") return fall ? null : page(404, "404 – Not found", `<p style="color:#999">${esc(decoded)}</p>`);
     }
     const ext = extOf(path), bytes = rec.d || new Uint8Array(), headers = { "Content-Type": MIME[ext] || "application/octet-stream", ...NOCACHE };
+    if (/(^|[?&])raw(&|=|$)/.test(search)) return js(`export default ${jsString(dec.decode(bytes))};`);                    // import txt from "./a.txt?raw"
+    if (/(^|[?&])url(&|=|$)/.test(search)) return js(`export default ${jsString(new URL(req.url).pathname)};`);           // import u from "./a.png?url"
+    if (req.destination === "script" && UNSUPPORTED[ext]) return js(`throw new Error(${jsString(`CodeForge web preview cannot compile .${ext} files (${path.slice(path.lastIndexOf("/") + 1)}): ${UNSUPPORTED[ext]}`)});`);
     if (ext === "html" || ext === "htm") return req.method === "HEAD" ? new Response("", { headers }) : htmlResponse(dec.decode(bytes), cfg.root, port);
-    if (["jsx", "tsx", "ts", "mts"].includes(ext)) return compile(dec.decode(bytes), path);
+    if (["jsx", "tsx", "ts", "mts"].includes(ext)) return compile(dec.decode(bytes), path, cfg.root);
     if (req.destination === "script" && ["css", "json", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "woff", "woff2", "ttf", "otf", "mp3", "mp4", "webm", "wav", "ogg", "txt", "md", "csv"].includes(ext)) return asModule(bytes, path, new URL(req.url).pathname);
     return req.method === "HEAD" ? new Response("", { headers: { ...headers, "Content-Length": bytes.length } }) : ranged(req, bytes, headers);
+  }
+
+  const UNSUPPORTED = { vue: "Vue single-file components need the Vue compiler. Use the Android app's Linux environment (npm run dev) for Vue projects.", svelte: "Svelte components need the Svelte compiler. Use the Android app's Linux environment (npm run dev) for Svelte projects.",
+    scss: "Sass is not available in the browser. Use plain CSS here, or the Android app's Linux environment.", sass: "Sass is not available in the browser. Use plain CSS here, or the Android app's Linux environment.", less: "Less is not available in the browser. Use plain CSS here, or the Android app's Linux environment.", styl: "Stylus is not available in the browser." };
+  /** Vite-style resolution: try the file with script extensions, `./a.js` -> a.ts / a.tsx, then a/index.* */
+  async function resolveScript(path) {
+    const m = /\.(js|jsx|mjs)$/i.exec(path), stem = m ? path.slice(0, -m[0].length) : path, last = path.slice(path.lastIndexOf("/") + 1);
+    const tries = []; if (m) tries.push(...["tsx", "ts", "jsx"].map((e) => stem + "." + e)); else if (!last.includes(".") || !MIME[extOf(path)]) tries.push(...["tsx", "ts", "jsx", "js", "mjs", "json"].map((e) => path + "." + e), ...["tsx", "ts", "jsx", "js"].map((e) => path + "/index." + e));
+    for (const t of tries) { const r = await idbGet("fs", t).catch(() => null); if (r && r.t === "f") return [t, r]; }
+    return null;
   }
 
   async function listing(root, dir, decoded, port) {

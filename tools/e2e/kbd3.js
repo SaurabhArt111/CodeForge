@@ -80,8 +80,8 @@ fs.mkdirSync("/tmp/cf-dev/home/kb", { recursive: true }); fs.writeFileSync("/tmp
 
     // ---- ☰ opens the menu list on phones
     await page.click("#btn-sidebar"); await page.waitForSelector(".ctx");
-    const tops = await page.locator(".ctx:not(.sub) > .ctx-item > .ctx-label").allTextContents();
-    ok(JSON.stringify(tops) === JSON.stringify(["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]), tag + "☰ lists File, Edit, Selection, View, Go, Run, Terminal, Help: " + tops.join(","));
+    const tops = await page.locator(".navmenu .nm-body > .ctx-item > .ctx-label").allTextContents();
+    ok(JSON.stringify(tops) === JSON.stringify(["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Security", "Help"]), tag + "☰ lists File, Edit, Selection, View, Go, Run, Terminal, Security, Help: " + tops.join(","));
     await page.click('.ctx > .ctx-item:has(> .ctx-label:text-is("File"))'); await page.waitForTimeout(500);
     ok(await page.locator(".ctx .ctx.sub .ctx-item:has-text('New File')").first().isVisible(), tag + "File opens its entries");
     await page.keyboard.press("Escape"); await page.click(".ctx-back", { position: { x: 5, y: 5 }, force: true }).catch(() => {});

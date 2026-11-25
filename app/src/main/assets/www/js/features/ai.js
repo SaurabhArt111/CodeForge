@@ -1,6 +1,7 @@
 // AI assistant: multi-provider chat with streaming, workspace context (@files, selection), code-apply actions and an agent mode with
 // tools (read/list/search/write/edit/run).  API keys live in the native keystore (AES-GCM) and are injected into requests natively.
 import * as lazy from "../core/lazy.js";
+import * as aiedit from "./aiedit.js";
 import { h, icon, P, uid, debounce, esc, shellQuote, fmtBytes, textDec } from "../core/util.js";
 let A, view, msgsEl, inputEl, sendBtn, ctxEl, headEl, session = null, streaming = null;
 const chat = { id: uid(), title: "New chat", messages: [], created: Date.now() };
@@ -39,6 +40,7 @@ const CLIS = [
 
 export async function init(api) {
   await lazy.marked(); A = api; A.registerView("ai", build);
+  aiedit.start(() => !!A.term?.list?.().some((t) => t.alive && t.mode === "linux"));   // live-sync files that a terminal tool (Claude Code, Codex …) rewrites
   A.bus.on("ai:selection", (kind) => selectionAction(kind));
   A.cmd.register({ id: "ai.new", title: "AI: New Chat", run: () => { A.showView("ai"); newChat(); } }); A.cmd.register({ id: "ai.focus", title: "AI: Focus Chat Input", run: () => { A.showView("ai"); inputEl?.focus(); } });
   A.cmd.register({ id: "ai.key", title: "AI: Set API Key…", run: () => setKey() }); A.cmd.register({ id: "ai.provider", title: "AI: Select Provider / Model…", run: pickProvider });
@@ -267,7 +269,16 @@ function reviewBody(path, oldText, newText) {
   for (const [k, l] of ops) { if (++n > 400) { box.append(h("div.muted", "… diff truncated")); break; } box.append(h("div." + (k === "+" ? "add" : k === "-" ? "del" : "ctxl"), (k === " " ? "  " : k + " ") + l)); }
   return box;
 }
-/** Apply one path-tagged change. `review`: show the diff first (skipped when the "apply automatically" setting is on). Returns true when written. */
+/** Puts `text` into `full` the native way: an open document is patched in place (cursor, folds and undo history stay, changed lines flash) and saved;
+ *  a closed file is opened first so the change is visible, then patched. `bom` only matters for files that are not open. */
+async function writeEdited(full, text, { exists, bom = false, source = "ai", follow = true } = {}) {
+  if (exists && !A.ed.getDoc(full) && follow) await A.ed.openFile(full, { preview: true, focus: false, reveal: false }).catch(() => {});
+  const doc = A.ed.getDoc(full);
+  if (doc?.model) { A.ed.patchDoc(full, text, { source, reveal: true }); await A.ed.save(full); }
+  else { await A.N.fs.mkdir(P.dir(full)); await A.N.fs.writeText(full, text, { bom }); A.ws.emit("changed", new Set([P.dir(full)])); if (follow) A.ed.openFile(full, { preview: !exists, focus: false }).catch(() => {}); }
+  A.bus.emit("fs:docreload", full);
+}
+/** Apply one path-tagged change. `review`: show it first (skipped when the "apply automatically" setting is on). Returns true when written. */
 export async function applyEdit(ed, { review = true } = {}) {
   try {
     if (!A.ws.isOpen) { A.toast("Open a project folder first", { kind: "warn" }); return false; }
@@ -276,15 +287,19 @@ export async function applyEdit(ed, { review = true } = {}) {
     if (exists) { if (doc?.model) oldText = doc.model.getValue(); else { const r = await A.N.fs.readText(full); if (r.text == null) throw new Error("Cannot read " + ed.path + " (binary or too large)"); oldText = r.text; bom = r.bom; } }
     const plan = planText(oldText, ed); if (plan.error) { A.toast(plan.error, { kind: "error", timeout: 6000 }); return false; }
     if (plan.text === oldText) { A.toast("Already up to date: " + ed.path, { timeout: 1800 }); return true; }
+    let text = plan.text;
     if (review && !A.settings.get("ai.autoApply")) {
-      const r = await A.modal({ title: `${exists ? "Apply changes to" : "Create"} ${P.rel(A.ws.root, full)}`, width: 640, className: "tall", body: reviewBody(P.rel(A.ws.root, full), oldText, plan.text), buttons: [{ label: "Cancel", value: false }, { label: exists ? "Apply" : "Create file", primary: true, value: true }] });
-      if (r !== true) return false;
+      if (A.settings.get("ai.review") === "dialog") {
+        const r = await A.modal({ title: `${exists ? "Apply changes to" : "Create"} ${P.rel(A.ws.root, full)}`, width: 640, className: "tall", body: reviewBody(P.rel(A.ws.root, full), oldText, plan.text), buttons: [{ label: "Cancel", value: false }, { label: exists ? "Apply" : "Create file", primary: true, value: true }] });
+        if (r !== true) return false;
+      } else {
+        const res = await aiedit.review({ path: full, oldText, newText: plan.text, exists, title: P.rel(A.ws.root, full) });   // real diff editor: revert single changes, edit, apply
+        if (!res) return false; text = res.text;
+        if (text === oldText) { A.toast("No changes applied", { timeout: 1600 }); return false; }
+      }
     }
-    if (doc?.model) { doc.model.pushEditOperations([], [{ range: doc.model.getFullModelRange(), text: plan.text }], () => null); await A.ed.save(full); }
-    else { await A.N.fs.mkdir(P.dir(full)); await A.N.fs.writeText(full, plan.text, { bom }); A.ws.emit("changed", new Set([P.dir(full)])); }
-    A.bus.emit("fs:docreload", full);
+    await writeEdited(full, text, { exists, bom });
     A.toast(`${exists ? "Applied to" : "Created"} ${P.rel(A.ws.root, full)}`, { kind: "success", timeout: 2200 });
-    if (!A.ed.getDoc(full)) A.ed.openFile(full, { preview: false });
     return true;
   } catch (e) { A.toastError(e); return false; }
 }
@@ -393,7 +408,7 @@ async function send(textOverride) {
 
 async function runTurn() {
   const p = curProvider(); const max = mode === "agent" ? 25 : 1;
-  streaming = { abort: null, cancelled: false }; setBusy(true);
+  streaming = { abort: null, cancelled: false }; setBusy(true); if (mode === "agent") aiedit.setBusy("agent", true);
   try {
     for (let step = 0; step < max; step++) {
       const asst = { role: "assistant", text: "", toolCalls: [] }; chat.messages.push(asst); const el = addBubble(asst); el.classList.add("streaming"); const body = el.querySelector(".ai-md");
@@ -411,7 +426,7 @@ async function runTurn() {
       void done;
     }
   } catch (e) { if (!streaming?.cancelled) { const err = { role: "assistant", text: "⚠️ " + (e.message || e), error: true }; chat.messages.push(err); addBubble(err); } }
-  finally { streaming = null; setBusy(false); saveChat(); msgsEl.scrollTop = msgsEl.scrollHeight; }
+  finally { streaming = null; setBusy(false); aiedit.setBusy("agent", false); saveChat(); msgsEl.scrollTop = msgsEl.scrollHeight; }
 }
 const note = (t) => { let n = msgsEl?.querySelector(".ai-note"); if (!t) return n?.remove(); if (!n) { n = h("div.ai-note.muted"); msgsEl.append(n); } n.textContent = t; msgsEl.scrollTop = msgsEl.scrollHeight; };
 function setBusy(b) { sendBtn.replaceChildren(icon(b ? "debug-stop" : "send")); sendBtn.title = b ? "Stop" : "Send"; }
@@ -521,12 +536,21 @@ function diffView(oldS, newS) {
   for (const l of String(newS).split("\n").slice(0, 60)) box.append(h("div.add", "+ " + l));
   return box;
 }
-async function approve(title, detail, { diff } = {}) {
+async function approve(title, detail, { diff, body: ready } = {}) {
   if (!A.settings.get("ai.agentConfirm") || sessionAllow) return true;
-  const body = diff ? diffView(diff.old, diff.new) : h("pre.selectable", { style: { whiteSpace: "pre-wrap", maxHeight: "50vh", overflow: "auto", font: "calc(12px * var(--fz)) var(--mono)", margin: 0 } }, detail);
+  const body = ready || (diff ? diffView(diff.old, diff.new) : h("pre.selectable", { style: { whiteSpace: "pre-wrap", maxHeight: "50vh", overflow: "auto", font: "calc(12px * var(--fz)) var(--mono)", margin: 0 } }, detail));
   const r = await A.modal({ title, width: 600, className: "tall", body, buttons: [{ label: "Reject", value: false, danger: true }, { label: "Allow all in this chat", value: "all" }, { label: "Allow", value: true, primary: true }] });
   if (r === "all") { sessionAllow = true; return true; }
   return r === true;
+}
+/** Agent file write: on disk right away (shell commands see it), and the editor follows: the file opens in a preview tab and the changed lines flash. */
+async function agentWrite(full, text, { exists, bom = false } = {}) {
+  if (exists && !A.ed.getDoc(full) && A.settings.get("ai.followAgent") !== false) await A.ed.openFile(full, { preview: true, focus: false, reveal: false }).catch(() => {});
+  const doc = A.ed.getDoc(full);
+  await A.N.fs.mkdir(P.dir(full)); await A.N.fs.writeText(full, text, { bom: doc?.bom ?? bom });
+  A.ws.emit("changed", new Set([P.dir(full)]));
+  if (doc?.model) await A.ed.syncFromDisk(full, { source: "ai", reveal: true });
+  else if (!exists && A.settings.get("ai.followAgent") !== false) A.ed.openFile(full, { preview: true, focus: false }).catch(() => {});
 }
 async function runTool(tc) {
   const i = tc.input || {}; const ok = (output) => ({ output, isError: false }), bad = (e) => ({ output: String(e.message || e), isError: true });
@@ -547,11 +571,17 @@ async function runTool(tc) {
       }
       case "open_file": { const full = rel(i.path); await A.ed.openFile(full, { line: i.line || undefined }); return ok("Opened " + P.rel(A.ws.root, full)); }
       case "delete_file": { const full = rel(i.path); if (full === A.ws.root) return bad("refusing to delete the project root"); if (!(await approve(`Delete ${P.rel(A.ws.root, full)}?`, "This cannot be undone."))) return bad("Rejected by user"); await A.N.fs.rm(full); A.ws.emit("changed", new Set([P.dir(full)])); return ok("Deleted " + P.rel(A.ws.root, full)); }
-      case "write_file": { const full = rel(i.path); const exists = await A.N.fs.exists(full); if (!(await approve(`${exists ? "Overwrite" : "Create"} ${P.rel(A.ws.root, full)}?`, String(i.content).slice(0, 4000)))) return bad("Rejected by user"); await A.N.fs.writeText(full, String(i.content)); A.ws.emit("changed", new Set([P.dir(full)])); if (A.ed.getDoc(full)) A.ed.reload(full, true); return ok(`Wrote ${P.rel(A.ws.root, full)} (${String(i.content).length} chars)`); }
-      case "edit_file": { const full = rel(i.path); const r = await A.N.fs.readText(full); if (r.text == null) return bad("cannot read file"); const n = r.text.split(i.old_string).length - 1; if (n === 0) return bad("old_string not found (must match exactly)"); if (n > 1 && !i.replace_all) return bad(`old_string occurs ${n} times; make it unique or pass replace_all`);
-        if (!(await approve(`Edit ${P.rel(A.ws.root, full)}?`, "", { diff: { old: i.old_string, new: i.new_string } }))) return bad("Rejected by user");
-        const doc = A.ed.getDoc(full); if (doc?.model && doc.dirty) await A.ed.save(full);
-        await A.N.fs.writeText(full, (i.replace_all ? r.text.split(i.old_string).join(i.new_string) : r.text.replace(i.old_string, () => i.new_string)), { bom: r.bom }); if (doc) A.ed.reload(full, true); return ok("Edited " + P.rel(A.ws.root, full)); }
+      case "write_file": {
+        const full = rel(i.path); const exists = await A.N.fs.exists(full); const doc = A.ed.getDoc(full); const content = String(i.content);
+        let oldText = ""; if (exists) { if (doc?.model) oldText = doc.model.getValue(); else { const r = await A.N.fs.readText(full); oldText = r.text ?? ""; } }
+        if (!(await approve(`${exists ? "Overwrite" : "Create"} ${P.rel(A.ws.root, full)}?`, content.slice(0, 4000), { body: exists ? reviewBody(P.rel(A.ws.root, full), oldText, content) : undefined }))) return bad("Rejected by user");
+        await agentWrite(full, content, { exists }); return ok(`Wrote ${P.rel(A.ws.root, full)} (${content.length} chars)`); }
+      case "edit_file": {
+        const full = rel(i.path); const doc = A.ed.getDoc(full); const r = doc?.model ? { text: doc.model.getValue(), bom: doc.bom } : await A.N.fs.readText(full);   // the editor's text wins: it may hold unsaved edits of the user
+        if (r.text == null) return bad("cannot read file"); const n = r.text.split(i.old_string).length - 1; if (n === 0) return bad("old_string not found (must match exactly)"); if (n > 1 && !i.replace_all) return bad(`old_string occurs ${n} times; make it unique or pass replace_all`);
+        const next = i.replace_all ? r.text.split(i.old_string).join(i.new_string) : r.text.replace(i.old_string, () => i.new_string);
+        if (!(await approve(`Edit ${P.rel(A.ws.root, full)}?`, "", { body: reviewBody(P.rel(A.ws.root, full), r.text, next) }))) return bad("Rejected by user");
+        await agentWrite(full, next, { exists: true, bom: r.bom }); return ok("Edited " + P.rel(A.ws.root, full)); }
       case "run_command": { if (!(await approve("Run command?", String(i.command)))) return bad("Rejected by user"); const r = await A.N.proc.exec({ line: String(i.command), cwd: A.ws.root, timeoutMs: 120_000 }); const out = r.out.length > 8000 ? "…" + r.out.slice(-8000) : r.out; A.ws.invalidate(); return { output: `exit code ${r.code}${r.timedOut ? " (timed out)" : ""}\n${out}`, isError: r.code !== 0 }; }
       default: return bad("unknown tool " + tc.name);
     }

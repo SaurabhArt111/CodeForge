@@ -171,7 +171,7 @@ export function contextMenu(items, x, y) {
 
 /** Phone menu: a list of pages that slide in place of each other (a submenu replaces the list, with a ‹ Back header)
  *  instead of expanding inside the same box. Items are the contextMenu format; `submenu` makes a page. */
-export function navMenu(items, x, y, { title = "" } = {}) {
+export function navMenu(items, x, y, { title = "", searchable = false } = {}) {
   if (openMenu && !settled() && menuPos && Math.hypot(menuPos.x - x, menuPos.y - y) < 40) return;
   closeMenu(); menuOpenedAt = Date.now(); menuPos = { x, y };
   const menu = h("div.ctx.navmenu"), stack = [{ list: items, name: title }];   // stack[0] = the root list
@@ -181,13 +181,40 @@ export function navMenu(items, x, y, { title = "" } = {}) {
     if (stack.length > 1) page.append(h("div.nm-head", h("button.nm-back", { type: "button", onclick: (e) => { e.stopPropagation(); if (!settled()) return; stack.pop(); const prev = stack[stack.length - 1]; show(prev.list, prev.name, -1); } }, icon("chevron-left"), h("span", stack[stack.length - 2].name || "Menu")), h("span.nm-title", name)));
     else if (title) page.append(h("div.nm-head", h("span.nm-title", title)));
     const body = h("div.nm-body");
-    for (const it of list) {
-      if (!it) continue;
-      if (it.separator) { body.append(h("div.ctx-sep")); continue; }
-      body.append(h(`div.ctx-item${it.disabled ? ".disabled" : ""}${it.danger ? ".danger" : ""}`, {
-        onclick: (e) => { e.stopPropagation(); if (!settled() || it.disabled) return; if (it.submenu) { stack.push({ list: it.submenu, name: it.label }); show(it.submenu, it.label, 1); return; } closeMenu(); it.run?.(); },
-      }, h("span.ctx-ico", it.icon ? icon(it.icon) : null), h("span.ctx-label", it.label), it.keys ? h("span.ctx-keys", it.keys) : null, it.submenu ? icon("chevron-right") : null));
+    const row = (it, trail) => h(`div.ctx-item${it.disabled ? ".disabled" : ""}${it.danger ? ".danger" : ""}`, {
+      onclick: (e) => { e.stopPropagation(); if (!settled() || it.disabled) return; if (it.submenu) { stack.push({ list: it.submenu, name: it.label }); show(it.submenu, it.label, 1); return; } closeMenu(); it.run?.(); },
+    }, h("span.ctx-ico", it.icon ? icon(it.icon) : null), h("span.ctx-label", trail ? h("span.nm-trail", trail + " › ") : null, it.label), it.keys ? h("span.ctx-keys", it.keys) : null, it.submenu ? icon("chevron-right") : null);
+    const fill = (target, list) => {
+      for (const it of list) {
+        if (!it) continue;
+        if (it.separator) { target.append(h("div.ctx-sep")); continue; }
+        if (it.heading) { target.append(h("div.nm-heading", it.heading)); continue; }
+        if (it.node) { target.append(it.node(() => closeMenu())); continue; }
+        if (it.tiles) {
+          target.append(h("div.nm-tiles", ...it.tiles.filter(Boolean).map((t) => h("button.nm-tile" + (t.disabled ? ".disabled" : ""), { type: "button", title: t.label, onclick: (e) => { e.stopPropagation(); if (!settled() || t.disabled) return; closeMenu(); t.run?.(); } },
+            h("span.nm-tile-ico", icon(t.icon), t.badge ? h("span.nm-badge", String(t.badge)) : null), h("span.nm-tile-label", t.label)))));
+          continue;
+        }
+        target.append(row(it));
+      }
+    };
+    if (stack.length === 1 && searchable) {
+      const flat = (l, trail, out = []) => { for (const it of l) { if (!it || it.separator || it.heading || it.node) continue; if (it.tiles) { it.tiles.forEach((t) => t && out.push({ ...t, trail })); continue; } if (it.submenu) flat(it.submenu, it.label, out); else out.push({ ...it, trail }); } return out; };
+      const all = flat(items, "");
+      const input = h("input.nm-search", { type: "search", placeholder: "Search menu and features…", spellcheck: false, autocapitalize: "off", autocomplete: "off", enterkeyhint: "search" });
+      const results = h("div.nm-results");
+      input.addEventListener("input", () => {
+        const q = input.value.trim().toLowerCase(); results.replaceChildren();
+        if (!q) { body.hidden = false; results.hidden = true; return; }
+        body.hidden = true; results.hidden = false;
+        const hits = all.filter((it) => (it.label + " " + (it.trail || "")).toLowerCase().includes(q)).slice(0, 40);
+        if (!hits.length) results.append(h("div.nm-empty", "Nothing matches “" + input.value.trim() + "”"));
+        for (const it of hits) results.append(row(it, it.trail));
+      });
+      results.hidden = true; page.append(h("div.nm-searchbar", input));
+      fill(body, list); page.append(body, results); menu.replaceChildren(page); place(); body.scrollTop = 0; return;
     }
+    fill(body, list);
     page.append(body); menu.replaceChildren(page); place(); body.scrollTop = 0;
   };
   const place = () => {

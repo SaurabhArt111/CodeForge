@@ -1,5 +1,16 @@
 // Release notes, newest first. Dates are when the build was prepared.
 export const RELEASES = [
+  { v: "8.4.0", date: "November 2026", title: "Better menu, native-feeling AI edits, extension reports",
+    items: [
+      ["new", "The phone menu has a project header (Close, Switch, Delete), quick-access tiles (Storage, Background Tasks, Security, Extensions, AI, Terminal, Search, Settings) and a search box that finds any menu command."],
+      ["new", "Close Folder and Delete Project in the File menu, the palette and the project list. Deleting asks for your PIN (or biometrics) every time a lock is set. Folders outside CodeForge's storage are only removed from the list."],
+      ["new", "AI and CLI edits now behave like your own edits: only the changed lines are touched (cursor, folds and scroll stay), one undo step, changed lines flash, and the agent can open the files it edits."],
+      ["new", "AI changes are reviewed in an editor tab with a side-by-side diff you can edit, revert per hunk, then Apply or Reject. The old dialog is still available in Settings."],
+      ["new", "While an agent or a Linux-terminal CLI (Claude Code, Codex, Gemini) works, open files are checked every 1.5 seconds. A file with unsaved edits that also changed on disk asks Keep mine / Compare / Use the disk version instead of discarding anything."],
+      ["new", "Every extension gets a compatibility report (Works, Partly works, Won't work) with the reasons and problems seen while it runs: after installing, in the list and on its detail page."],
+      ["new", "Web version: Vite-style projects load extension-less imports and folder imports, @/ and tsconfig path aliases, CSS modules, ?raw / ?url, .env VITE_ variables and runtime devDependencies. .vue, .svelte and Sass files fail with a clear explanation."],
+      ["improve", "The README was rewritten with screenshots, a quick start, and an honest list of what works where."],
+    ] },
   { v: "8.3.1", date: "November 2026", title: "Cleaner diagnostics, terminal fix",
     items: [
       ["fix", "Diagnostics no longer fills up with routine process kills: reclaimed WebView helper processes, background kills by phone-cleaner apps and app updates are not recorded any more. A cleaner stopping the visible app is recorded and labelled as not a CodeForge crash."],

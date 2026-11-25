@@ -34,6 +34,7 @@ import * as jobs from "./core/jobs.js";
 import * as storage from "./ui/storage.js";
 import * as seccenter from "./ui/securitycenter.js";
 import * as exporter from "./ui/exporter.js";
+import * as projectops from "./ui/projectops.js";
 
 crash.install();   // JS errors + breadcrumbs go to the crash recorder from the very first line
 
@@ -269,6 +270,7 @@ const handlers = {
   cloneRepo: async () => (await feat("git")).cloneDialog(),
   newProject: async () => (await feat("templates")).newProject(),
   closeFolder,
+  deleteProject: async (p) => { const ok = await projectops.deleteProject(p || ws.root, { closeCurrent: closeFolder }); if (ok && !ws.root) { /* closeFolder already showed the welcome screen */ } return ok; },
   openTerminalAt: (dir) => term.create({ cwd: dir }),
   liveServe: async (dir) => (await feat("live")).serve(dir),
   livePreview: async (file) => (await feat("live")).previewFile(file),
@@ -433,7 +435,8 @@ function registerCommands() {
   R("file.openZip", "Open ZIP Project…", handlers.openZip, { category: "File" });
   R("file.clone", "Clone Repository…", handlers.cloneRepo, { category: "Git" });
   R("file.newProject", "New Project…", handlers.newProject, { category: "File" });
-  R("file.closeFolder", "Close Folder", closeFolder, { category: "File" });
+  R("file.closeFolder", "Close Folder", closeFolder, { category: "File", icon: "close" });
+  R("file.deleteProject", "Delete Project…", () => (ws.root ? handlers.deleteProject(ws.root) : toast("No folder is open", { kind: "info" })), { category: "File", icon: "trash" });
   R("file.new", "New File", () => explorer.explorer.newFile(), { category: "File", keys: "Ctrl+Alt+N" });
   R("file.newFolder", "New Folder", () => explorer.explorer.newFolder(), { category: "File" });
   R("file.save", "Save", () => ed.saveActive(), { category: "File", keys: "Ctrl+S" });

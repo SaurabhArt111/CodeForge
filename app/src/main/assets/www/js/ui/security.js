@@ -78,6 +78,20 @@ export async function copySecret(text) {
 export async function clearClipboard(quiet = false) { clearTimeout(clipT); try { await N.sys.clipboardSet(""); } catch { try { await navigator.clipboard?.writeText(""); } catch { /* not allowed */ } } if (!quiet) toast("Clipboard cleared"); }
 
 /** Asks for PIN / fingerprint when the user turned `settingKey` on. Resolves true to go on. */
+/** For destructive actions: ALWAYS asks (never reuses a recent unlock) when a PIN is set. Resolves true when allowed.
+ *  With no PIN and no biometric lock there is nothing to ask with, so it allows (the caller still shows its own confirmation). */
+export async function requirePin(reason = "Enter your PIN to continue") {
+  const st = await status();
+  if (st.pinSet) { const ok = await pinDialog({ title: "Enter PIN", message: reason, confirmLabel: "Confirm" }); return ok !== undefined; }
+  if (st.biometric && settings.get("security.method") !== "pin") {
+    const r = await N.auth.biometric({ title: "CodeForge", subtitle: reason }).catch((e) => ({ ok: false, error: e.message }));
+    if (r.ok) { token = r.token; tokenAt = Date.now(); return true; }
+    if (!r.cancelled) toast(r.error || "Biometric check failed", { kind: "error" });
+    return false;
+  }
+  return true;
+}
+
 export async function guard(reason, settingKey) {
   if (!settings.get(settingKey)) return true;
   const st = await status(); if (!st.pinSet && !st.biometric) return true;   // nothing to ask with: never lock the user out

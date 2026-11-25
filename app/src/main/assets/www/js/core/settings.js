@@ -67,6 +67,8 @@ export const DEFAULTS = {
   "ai.temperature": 0.2,
   "ai.agentConfirm": true,
   "ai.autoApply": false,
+  "ai.review": "editor",                    // editor = review tab with the real diff editor · dialog = small diff dialog
+  "ai.followAgent": true,                  // open the files the agent edits so you see the changes appear
   "ai.rules": true,
   "ai.endpoint.custom": "http://127.0.0.1:11434/v1",
   "ai.endpoint.ollama": "http://127.0.0.1:11434",

@@ -5,6 +5,7 @@
 import * as lazy from "../core/lazy.js";
 import { h, icon, P, fmtBytes, parseJsonc, debounce, esc } from "../core/util.js";
 import * as host from "./exthost.js";
+import * as xc from "./extcompat.js";
 import * as jobs from "../core/jobs.js";
 let A, root, view, listEl, searchIn, filter = "installed", market = { q: "", items: [], total: 0, offset: 0, loading: false };
 const installed = new Map(); // id -> ext
@@ -101,8 +102,7 @@ export async function installVsix(vsixPath, { silent = false } = {}) {
     // re-enable on update
     A.settings.state.extDisabled = (A.settings.state.extDisabled || []).filter((x) => x !== ext.id); ext.enabled = true;
     await activate(ext); A.bus.emit("extensions:changed");
-    const contributed = ext.contributes.filter((k) => SUPPORTED.includes(k)); const unsupported = ext.contributes.filter((k) => !SUPPORTED.includes(k));
-    if (!silent) A.toast(`Installed ${ext.name} ${ext.version}` + (contributed.length ? ` (${contributed.join(", ")})` : unsupported.length || ext.main ? " , no supported contributions" : ""), { kind: contributed.length ? "success" : "warn", timeout: 6000 });
+    if (!silent) afterInstall(ext);
     render(); return ext;
   } catch (e) { await A.N.fs.rm(tmp).catch(() => {}); throw e; }
 }
@@ -121,7 +121,7 @@ export async function installRemote(item) {
     try { await A.N.net.download({ url, dest, job: job.id }); if (job.cancelRequested) throw new Error("Cancelled"); job.update("Installing…", -1); return await installVsix(dest, { silent: true }); }
     finally { await A.N.fs.rm(dest).catch(() => {}); }   // a cancelled or failed download never stays on disk
   });
-  if (r.ok && r.result) { const ext = r.result; const c = ext.contributes?.filter((k) => SUPPORTED.includes(k)) || []; A.toast(`Installed ${ext.name} ${ext.version}` + (c.length ? ` (${c.join(", ")})` : " , no supported contributions"), { kind: c.length ? "success" : "warn", timeout: 6000 }); }
+  if (r.ok && r.result) afterInstall(r.result);
   return r.ok;
 }
 export async function uninstall(ext) {
@@ -197,8 +197,9 @@ function extIcon(src) { return h("img.ext-icon", { src: src || "", alt: "", oner
 function installedRow(e) {
   let iconEl = h("div.ext-icon.ph", icon("extensions")); if (e.manifest.icon) { iconEl = extIcon(""); A.N.fs.url(P.join(e.base, e.manifest.icon)).then((u) => (iconEl.src = u)); }
   const st = host.status(e.id); const warn = st === "error" || st === "denied" || e.contributes.some((k) => !SUPPORTED.includes(k)); const good = e.contributes.filter((k) => SUPPORTED.includes(k));
+  const bd = h("span.compat-slot"); reportFor(e).then((rep) => bd.replaceChildren(badge(rep.level))).catch(() => {});
   return h("div.ext-row" + (e.enabled ? "" : ".off"), { onclick: () => details(e) }, iconEl,
-    h("div.ext-info", h("div.ext-name", e.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "calc(11px * var(--fz))" } }, e.version)), h("div.ext-desc", e.description), h("div.ext-pub", e.publisher, " · ", good.length ? good.join(", ") : "no supported contributions", warn ? h("span", { title: st === "error" ? "Extension code failed to start" : st === "denied" ? "Extension code is not allowed to run" : "Parts of this extension can't run here" }, " ⚠") : null, e.main && st === "running" ? h("span", { title: "Extension code is running" }, " ●") : null)),
+    h("div.ext-info", h("div.ext-name", e.name, h("span.muted", { style: { fontWeight: 400, marginLeft: "6px", fontSize: "calc(11px * var(--fz))" } }, e.version), bd), h("div.ext-desc", e.description), h("div.ext-pub", e.publisher, " · ", good.length ? good.join(", ") : "no supported contributions", warn ? h("span", { title: st === "error" ? "Extension code failed to start" : st === "denied" ? "Extension code is not allowed to run" : "Parts of this extension can't run here" }, " ⚠") : null, e.main && st === "running" ? h("span", { title: "Extension code is running" }, " ●") : null)),
     h("div.ext-actions", h("button.btn.small", { onclick: (ev) => { ev.stopPropagation(); setEnabled(e, !e.enabled); } }, e.enabled ? "Disable" : "Enable"), h("button.icon-btn", { title: "Uninstall", onclick: (ev) => { ev.stopPropagation(); uninstall(e); } }, icon("trash"))));
 }
 function marketRow(x) {
@@ -251,13 +252,24 @@ async function findLocalReadme(e) {
   return null;
 }
 
-function compat(contributes, main, ext) {
-  const sup = contributes.filter((k) => SUPPORTED.includes(k)), un = contributes.filter((k) => !SUPPORTED.includes(k));
-  const st = ext ? host.status(ext.id) : "off";
-  const stText = { running: "Extension code is running", idle: "Extension code starts when needed (command / language)", starting: "Starting…", denied: "Extension code was not allowed to run", error: "Extension code failed to start", off: "" }[st];
-  return h("div.ext-compat", h("div", icon("pass"), " Supported here: ", sup.length ? sup.join(", ") : "—"),
-    main ? h("div", icon(st === "error" ? "error" : "info"), " ", stText || "Has extension code: runs in CodeForge's lite extension host (a subset of the VS Code API; no Node.js)") : null,
-    un.length ? h("div", icon("warning"), " Not supported: ", un.join(", "), h("div.muted", { style: { fontSize: "calc(11px * var(--fz))" } }, un.map((k) => SUPPORT_NOTES[k]).filter(Boolean).join(" · "))) : null);
+// ---------------------------------------------------------------- compatibility report (does it work here? what is wrong?)
+const reports = new Map();   // extId -> static report (cleared when the extension changes)
+const readFile = async (p) => (await A.N.fs.readText(p)).text || "";
+export async function reportFor(e, fresh = false) {
+  let r = !fresh && reports.get(e.id + "@" + e.version); if (!r) { r = await xc.analyze(e, readFile).catch((err) => ({ level: "partial", summary: "Could not analyse this extension: " + err.message, items: [], runnable: false })); reports.set(e.id + "@" + e.version, r); }
+  return xc.withRuntime(r, e, host.status(e.id), host.errorOf?.(e.id));
+}
+function badge(level) { const L = xc.LEVEL[level]; return h("span.compat-badge." + L.tone, { title: L.label }, icon(L.icon), " ", L.label); }
+function reportBody(rep) {
+  const order = { error: 0, warn: 1, info: 2, ok: 3 };
+  const rows = [...rep.items].sort((a, b) => order[a.kind] - order[b.kind]);
+  return h("div.compat-report", h("div.compat-head", badge(rep.level), h("span", rep.summary)),
+    ...rows.map((i) => h("div.compat-item." + i.kind, icon(i.kind === "ok" ? "pass" : i.kind === "error" ? "error" : i.kind === "warn" ? "warning" : "info"), h("span", i.text, i.live ? h("em.muted", " · seen while running") : null))));
+}
+async function afterInstall(ext) {
+  const rep = await reportFor(ext);
+  A.toast(`Installed ${ext.name} ${ext.version}: ${xc.LEVEL[rep.level].label.toLowerCase()}`, { kind: rep.level === "works" ? "success" : "warn", timeout: 6000 });
+  if (rep.level !== "works") A.modal({ title: `${ext.name}: ${xc.LEVEL[rep.level].label.toLowerCase()} in CodeForge`, width: 640, body: h("div", reportBody(rep), h("p.muted", { style: { fontSize: "calc(11px * var(--fz))" } }, "CodeForge runs VS Code extensions in its own lightweight sandbox (themes, snippets, languages, commands, settings, views and extension code that uses a subset of the VS Code API). The report is based on the extension's manifest and code; problems found while it runs are added to it.")), buttons: [{ label: "Close", primary: true }] });
 }
 
 // ---------------------------------------------------------------- extension settings (contributes.configuration)
@@ -283,7 +295,9 @@ async function details(e) {
   const iconButtons = (e.manifest.contributes?.iconThemes || []).map((t) => h("button.btn.small", { onclick: () => A.settings.set("ui.iconTheme", `${e.id}:${t.id}`) }, `Use icons “${t.label || t.id}”`));
   const codeButtons = e.main ? [h("button.btn.small", { onclick: () => A.output.show(`Extension: ${e.name}`) }, "Show output"), h("button.btn.small", { onclick: async () => { await host.restart(e); A.toast(`${e.name} restarted`); } }, "Restart")] : [];
   actions.append(...themeButtons, ...iconButtons, ...codeButtons);
-  body.replaceChildren(h("p.modal-detail", `${e.id} · ${e.publisher}`), h("p.modal-text", e.description), compat(e.contributes, e.main, e), actions, settingsEditor(e), readmeHold);
+  const compatHold = h("div.compat-hold", h("div.loader-block", h("div.spinner"), h("span", "Checking compatibility…")));
+  reportFor(e, true).then((rep) => compatHold.replaceChildren(reportBody(rep)));
+  body.replaceChildren(h("p.modal-detail", `${e.id} · ${e.publisher}`), h("p.modal-text", e.description), compatHold, actions, settingsEditor(e), readmeHold);
   A.modal({ title: `${e.name} ${e.version}`, width: 720, className: "wide", body, buttons: [{ label: "Close", primary: true }] });
   readmeHold.append(h("div.loader-block", h("div.spinner"), h("span", "Loading README…")));
   try {

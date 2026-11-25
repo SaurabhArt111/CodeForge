@@ -6,6 +6,7 @@
 // debug API cannot run. The user is asked once per extension before any extension code is executed.
 import { h, P } from "../core/util.js";
 import * as xviews from "./extviews.js";
+import * as compat from "./extcompat.js";
 
 let A, workerSrc = null;
 const hosts = new Map();               // extId -> Host
@@ -21,6 +22,7 @@ export function init(api, listFn) {
   xviews.init(api, { ensureRunning, rpc, statusOf: status, errorOf: (id) => hosts.get(id)?.error || null, allow: async (ext) => { delete trust()[ext.id]; A.settings.saveState(); await restart(ext); } });
 }
 export const viewContainers = () => xviews.list();
+export const errorOf = (id) => hosts.get(id)?.error || null;
 export const status = (id) => hosts.get(id)?.status || "off";
 export const statusAll = () => [...hosts.values()].map((x) => ({ id: x.ext.id, name: x.ext.name, status: x.status, error: x.error }));
 const trust = () => (A.settings.state.extTrust ||= {});
@@ -55,7 +57,7 @@ export function unregister(ext) {
   const hh = hosts.get(ext.id); if (!hh) { removeStaticContributes(ext); return; }
   stop(hh); hh.lazy.cmds.forEach((off) => off()); hh.lazy.off.forEach((off) => off()); hosts.delete(ext.id); removeStaticContributes(ext);
 }
-export async function restart(ext) { const hh = hosts.get(ext.id); if (hh) stop(hh); await register(ext); }
+export async function restart(ext) { compat.clearRuntime(ext.id); const hh = hosts.get(ext.id); if (hh) stop(hh); await register(ext); }
 export async function restartAll() { for (const e of allExts()) if (e.enabled) await restart(e); }
 export function stopAll() { for (const hh of hosts.values()) stop(hh); }
 
@@ -77,7 +79,7 @@ async function ensureRunning(hh) {
       await startWorker(hh);
       return hh;
     } catch (e) {
-      hh.status = "error"; hh.error = e.message || String(e); logOut(ext, "Activation failed: " + hh.error);
+      hh.status = "error"; hh.error = e.message || String(e); logOut(ext, "Activation failed: " + hh.error); compat.note(ext.id, "error", "Activation failed: " + hh.error);
       // say it once, and not at all when the extension's own view is on screen explaining the same thing
       if (!hh.toasted && !document.querySelector(".ext-view.active")) { hh.toasted = true; A.toast(`${ext.name} could not start here , see Output › ${outName(ext)}`, { kind: "error" }); }
       hh.toasted = true; stop(hh, "error"); return null; }
@@ -113,7 +115,7 @@ async function startWorker(hh) {
   const w = new Worker(url, { name: "ext:" + ext.id }); hh.w = w; hh.url = url;
   const ready = new Promise((res, rej) => { hh._ready = res; hh._fail = rej; setTimeout(() => rej(new Error("Extension worker failed to start")), 8000); });
   w.onmessage = (ev) => onMessage(hh, ev.data);
-  w.onerror = (e) => { logOut(ext, "Worker error: " + (e.message || e)); if (hh.status === "starting") hh._fail?.(new Error(e.message || "worker error")); };
+  w.onerror = (e) => { logOut(ext, "Worker error: " + (e.message || e)); compat.note(ext.id, "error", "Worker error: " + (e.message || e)); if (hh.status === "starting") hh._fail?.(new Error(e.message || "worker error")); };
   await ready;
   const gs = ((A.settings.state.extState ||= {})[ext.id] ||= {});
   const init = { id: ext.id, manifest: ext.manifest, extPath: ext.base, storage: hh.storage, main: entry, files, root: A.ws.root, cfg: buildCfg(), themeKind: themeKind(), globalState: gs.global, workspaceState: gs[A.ws.root || ""] };
@@ -150,6 +152,7 @@ const running = () => [...hosts.values()].filter((x) => x.status === "running" &
 async function onMessage(hh, m) {
   if (m.t === "ready") return hh._ready?.();
   if (m.t === "res") { const p = hh.pending.get(m.id); if (!p) return; hh.pending.delete(m.id); m.ok ? p.res(m.r) : p.rej(new Error(String(m.e).split("\n")[0])); return; }
+  if (m.t === "log" && (m.level === "warn" || m.level === "error")) compat.note(hh.ext.id, m.level, String(m.text).split("\n")[0].slice(0, 300));
   if (m.t === "log") return logOut(hh.ext, (m.level === "error" ? "[error] " : m.level === "warn" ? "[warn] " : "") + m.text);
   if (m.t === "out") { if (m.clear) return; return A.output.append(`${hh.ext.name}: ${m.name}`, m.text); }
   if (m.t === "req") {

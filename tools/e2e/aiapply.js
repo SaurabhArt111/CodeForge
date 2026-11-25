@@ -22,6 +22,18 @@ fs.writeFileSync(D + "/src/app.js", "function hello() {\n  return 'hi';\n}\n\nmo
   ok(r.p1 === "a\n    B\n    C\n", "indentation-tolerant SEARCH/REPLACE keeps the file's indentation: " + JSON.stringify(r.p1));
   ok(/Could not find/.test(r.p2 || ""), "missing SEARCH text gives a clear error");
   ok(r.p3 === "\nb\n", "empty REPLACE deletes the matched text");
+  // ---- default: review in an editor tab (diff editor), reject leaves the file alone, apply writes it
+  await page.evaluate(() => { import("/js/features/ai.js").then((ai) => { window.__er = ai.applyEdit({ path: "src/app.js", content: "nope" }); }); });
+  await page.waitForSelector(".air-bar .air-title"); await page.waitForSelector(".air-host .monaco-diff-editor");
+  ok(true, "default review opens in an editor tab with a diff editor");
+  await page.click('.air-bar button:has-text("Reject")'); await page.waitForTimeout(500);
+  ok(!(await page.evaluate(() => window.__er)) && !fs.readFileSync(D + "/src/app.js", "utf8").includes("nope"), "Reject in the review tab keeps the file unchanged");
+  await page.evaluate(() => { import("/js/features/ai.js").then((ai) => { window.__er2 = ai.applyEdit({ path: "src/app.js", edits: [{ search: "  return 'hi';", replace: "  return 'from tab';" }] }); }); });
+  await page.waitForSelector(".air-host .monaco-diff-editor"); await page.waitForTimeout(500);
+  await page.click('.air-bar button:has-text("Apply")'); await page.waitForTimeout(800);
+  ok(fs.readFileSync(D + "/src/app.js", "utf8").includes("from tab") && await page.evaluate(() => window.__er2), "Apply in the review tab writes the file");
+  await page.evaluate(async () => { const e = await import("/js/ui/editor.js"); await e.closeAll(null, true); const { settings } = await import("/js/core/settings.js"); settings.set("ai.review", "dialog"); });
+  fs.writeFileSync(D + "/src/app.js", fs.readFileSync(D + "/src/app.js", "utf8").replace("from tab", "hi"));
   // ---- applying with review (modal), accept
   await page.evaluate(() => { import("/js/features/ai.js").then((ai) => { window.__ap = ai.applyEdit({ path: "src/app.js", edits: [{ search: "  return 'hi';", replace: "  return 'hello world';" }] }); }); });
   await page.waitForSelector(".modal .ai-diff"); await page.waitForTimeout(200);

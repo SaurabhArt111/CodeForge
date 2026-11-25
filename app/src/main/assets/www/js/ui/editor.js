@@ -12,6 +12,7 @@ import * as themes from "../features/themes.js";
 import * as icons from "../features/icons.js";
 import { ws } from "./workspace.js";
 import { makeSash } from "./sash.js";
+import { diffHunks, hunkEdits } from "../core/linediff.js";
 
 export const editorEvents = new Emitter();
 export let monaco = null;
@@ -196,22 +197,48 @@ async function checkExternalNow() {
     if (!st) { if (!d.missing) { d.missing = true; toast(`"${d.name}" was deleted on disk`, { kind: "warn" }); } continue; }
     d.missing = false;
     if (st.m === d.mtime) continue;
-    if (!d.dirty) { await reload(d.path, true); bus.emit("fs:docreload", d.path); }
+    if (!d.dirty) { await reload(d.path, true, externalSource); bus.emit("fs:docreload", d.path); }
     else {
-      d.mtime = st.m;
-      if (await confirm(`"${d.name}" changed on disk and you have unsaved edits. Reload and discard your changes?`, { title: "File changed", okLabel: "Reload", danger: true })) await reload(d.path, true);
+      d.mtime = st.m;   // ask once per change
+      const pick = await modal({ title: "File changed on disk", width: 460, body: h("p.modal-text", `“${d.name}” was changed by another program (a terminal, an AI tool or a script) while you have unsaved edits here.`),
+        buttons: [{ label: "Keep mine", value: "mine" }, { label: "Compare", value: "diff" }, { label: "Use the disk version", value: "disk", primary: true }] });
+      if (pick === "disk") await reload(d.path, true, externalSource);
+      else if (pick === "diff") { const r = await N.fs.readText(d.path, { max: MAX_TEXT }); if (r.text != null) openDiff(`${d.name}: disk ↔ yours`, r.text, d.model.getValue(), d.model.getLanguageId?.() || "plaintext"); }
     }
   }
 }
-export async function reload(path, quiet = false) {
-  const d = docs.get(path); if (!d?.model) return;
-  const r = await N.fs.readText(path, { max: MAX_TEXT }); if (r.text == null) return;
-  if (r.text !== d.model.getValue()) {
-    const eds = monaco.editor.getEditors().filter((e) => e.getModel() === d.model); const vs = eds.map((e) => e.saveViewState());
-    d.model.pushEditOperations([], [{ range: d.model.getFullModelRange(), text: r.text }], () => null);
-    d.model.pushStackElement(); eds.forEach((e, i) => e.restoreViewState(vs[i]));
+/** what wrote a changed file: "cli" while a terminal tool / agent is working (flash colour + fast polling), else "disk" */
+export let externalSource = "disk";
+export const setExternalSource = (s) => { externalSource = s; };
+/** Brings a document to `text` the way a native edit would: only the changed lines are touched, so cursor, folds, scroll and the undo history
+ *  stay; the change is its own undo step (Ctrl+Z takes an AI / CLI change back); the changed lines flash. Returns the number of changed hunks. */
+export function patchDoc(path, text, { flash = true, reveal = false, source = "ai" } = {}) {
+  const d = docs.get(path); if (!d?.model) return 0;
+  const m = d.model, eol = m.getEOL();
+  const oldLines = m.getValue().split(eol), newLines = String(text).replace(/\r\n/g, "\n").split("\n");
+  const hunks = diffHunks(oldLines, newLines); if (!hunks.length) return 0;
+  const eds = monaco.editor.getEditors().filter((e) => e.getModel() === m);
+  m.pushStackElement();
+  m.pushEditOperations(eds.map((e) => e.getSelection()).filter(Boolean), hunkEdits(m, newLines, hunks), () => null);
+  m.pushStackElement();
+  if (flash) {
+    const cls = source === "cli" ? "cf-flash-cli" : source === "disk" ? "cf-flash-disk" : "cf-flash-ai";
+    const ranges = hunks.filter((x) => x.j1 > x.j0).map((x) => ({ range: new monaco.Range(x.j0 + 1, 1, x.j1, 1), options: { isWholeLine: true, className: cls, overviewRuler: { color: source === "cli" ? "#4aa3ff" : "#3fb950", position: monaco.editor.OverviewRulerLane.Left } } }));
+    for (const e of eds) { const c = e.createDecorationsCollection(ranges); setTimeout(() => c.clear(), 3200); }
+    if (reveal && eds[0] && hunks[0]) { const first = Math.max(1, Math.min(m.getLineCount(), hunks[0].j0 + 1)); eds[0].revealLineInCenterIfOutsideViewport(first); }
   }
-  d.mtime = r.mtime; d.savedVersion = d.model.getAlternativeVersionId(); updateDirty(d);
+  return hunks.length;
+}
+/** After something wrote `path` on disk: sync the open document to it (minimal patch) and mark it saved. */
+export async function syncFromDisk(path, { source = "disk", reveal = false, flash = true } = {}) {
+  const d = docs.get(path); if (!d?.model) return false;
+  const r = await N.fs.readText(path, { max: MAX_TEXT }); if (r.text == null) return false;
+  patchDoc(path, r.text, { source, reveal, flash });
+  d.mtime = r.mtime; d.savedVersion = d.model.getAlternativeVersionId(); updateDirty(d); return true;
+}
+export async function reload(path, quiet = false, source = "disk") {
+  const d = docs.get(path); if (!d?.model) return;
+  if (!(await syncFromDisk(path, { source }))) return;
   if (!quiet) toast(`Reloaded ${d.name}`);
 }
 
