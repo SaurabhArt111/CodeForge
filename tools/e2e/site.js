@@ -6,7 +6,7 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); 
 (async () => {
   const browser = await chromium.launch();
   const mk = async (opts = {}) => { const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, ...opts }); const page = await ctx.newPage(); const logs = [];
-    page.on("console", (m) => { if (["error", "warning"].includes(m.type())) logs.push(m.type() + ": " + m.text()); }); page.on("pageerror", (e) => logs.push("pageerror: " + e.message)); page.on("requestfailed", (r) => logs.push("reqfail: " + r.url()));
+    page.on("console", (m) => { if (["error", "warning"].includes(m.type()) && !/GL Driver Message|WebGL-0x/.test(m.text())) logs.push(m.type() + ": " + m.text()); }); page.on("pageerror", (e) => logs.push("pageerror: " + e.message)); page.on("requestfailed", (r) => logs.push("reqfail: " + r.url()));
     page.on("response", (r) => { if (r.status() >= 400) logs.push(`http ${r.status()}: ${r.url()}`); }); return { ctx, page, logs }; };
 
   // ---- landing
@@ -15,7 +15,13 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); 
     ok((await page.getAttribute('a.btn.primary[href="/app/"]', "href")) === "/app/", "landing: primary CTA opens the web editor");
     ok(await page.evaluate(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0 || i.loading === "lazy")), "landing: images load");
     const tabs = await page.$$('[role=tab]'); ok(tabs.length >= 5, "landing: feature tabs " + tabs.length);
-    await tabs[2].click(); ok((await tabs[2].getAttribute("aria-selected")) === "true", "landing: tab selection");
+    await tabs[2].click(); await page.waitForFunction(() => document.querySelectorAll('[role=tab]')[2]?.getAttribute("aria-selected") === "true", null, { timeout: 5000 }).catch(() => {});
+    ok((await tabs[2].getAttribute("aria-selected")) === "true", "landing: clicking a topic scrolls to it and selects it");
+    // scrolling through the pinned section moves through the topics one by one
+    const sel = () => page.evaluate(() => [...document.querySelectorAll(".scrolly [role=tab]")].findIndex((t) => t.getAttribute("aria-selected") === "true"));
+    const at = async (k) => { await page.evaluate((k) => { const e = document.querySelector(".scrolly"); const run = e.offsetHeight - innerHeight; scrollTo(0, e.getBoundingClientRect().top + scrollY + run * (k + 0.5) / 6); }, k); await page.waitForTimeout(250); return sel(); };
+    const seen = []; for (const k of [0, 1, 2, 3, 4, 5]) seen.push(await at(k));
+    ok(seen.join() === "0,1,2,3,4,5", "landing: scrolling steps through the six topics in order (" + seen.join() + ")");
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "landing: no horizontal scroll (desktop)");
     await page.screenshot({ path: "/tmp/site-landing.png", fullPage: true });
     ok(!logs.length, "landing: console clean " + logs.join(" | ")); }

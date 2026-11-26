@@ -10,7 +10,7 @@ export default function Updates() {
       {RELEASES.map((r) => (<article key={r.v} id={"v" + r.v} className="rel">
         <h2>{r.v} <span className="rel-date">{r.date}</span></h2>
         <p className="rel-title">{r.title}</p>
-        <ul className="rel-list">{r.items.map(([kind, text]) => <li key={text}><span className={"tag " + kind}>{kind === "new" ? "New" : "Fixed"}</span>{text}</li>)}</ul>
+        <ul className="rel-list">{r.items.map(([kind, text]) => <li key={text}><span className={"tag " + kind}>{kind === "new" ? "New" : kind === "improve" ? "Better" : "Fixed"}</span>{text}</li>)}</ul>
       </article>))}
     </div></section>
   </>);

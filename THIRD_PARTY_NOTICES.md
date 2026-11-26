@@ -25,6 +25,9 @@ the vendored files (`app/src/main/assets/www/vendor/*/LICENSE`) or are available
 | Cascadia Code | OFL-1.1 | font |
 | Fira Code | OFL-1.1 | font |
 | androidx.webkit 1.11.0 | Apache-2.0 | WebViewAssetLoader / WebMessageListener |
+| Originkit components: Text Reveal Wall, Gauze Blaze, Fluid Field (`website/src/fx/`) , originkit | Originkit licence (check its terms before redistributing) | website background effects only; not part of the app |
+| GSAP 3 , gsap.com | GSAP Standard "no charge" license | animation for the website's Text Reveal Wall |
+| Debian, Ubuntu (official container images) | Various free-software licenses | downloaded on the device when the user installs them; not bundled |
 
 The web version and extension host use only browser APIs (IndexedDB, Web Workers, WebCrypto) , no additional libraries.
 

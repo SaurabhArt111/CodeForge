@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "CodeForge website: React (Vite) front end + a small dependency-free Node server (Git CORS proxy, APK info, env-driven config).",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "node scripts/build-site.mjs",
@@ -13,6 +15,7 @@
     "preview": "node scripts/build-site.mjs && node server/index.js"
   },
   "dependencies": {
+    "gsap": "^3.15.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"

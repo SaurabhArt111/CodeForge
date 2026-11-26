@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Fluid } from "../components/Fx.jsx";
 import { url } from "../lib/site.js";
 import CopyBlock from "../components/CopyBlock.jsx";
 
@@ -23,15 +25,47 @@ const Step = ({ id, n, title, children, shots }) => (
 const TOC = [["get", "Get CodeForge"], ["project", "First project"], ["menu", "The menu"], ["modes", "Two modes"], ["terminal", "Terminal mode"],
   ["linux", "Linux systems"], ["server", "Use it like a server"], ["desktop", "Big screens & web"], ["appearance", "Light & dark"], ["storage", "Storage"], ["ai", "AI assistant"], ["limits", "Limits & fixes"]];
 
+/** Which step is being read: the last one whose top has passed a line a third of the way down the screen. */
+function useSpy(ids) {
+  const [cur, setCur] = useState(ids[0]);
+  useEffect(() => {
+    let raf = 0;
+    const measure = () => {
+      raf = 0; const line = window.innerHeight * 0.33; let id = ids[0];
+      for (const x of ids) { const el = document.getElementById(x); if (el && el.getBoundingClientRect().top <= line) id = x; }
+      setCur(id);
+    };
+    const on = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    measure(); window.addEventListener("scroll", on, { passive: true }); window.addEventListener("resize", on);
+    return () => { window.removeEventListener("scroll", on); window.removeEventListener("resize", on); cancelAnimationFrame(raf); };
+  }, [ids]);
+  return cur;
+}
+
+function Toc({ cur }) {
+  const bar = useRef(null);
+  // keep the current chip visible in the phone chip bar: scroll only the bar sideways, never the page
+  useEffect(() => { const el = bar.current, a = el?.querySelector("[aria-current=true]"); if (el && a && el.scrollWidth > el.clientWidth) el.scrollTo({ left: a.offsetLeft - el.clientWidth / 2 + a.offsetWidth / 2 }); }, [cur]);
+  const at = TOC.findIndex(([id]) => id === cur);
+  return (<nav className="g-toc" aria-label="On this page" ref={bar}>
+    <p className="g-toc-h">On this page</p>
+    <div className="g-toc-track"><i style={{ height: `${((at + 1) / TOC.length) * 100}%` }} /></div>
+    {TOC.map(([id, t], n) => <a key={id} href={"#" + id} aria-current={id === cur}><span>{n + 1}</span>{t}</a>)}
+  </nav>);
+}
+const IDS = TOC.map(([id]) => id);
+
 export default function Guide() {
+  const cur = useSpy(IDS);
   return (<>
-    <section className="page-head"><div className="wrap prose">
-      <h1>Guide</h1>
-      <p className="sub" style={{ margin: 0 }}>From installing CodeForge to running a full Linux terminal on your phone. Every picture is a real screen from the app.</p>
-      <nav className="toc" aria-label="On this page">{TOC.map(([id, t]) => <a key={id} href={"#" + id}>{t}</a>)}</nav>
+    <section className="page-head has-fx guide-head"><Fluid /><div className="wrap prose">
+      <p className="eyebrow">Guide</p>
+      <h1>Learn CodeForge in twelve steps</h1>
+      <p className="sub" style={{ margin: 0 }}>From installing CodeForge to running a full Linux terminal on your phone. Every picture is a real screen from the app, and follows the light or dark theme you picked.</p>
+      <div className="actions" style={{ marginTop: 24 }}><a className="btn primary" href="#get">Start reading</a><a className="btn" href="#terminal">Jump to Terminal mode</a></div>
     </div></section>
 
-    <section style={{ paddingTop: 0 }}><div className="wrap g-list">
+    <section style={{ paddingTop: 0 }}><div className="wrap g-layout"><Toc cur={cur} /><div className="g-list">
       <Step id="get" n={1} title="Get CodeForge">
         <p>There are two ways to use CodeForge, and they look the same:</p>
         <ul>
@@ -138,6 +172,6 @@ export default function Guide() {
         <p><strong>Something broke?</strong> Remove and reinstall the system from the Linux system picker; your projects in <code>~</code> are not touched. Help → Crash Reports and Diagnostics collect details you can attach to a bug report.</p>
         <p>More detail is in the <Link to="/docs">Docs</Link>.</p>
       </Step>
-    </div></section>
+    </div></div></section>
   </>);
 }

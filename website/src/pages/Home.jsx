@@ -1,13 +1,15 @@
 import { Link } from "react-router-dom";
 import { url } from "../lib/site.js";
 import Showcase from "../components/Showcase.jsx";
+import { Fluid, Gauze } from "../components/Fx.jsx";
+import { RELEASES } from "../content/releases.js";
 import { Arrow, DownloadIcon } from "../components/Layout.jsx";
 
 const yes = (t) => <span className="yes">{t}</span>;
 
 export default function Home() {
   return (<>
-    <section className="hero"><div className="wrap">
+    <section className="hero has-fx"><Fluid /><div className="wrap">
       <div>
         <h1>Write code where you are<span className="caret" aria-hidden="true"></span></h1>
         <p className="lede">CodeForge is a code editor with a real terminal, Git, live preview and AI assistants. Use it as an Android app or straight from your browser: same editor, same shortcuts.</p>
@@ -30,11 +32,37 @@ export default function Home() {
       </div>
     </div></section>
 
-    <section id="features" className="tint"><div className="wrap">
-      <h2>Built for a small screen first</h2>
-      <p className="sub">Everything below runs in the app today. Pick a topic to see it.</p>
-      <Showcase />
-      <p style={{ marginTop: 28 }}><Link className="btn" to="/features">See all features</Link> <Link className="btn" to="/docs">Read the docs</Link></p>
+    <section id="features" className="tint scrolly-sec">
+      <Showcase
+        title={<h2>Built for a small screen first</h2>}
+        intro={<p className="sub">Everything below runs in the app today. Keep scrolling, or pick a topic.</p>}
+        after={<p className="scrolly-after"><Link className="btn" to="/features">See all features</Link> <Link className="btn" to="/guide">Read the guide</Link></p>} />
+    </section>
+
+    <section id="terminal-mode" className="band-dark"><Gauze /><div className="wrap band-grid">
+      <div>
+        <p className="eyebrow">New in {RELEASES[0].v}</p>
+        <h2>A full Linux terminal in your pocket</h2>
+        <p className="lede">Switch CodeForge to <strong>Terminal mode</strong> and the whole screen is a terminal: session tabs, a session drawer and the extra keys you need. Pick Alpine, Debian or Ubuntu and install anything with one command.</p>
+        <pre className="term"><span className="p">$</span> pkg install nodejs python3 git openssh-client{"\n"}<span className="p">$</span> npm create vite@latest web &amp;&amp; cd web{"\n"}<span className="p">$</span> npm run dev -- --host</pre>
+        <div className="actions" style={{ marginTop: 26 }}>
+          <Link className="btn primary" to="/download"><DownloadIcon /> Get the Android app</Link>
+          <Link className="btn ghost-light" to="/guide#terminal">How Terminal mode works <Arrow /></Link>
+        </div>
+      </div>
+      <div className="band-shot"><div className="phone"><img src={url("assets/guide/phone-term-dark.jpg")} width="400" height="820" alt="CodeForge in Terminal mode on a phone" loading="lazy" /></div></div>
+    </div></section>
+
+    <section id="new"><div className="wrap">
+      <div className="new-head"><h2>What's new</h2><Link className="more" to="/updates">All release notes <Arrow /></Link></div>
+      <div className="new-cards">
+        {RELEASES.slice(0, 3).map((r) => (
+          <Link key={r.v} className="new-card" to={"/updates#v" + r.v}>
+            <span className="new-v">{r.v} · {r.date}</span>
+            <b>{r.title}</b>
+            <span className="new-t">{r.items[0][1].split(/(?<=\.)\s/)[0]}</span>
+          </Link>))}
+      </div>
     </div></section>
 
     <section id="move"><div className="wrap prose">
