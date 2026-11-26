@@ -38,6 +38,7 @@ const MENUS = {
     { label: "Toggle Secondary Side Bar (AI Assistant)", icon: "layout-sidebar-right", run: run("sheet.toggleRight") }, { label: "Split Editor", icon: "split-horizontal", run: run("view.split") },
     { separator: true }, { label: "Word Wrap", icon: "word-wrap", run: run("view.wordWrap") }, { label: "Minimap", icon: "map", run: run("view.minimap") }, { label: "Settings", icon: "settings-gear", run: run("view.settings") },
     { label: "Storage Manager", icon: "database", run: run("storage.open") }, { label: "Background Tasks", icon: "sync", run: run("jobs.open") },
+    { separator: true }, { label: "Appearance: Light / Dark / System…", icon: "color-mode", run: run("view.appearance") }, { label: "Terminal Mode (full screen)", icon: "terminal", keys: "Ctrl+Alt+T", run: run("app.terminalMode") },
   ],
   Go: () => [
     { label: "Go to File…", icon: "go-to-file", keys: "Ctrl+P", run: run("nav.quickOpen") }, { label: "Go to Symbol…", icon: "symbol-class", run: run("nav.symbol") }, { label: "Go to Line…", icon: "arrow-right", keys: "Ctrl+G", run: run("nav.line") },
@@ -47,7 +48,7 @@ const MENUS = {
     { label: "Stop", icon: "debug-stop", run: run("run.stop") },
   ],
   Terminal: () => [
-    { label: "New Terminal", icon: "terminal", run: run("term.new") }, { label: "New Linux Terminal", icon: "server-environment", run: run("term.linux") },
+    { label: "New Terminal", icon: "terminal", run: run("term.new") }, { label: "New Linux Terminal", icon: "server-environment", run: run("term.linux") }, { label: "Terminal Mode (full screen)", icon: "screen-full", run: run("app.terminalMode") }, { label: "Linux System (Alpine / Debian / Ubuntu)…", icon: "server-environment", run: run("env.distro") },
     { separator: true }, { label: "Move Terminal to Bottom", icon: "arrow-down", run: run("sheet.terminalBottom") }, { label: "Move Terminal to Right Sheet", icon: "arrow-right", run: run("sheet.terminalRight") },
     { label: "Open Terminal as Page", icon: "screen-full", run: run("sheet.terminalPage") }, { label: "Move Terminal to Top", icon: "arrow-up", run: run("sheet.terminalTop") },
   ],
@@ -67,7 +68,7 @@ export function openMainMenu(x, y) {
   };
   const tiles = [
     { label: "Storage", icon: "database", run: run("storage.open") }, { label: "Tasks", icon: "sync", run: run("jobs.open"), badge: running || "" }, { label: "Security", icon: "shield", run: run("sec.open") }, { label: "Extensions", icon: "extensions", run: run("view.extensions") },
-    { label: "AI", icon: "sparkle", run: run("view.ai") }, { label: "Terminal", icon: "terminal", run: run("term.new") }, { label: "Search", icon: "search", run: run("view.search") }, { label: "Settings", icon: "settings-gear", run: run("view.settings") },
+    { label: "AI", icon: "sparkle", run: run("view.ai") }, { label: "Terminal", icon: "terminal", run: run("app.terminalMode") }, { label: "Search", icon: "search", run: run("view.search") }, { label: "Settings", icon: "settings-gear", run: run("view.settings") },
   ];
   navMenu([
     { node: projectNode }, { heading: "Quick access" }, { tiles }, { heading: "Menus" },

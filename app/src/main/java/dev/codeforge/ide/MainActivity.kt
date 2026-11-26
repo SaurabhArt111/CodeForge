@@ -116,6 +116,12 @@ class MainActivity : Activity(), Bridge.Host {
         super.onPause()
     }
 
+    /** The phone switched between light and dark (uiMode is in configChanges, so the activity is not recreated). */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::web.isInitialized) Bridge.emit("sys.night", JSONObject().put("night", Bridge.isNight()))
+    }
+
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         // Memory is getting short: let the UI drop the inline preview and other heavy things BEFORE Android kills the process.

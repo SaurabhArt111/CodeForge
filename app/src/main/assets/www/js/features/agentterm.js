@@ -22,10 +22,10 @@ export const TOOLS = [
     { terminal: { type: "string" }, text: { type: "string", description: "text to type (Enter is pressed after it unless enter=false)" }, enter: { type: "boolean" }, keys: { type: "array", items: { type: "string" } } }, ["terminal"]),
   T("terminal_list", "List all open terminals: name, whether alive, folder, whether a command is running, and the last line of output.", {}, []),
   T("terminal_close", "Close one of YOUR terminals when its job is finished (kills whatever is running in it).", { terminal: { type: "string" } }, ["terminal"]),
-  T("environment_status", "Check which developer tools are available to terminals: whether the Linux environment (Alpine with node, npm, git, python, gcc …) is installed, and which commands exist. Call this before relying on a tool.", {}, []),
-  T("install_packages", "Install developer tools or libraries. manager 'apk' installs Linux tools (git, nodejs, npm, python3, py3-pip, build-base, ripgrep …) and needs the Linux environment; 'npm' installs into the project (add global=true for -g); 'pip' installs Python packages. Runs in a visible terminal. The user is asked first.",
-    { manager: { type: "string", enum: ["apk", "npm", "pip"] }, packages: { type: "array", items: { type: "string" } }, global: { type: "boolean" } }, ["manager", "packages"]),
-  T("setup_environment", "Install the Linux environment (Alpine with node, npm, git, python …) if it is missing, so terminals have real tools. Downloads about 4 MB plus the packages. The user is asked first. Use when environment_status says it is not installed.",
+  T("environment_status", "Check which developer tools are available to terminals: whether the Linux environment (Alpine, Debian or Ubuntu with node, npm, git, python, gcc …) is installed, which system is active, and which commands exist. Call this before relying on a tool.", {}, []),
+  T("install_packages", "Install developer tools or libraries. manager 'pkg' installs Linux tools (git, nodejs, npm, python3, py3-pip, build-base, ripgrep …) with the active system's package manager (apk on Alpine, apt on Debian/Ubuntu; Alpine names are translated) and needs the Linux environment ('apk' and 'apt' are accepted as aliases); 'npm' installs into the project (add global=true for -g); 'pip' installs Python packages. Runs in a visible terminal. The user is asked first.",
+    { manager: { type: "string", enum: ["pkg", "apk", "apt", "npm", "pip"] }, packages: { type: "array", items: { type: "string" } }, global: { type: "boolean" } }, ["manager", "packages"]),
+  T("setup_environment", "Install the Linux environment (the active system: Alpine by default, or Debian / Ubuntu if the user chose one) with node, npm, git, python … if it is missing, so terminals have real tools. Downloads about 4 MB (Alpine) or 30 MB (Debian / Ubuntu) plus the packages. The user is asked first. Use when environment_status says it is not installed.",
     { packages: { type: "array", items: { type: "string" }, description: "extra apk packages (default: nodejs npm git python3 py3-pip ripgrep)" } }, []),
 ];
 export const READONLY = new Set(["terminal_read", "terminal_list", "environment_status"]);
@@ -178,7 +178,7 @@ async function run(i, ctx) {
 
 async function envStatus() {
   const s = await A.N.env.status().catch(() => ({}));
-  const lines = [`Linux environment (Alpine, proot): ${s.installed ? (s.setupDone ? "installed and set up" : "installed, setup not finished") : s.supported === false ? "not supported on this device" : "NOT installed"}.`];
+  const lines = [`Linux environment (${s.name || "Alpine Linux"}, proot; packages with 'pkg install' → ${s.pm || "apk"}): ${s.installed ? (s.setupDone ? "installed and set up" : "installed, setup not finished") : s.supported === false ? "not supported on this device" : "NOT installed"}.`];
   const r = await A.N.proc.exec({ line: 'for c in node npm npx git python3 pip3 gcc make rg curl unzip; do command -v $c >/dev/null 2>&1 && printf "%s " $c; done; echo; uname -m', cwd: A.ws.root || undefined, timeoutMs: 20000 }).catch(() => null);
   if (r) { const [have, arch] = r.out.trim().split("\n"); lines.push(`Commands found in the shell the terminals use (${s.installed ? "Linux" : "Android sh"}): ${have?.trim() || "none"}`, `Architecture: ${arch || "?"}`); }
   if (!s.installed) lines.push("Without the Linux environment there is no node, npm, git or python. Call setup_environment to install it.");
@@ -191,8 +191,8 @@ async function setup(i, ctx) {
   if (s.supported === false) return ok("This device's CPU architecture is not supported by the bundled Linux environment.", true);
   const pkgs = (Array.isArray(i.packages) && i.packages.length ? i.packages : ["nodejs", "npm", "git", "python3", "py3-pip", "ripgrep"]).map(String);
   if (pkgs.some((p) => !/^[a-z0-9][a-z0-9._+-]*$/.test(p))) return ok("Invalid package name", true);
-  if (s.installed && s.setupDone) return ok("The Linux environment is already installed. Use install_packages with manager 'apk' for more tools.");
-  if (!(await allow("Install the Linux environment?", `Download Alpine Linux (about 4 MB) and install: ${pkgs.join(" ")}\nNeeds internet; stored in the app's private storage.`))) return ok("Rejected by user", true);
+  if (s.installed && s.setupDone) return ok("The Linux environment is already installed. Use install_packages with manager 'pkg' for more tools.");
+  if (!(await allow("Install the Linux environment?", `Download ${s.name || "Alpine Linux"} (${s.distro && s.distro !== "alpine" ? "about 30 MB" : "about 4 MB"}) and install: ${pkgs.join(" ")}\nNeeds internet; stored in the app's private storage.`))) return ok("Rejected by user", true);
   const env = await A.feat("env");
   if (!s.installed) { if (!(await env.install())) return ok("The Linux environment could not be installed (see the notification for the reason).", true); }
   const t = await env.runSetup(pkgs.join(" "));
@@ -208,10 +208,10 @@ async function install(i, ctx) {
   if (!pk.length) return ok("No packages given", true);
   if (pk.some((p) => !/^[@a-zA-Z0-9][\w@.\/~^=<>+:-]*$/.test(p))) return ok("Invalid package name", true);
   const mgr = i.manager; let cmd;
-  if (mgr === "apk") { const s = await A.N.env.status(); if (!s.installed) return ok("apk needs the Linux environment. Call setup_environment first.", true); cmd = `apk add --no-cache ${pk.join(" ")}`; }
+  if (mgr === "pkg" || mgr === "apk" || mgr === "apt") { const s = await A.N.env.status(); if (!s.installed) return ok("Linux packages need the Linux environment. Call setup_environment first.", true); cmd = `pkg install ${pk.join(" ")}`; }
   else if (mgr === "npm") cmd = `npm install ${i.global ? "-g " : ""}${pk.join(" ")}`;
   else if (mgr === "pip") cmd = `pip3 install ${pk.join(" ")}`;
-  else return ok("manager must be apk, npm or pip", true);
+  else return ok("manager must be pkg, npm or pip", true);
   if (!(await allow(`Install with ${mgr}?`, cmd))) return ok("Rejected by user", true);
   const t = find("install", { own: true }) || await open("install");
   return call_run(t, cmd, ctx);

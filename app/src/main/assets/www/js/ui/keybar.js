@@ -21,6 +21,7 @@ const KEYS = [
   ...["{", "}", "(", ")", "[", "]", "<", ">", "/", "\\", "|", "&", "$", "~", "`", "'", '"', "=", ";", ":", "_", "-", "+", "*", "#", "!", "?", "@", "%", "^"].map((c) => K(c, { ch: c })),
 ];
 
+export { refresh };
 export function init() {
   root = document.getElementById("keybar"); row = document.getElementById("keybar-row");
   for (const k of KEYS) {
@@ -47,12 +48,13 @@ function attachRepeat(b, k, fn) {
 }
 
 function refresh() {
-  const show = isTouch() && settings.get("ui.mobileKeyBar") && (kbdOpen || (panel.isShown("terminal") && focusTarget === "terminal"));
+  const tm = document.body.classList.contains("term-mode");   // Terminal mode: the extra keys are always there, like Termux
+  const show = isTouch() && settings.get("ui.mobileKeyBar") && (tm || kbdOpen || (panel.isShown("terminal") && focusTarget === "terminal"));
   root.classList.toggle("hidden", !show);
 }
 
 async function press(k, btn) {
-  const toTerm = focusTarget === "terminal" && panel.isShown("terminal");
+  const toTerm = document.body.classList.contains("term-mode") || (focusTarget === "terminal" && panel.isShown("terminal"));
   if (k.mod) { term.setMod(k.mod, !term.modifiers[k.mod]); return; }
   const shift = term.modifiers.shift;
   if (toTerm) {

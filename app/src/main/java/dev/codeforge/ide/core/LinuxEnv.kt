@@ -6,8 +6,39 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 
-/** Builds process launch specs (plain Android shell or Alpine Linux through proot) and installs the rootfs. */
+/**
+ * Builds process launch specs (plain Android shell or Linux through proot) and installs root filesystems.
+ * Several Linux systems can be installed side by side (Alpine, Debian, Ubuntu); one is active at a time and
+ * is what every terminal, task and agent command uses. They all share /root (the workspace).
+ */
 object LinuxEnv {
+    data class Distro(val id: String, val name: String, val pm: String, val size: String, val image: String?, val tag: String?)
+
+    val DISTROS = listOf(
+        Distro("alpine", "Alpine Linux", "apk", "~4 MB", null, null),
+        Distro("debian", "Debian 12 (bookworm)", "apt", "~30 MB", "debian", "bookworm-slim"),
+        Distro("ubuntu", "Ubuntu 24.04 LTS", "apt", "~30 MB", "ubuntu", "24.04")
+    )
+
+    fun distro(id: String): Distro = DISTROS.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Unknown Linux system: $id")
+
+    /** Alpine keeps its old location so existing installs keep working. */
+    fun dirOf(id: String): File = if (id == "alpine") File(Paths.files, "rootfs") else File(Paths.files, "distros/$id")
+
+    private fun activeFile() = File(Paths.files, "distros/active")
+
+    fun readActive(): String = try { activeFile().readText().trim().takeIf { t -> DISTROS.any { it.id == t } } } catch (_: Exception) { null } ?: "alpine"
+
+    val active: String get() = readActive()
+
+    /** Makes [id] the system every new terminal uses. */
+    fun select(id: String) {
+        distro(id)
+        if (!installed(id)) throw IllegalStateException("${distro(id).name} is not installed")
+        activeFile().parentFile?.mkdirs(); activeFile().writeText(id)
+        Paths.rootfs = dirOf(id)
+    }
+
     data class Launch(
         val cmd: String,
         val args: List<String>,
@@ -26,15 +57,31 @@ object LinuxEnv {
         else -> null
     }
 
-    fun installed(): Boolean = File(Paths.rootfs, "bin/busybox").exists() && File(Paths.rootfs, "etc/alpine-release").exists()
+    fun installed(): Boolean = installed(active)
 
-    fun version(): String? = try { File(Paths.rootfs, "etc/alpine-release").readText().trim() } catch (_: Exception) { null }
+    fun installed(id: String): Boolean {
+        val d = dirOf(id)
+        return if (id == "alpine") File(d, "bin/busybox").exists() && File(d, "etc/alpine-release").exists()
+        else File(d, "etc/os-release").exists() && File(d, ".codeforge-ready").exists()
+    }
 
-    fun setupDone(): Boolean = File(Paths.home, ".codeforge-setup-done").exists()
+    fun version(): String? = version(active)
+
+    fun version(id: String): String? = try {
+        val d = dirOf(id)
+        if (id == "alpine") File(d, "etc/alpine-release").readText().trim()
+        else File(d, "etc/os-release").readLines().firstOrNull { it.startsWith("PRETTY_NAME=") }?.substringAfter("=")?.trim('"')
+    } catch (_: Exception) { null }
+
+    /** Set once setup-linux.sh has run inside that system (Alpine also honours the older marker in the workspace). */
+    fun setupDone(): Boolean = setupDone(active)
+
+    fun setupDone(id: String): Boolean = File(dirOf(id), "etc/codeforge-setup-done").exists() ||
+        (id == "alpine" && File(Paths.home, ".codeforge-setup-done").exists())
 
     /** Copies launcher scripts out of the APK so the shell can read them. */
     fun prepare() {
-        for (name in listOf("start-linux.sh", "setup-linux.sh", "host.rc", "node-patch.js", "cf.sh")) {
+        for (name in listOf("start-linux.sh", "setup-linux.sh", "host.rc", "node-patch.js", "cf.sh", "pkg.sh")) {
             val out = File(Paths.env, name)
             Paths.app.assets.open("env/$name").use { ins -> FileOutputStream(out).use { ins.copyTo(it) } }
             out.setReadable(true, false)
@@ -63,6 +110,7 @@ object LinuxEnv {
             m["CF_NATIVE_DIR"] = Paths.nativeDir.path
             m["CF_ENV"] = Paths.env.path
             m["CF_ROOTFS"] = Paths.rootfs.path
+            m["CF_DISTRO"] = active
             m["CF_HOME"] = Paths.home.path
         } else {
             m["HOME"] = Paths.home.path
@@ -85,7 +133,7 @@ object LinuxEnv {
             "host" -> false
             else -> installed()
         }
-        if (wantLinux && !installed()) throw IllegalStateException("Linux environment is not installed yet")
+        if (wantLinux && !installed()) throw IllegalStateException("${distro(active).name} is not installed yet")
         prepare()
         val dir = (cwd?.takeIf { File(it).isDirectory } ?: Paths.home.path)
         return if (wantLinux) {
@@ -128,8 +176,51 @@ object LinuxEnv {
         "https://uk.alpinelinux.org/alpine"
     )
 
-    /** progress(stage, done, total, message) , stage is "download" | "verify" | "extract" | "configure". */
-    fun install(job: String? = null, progress: (String, Long, Long, String) -> Unit) {
+    /**
+     * Installs [id] (default: the active system) and makes it active.
+     * progress(stage, done, total, message) , stage is "download" | "verify" | "extract" | "configure".
+     */
+    fun install(job: String? = null, id: String = active, progress: (String, Long, Long, String) -> Unit) {
+        val d = distro(id)
+        if (d.image != null) { installImage(d, job, progress); return }
+        installAlpine(job, progress)
+        select("alpine")
+    }
+
+    private fun installImage(d: Distro, job: String?, progress: (String, Long, Long, String) -> Unit) {
+        val arch = arch() ?: throw IllegalStateException("Unsupported CPU architecture: ${Paths.abi}")
+        val dir = dirOf(d.id)
+        deleteTree(dir)
+        var done = false
+        try {
+            Registry.pull(d.image!!, d.tag!!, arch, dir, job, progress)
+            progress("configure", 0, 0, "Configuring ${d.name}…")
+            configure(dir)
+            // apt cannot drop to its "_apt" user inside proot; downloads then fail with "setgroups" errors
+            File(dir, "etc/apt/apt.conf.d").mkdirs()
+            File(dir, "etc/apt/apt.conf.d/99codeforge").writeText(
+                "APT::Sandbox::User \"root\";\nAcquire::Retries \"3\";\nAPT::Install-Recommends \"false\";\nDpkg::Use-Pty \"0\";\n")
+            File(dir, ".codeforge-ready").writeText(System.currentTimeMillis().toString())
+            done = true
+        } finally { if (!done) deleteTree(dir) }
+        select(d.id)
+        progress("configure", 1, 1, "Done")
+    }
+
+    private fun configure(root: File) {
+        for (sub in listOf("tmp", "root", "proc", "sys", "dev", "run", "etc/profile.d", "usr/local/bin")) File(root, sub).mkdirs()
+        try { Os.chmod(File(root, "tmp").path, 0x3ff) } catch (_: ErrnoException) {}
+        val resolv = File(root, "etc/resolv.conf")
+        if (isLinkFile(resolv)) resolv.delete()
+        resolv.writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+        File(root, "etc/hosts").writeText("127.0.0.1 localhost codeforge\n::1 localhost\n")
+        File(root, "etc/hostname").writeText("codeforge\n")
+        prepare()
+    }
+
+    private fun isLinkFile(f: File) = try { java.nio.file.Files.isSymbolicLink(f.toPath()) } catch (_: Exception) { false }
+
+    private fun installAlpine(job: String?, progress: (String, Long, Long, String) -> Unit) {
         val arch = arch() ?: throw IllegalStateException("Unsupported CPU architecture: ${Paths.abi}")
         var lastError: Exception? = null
         val tmp = File(Paths.files, "rootfs-download.tar.gz")
@@ -163,26 +254,30 @@ object LinuxEnv {
         if (!ok) { tmp.delete(); throw (lastError ?: IllegalStateException("Download failed")) }
 
         progress("extract", 0, 0, "Extracting root filesystem…")
-        deleteTree(Paths.rootfs)
-        Paths.rootfs.mkdirs()
+        val root = dirOf("alpine")
+        deleteTree(root)
+        root.mkdirs()
         var extracted = false
-        try { TarGz.extract(tmp, Paths.rootfs, trusted = true) { n -> Jobs.check(job); progress("extract", n.toLong(), 0, "$n files") }; extracted = true }
-        finally { tmp.delete(); if (!extracted) deleteTree(Paths.rootfs) }   // no half-extracted system left behind       // the 4 MB archive is not needed any more, even when extracting failed
+        try { TarGz.extract(tmp, root, trusted = true) { n -> Jobs.check(job); progress("extract", n.toLong(), 0, "$n files") }; extracted = true }
+        finally { tmp.delete(); if (!extracted) deleteTree(root) }   // no half-extracted system left behind       // the 4 MB archive is not needed any more, even when extracting failed
 
         progress("configure", 0, 0, "Configuring…")
-        for (d in listOf("tmp", "root", "proc", "sys", "dev", "run", "etc/profile.d", "usr/local/bin")) File(Paths.rootfs, d).mkdirs()
-        try { Os.chmod(File(Paths.rootfs, "tmp").path, 0x3ff) } catch (_: ErrnoException) {}
-        File(Paths.rootfs, "etc/resolv.conf").writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
-        File(Paths.rootfs, "etc/hosts").writeText("127.0.0.1 localhost\n::1 localhost\n")
-        File(Paths.rootfs, "etc/hostname").writeText("codeforge\n")
-        prepare()
+        configure(root)
         progress("configure", 1, 1, "Done")
     }
 
-    fun reset() {
-        deleteTree(Paths.rootfs)
-        File(Paths.home, ".codeforge-setup-done").delete()
+    /** Removes [id] (default: the active system). If it was active, another installed system becomes active. */
+    fun reset(id: String = active) {
+        distro(id)
+        deleteTree(dirOf(id))
+        if (id == "alpine") File(Paths.home, ".codeforge-setup-done").delete()
+        if (id == active) {
+            val next = DISTROS.firstOrNull { installed(it.id) }?.id ?: "alpine"
+            activeFile().parentFile?.mkdirs(); activeFile().writeText(next)
+            Paths.rootfs = dirOf(next)
+        }
     }
+
 
     fun deleteTree(f: File) {
         try {

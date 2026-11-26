@@ -3,7 +3,7 @@ import { url } from "../lib/site.js";
 
 const TOPICS = [
   { img: "mobile-sheets.jpg", alt: "Terminal in a top sheet and an AI chat in a bottom sheet around the editor", title: "Sheets, a side sheet and pages", text: "Put the terminal on top, at the bottom or on the right, or open it as a full page. Drag the top and bottom sheets to any height; the right sheet keeps a fixed width. Swipe from the left edge for the menu." },
-  { img: "mobile-terminal.jpg", alt: "A bash terminal under the editor on a phone", title: "A real terminal", text: "Run node, npm, git and python in an Alpine Linux shell. The size you choose stays put when the keyboard opens and closes." },
+  { img: "mobile-terminal.jpg", alt: "A bash terminal under the editor on a phone", title: "A real terminal", text: "Run node, npm, git and python in Alpine, Debian or Ubuntu, or switch to full-screen Terminal mode. The size you choose stays put when the keyboard opens and closes." },
   { img: "mobile-ai.jpg", alt: "An AI reply with a code block under the editor", title: "AI that edits your project", text: "Chat with Claude, OpenAI, Gemini or a local model. Tap Apply on a suggested change to review the diff and write it to the file, or switch to agent mode to let it work through your project." },
   { img: "mobile-crashes.jpg", alt: "A list of crash reports", title: "A crash recorder", text: "If something stops, CodeForge saves what happened: the error, memory use and the last actions, ready to copy or share." },
   { img: "mobile-text-size.jpg", alt: "The editor with larger interface text", title: "Text size for everything", text: "One setting scales menus, tabs, panels, the editor and the terminal together. Phones start at size 12, tablets at 14." },

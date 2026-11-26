@@ -1,5 +1,14 @@
 // Release notes, newest first. Dates are when the build was prepared.
 export const RELEASES = [
+  { v: "8.6.0", date: "November 2026", title: "Terminal mode, Debian & Ubuntu, light and dark",
+    items: [
+      ["new", "Terminal mode: use CodeForge as a full-screen, Termux-style terminal. Session tabs, a session drawer (rename, close, new Linux or Android shell sessions), the extra-keys row always on screen, and an IDE button to go back. Sessions keep running in both modes, and CodeForge opens in the mode you used last. Menu → Terminal, View → Terminal Mode or Ctrl+Alt+T."],
+      ["new", "Choose your Linux: Alpine (~4 MB, apk), Debian 12 or Ubuntu 24.04 LTS (~30 MB, apt). Install several side by side and switch at any time; all of them share your workspace at ~. Debian and Ubuntu come from the official container images, checked against their SHA-256 digests."],
+      ["new", "pkg: one package command on every system, like Termux (pkg install / remove / search / upgrade / list). On Debian and Ubuntu it uses apt and translates common Alpine package names. The setup wizard and the AI agent's install tool use it too."],
+      ["new", "Appearance: System (follow the phone's light or dark setting, the new default), Light, Dark or a fixed colour theme. Switches live when the phone changes. If you had picked a theme before, it is kept."],
+      ["new", "Website: a Guide page with real screenshots that walks through everything, and a Light / Dark / System switch on every page."],
+      ["improve", "Storage Manager counts every installed Linux system. Credentials are no longer sent along when a download is redirected to another server."],
+    ] },
   { v: "8.5.1", date: "November 2026", title: "Stuck notification fixed, tidier Delete Project, run web projects",
     items: [
       ["fix", "The “Freeing space” notification that stayed after clearing space (even after restarting the phone) is gone. CodeForge now removes leftover progress notifications every time it starts, progress notifications expire by themselves if the app is killed, and quiet housekeeping such as automatic cleanup no longer posts one at all. Install this build and open the app once to clear the old ones."],

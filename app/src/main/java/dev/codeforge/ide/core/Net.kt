@@ -30,6 +30,8 @@ object Net {
         var current = url
         var m = method.uppercase()
         var payload = body
+        var hdrsToSend = headers
+        val firstHost = try { URL(url).host } catch (_: Exception) { "" }
         for (hop in 0..8) {
             val conn = URL(current).openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = false
@@ -38,7 +40,7 @@ object Net {
             conn.requestMethod = m
             conn.setRequestProperty("User-Agent", UA)
             if (identityEncoding) conn.setRequestProperty("Accept-Encoding", "identity")
-            for ((k, v) in headers) conn.setRequestProperty(k, SecretStore.expand(v))
+            for ((k, v) in hdrsToSend) conn.setRequestProperty(k, SecretStore.expand(v))
             if (trackId != null) live[trackId] = conn
             if (payload != null && m != "GET" && m != "HEAD") {
                 conn.doOutput = true
@@ -50,6 +52,8 @@ object Net {
                 val loc = conn.getHeaderField("Location")
                 if (loc != null) {
                     current = URL(URL(current), loc).toString()
+                    // never send credentials to another host (signed CDN links also reject a second auth header)
+                    if (URL(current).host != firstHost) hdrsToSend = hdrsToSend.filterKeys { !it.equals("Authorization", true) && !it.equals("Cookie", true) }
                     if (code == 303 || ((code == 301 || code == 302) && m == "POST")) { m = "GET"; payload = null }
                     conn.disconnect()
                     continue

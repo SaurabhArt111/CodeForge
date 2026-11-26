@@ -12,7 +12,7 @@ object Paths {
     lateinit var home: File        // default workspace + $HOME of the terminal ("/root" inside Linux)
     lateinit var env: File         // launcher scripts, proot temp dir
     lateinit var data: File        // settings, extensions, plugins, caches
-    lateinit var rootfs: File      // Alpine Linux root filesystem
+    lateinit var rootfs: File      // root filesystem of the active Linux system (Alpine, Debian or Ubuntu; see LinuxEnv)
     lateinit var nativeDir: File   // directory holding libproot*.so (executable)
 
     fun init(c: Context) {
@@ -21,7 +21,7 @@ object Paths {
         home = File(files, "home").also { it.mkdirs() }
         env = File(files, "env").also { it.mkdirs() }
         data = File(files, "cf").also { it.mkdirs() }
-        rootfs = File(files, "rootfs")
+        rootfs = LinuxEnv.dirOf(LinuxEnv.readActive())
         nativeDir = File(c.applicationInfo.nativeLibraryDir)
         File(env, "tmp").mkdirs()
         File(env, "bin").mkdirs()

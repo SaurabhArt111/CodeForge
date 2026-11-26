@@ -16,7 +16,7 @@ export const CATS = {
   imported:       { label: "Imported folders",     color: "#7c6cf0", desc: "Copies made by Open Folder / Open ZIP.", how: "Delete the copies you no longer need below." },
   inbox:          { label: "Inbox",                color: "#a78bfa", desc: "Files received from the share sheet.", how: "Delete single files below." },
   "node-modules": { label: "node_modules",         color: "#f59e0b", desc: "Dependencies inside your projects. They can be re-created with npm install.", how: "Safe to clear; run npm install again when you need them." },
-  "linux-system": { label: "Linux system",         color: "#ef4444", desc: "The Alpine Linux root file system and the packages installed in it.", how: "Remove it with “Reset Linux”; you can install it again later." },
+  "linux-system": { label: "Linux system",         color: "#ef4444", desc: "The Linux systems (Alpine, Debian, Ubuntu) and the packages installed in them.", how: "Remove it with “Reset Linux”; you can install it again later." },
   "linux-user":   { label: "Linux user files",     color: "#f97316", desc: "Hidden folders in your Linux home (.config, .local, .npm-global, …).", how: "Delete single items below." },
   "cache-pkg":    { label: "Package caches",       color: "#14b8a6", desc: "Downloaded npm / pip / apk packages kept for re-use.", how: "Safe to clear; packages are downloaded again when needed." },
   "cache-home":   { label: "Tool caches",          color: "#2dd4bf", desc: "~/.cache and build caches of command-line tools.", how: "Safe to clear." },

@@ -62,7 +62,7 @@ const c = call;
 export const N = {
   mode: () => mode,
   sys: {
-    info: () => c("sys.info"), hasAllFiles: () => c("sys.hasAllFiles"), requestAllFiles: () => c("sys.requestAllFiles"),
+    info: () => c("sys.info"), night: () => c("sys.night"), hasAllFiles: () => c("sys.hasAllFiles"), requestAllFiles: () => c("sys.requestAllFiles"),
     openUrl: (u) => c("sys.openUrl", u), share: (o) => c("sys.share", o), takeIntent: () => c("sys.takeIntent"),
     clipboardGet: () => c("sys.clipboardGet"), clipboardSet: (t) => c("sys.clipboardSet", t),
     notify: (o) => c("sys.notify", o), vibrate: (ms) => c("sys.vibrate", ms), toast: (t) => c("sys.toast", t),
@@ -184,7 +184,7 @@ export const N = {
     diagnostics: () => c("crash.diagnostics"), takeRecovery: () => c("crash.takeRecovery"), test: () => c("crash.testNative"),
   },
   preview: { open: (o) => c("preview.open", o) },
-  env: { status: () => c("env.status"), install: (job = "") => c("env.install", job), reset: () => c("env.reset") },
+  env: { status: () => c("env.status"), install: (job = "", distro = "") => c("env.install", job, distro), reset: (distro = "") => c("env.reset", distro), select: (distro) => c("env.select", distro) },
   proc: { exec: (o) => c("proc.exec", o) },
   on: (name, fn) => ev.on(name, fn),
 };

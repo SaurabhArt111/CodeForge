@@ -50,7 +50,7 @@ $(head -c 60000)"; fi
     # cf clean      -> clear download caches (npm, pip, apk, ~/.cache) from inside Linux; cf storage opens the full Storage Manager
     before=$(du -sk "$HOME/.npm" "$HOME/.cache" /var/cache /tmp 2>/dev/null | awk '{s+=$1} END {print s+0}')
     command -v npm >/dev/null 2>&1 && npm cache clean --force >/dev/null 2>&1
-    rm -rf "$HOME/.npm/_cacache" "$HOME/.npm/_logs" "$HOME/.cache" /var/cache/npm/* /var/cache/pip/* /var/cache/xdg/* /var/cache/apk/* /tmp/* 2>/dev/null
+    rm -rf "$HOME/.npm/_cacache" "$HOME/.npm/_logs" "$HOME/.cache" /var/cache/npm/* /var/cache/pip/* /var/cache/xdg/* /var/cache/apk/* /tmp/* 2>/dev/null; command -v apt-get >/dev/null 2>&1 && apt-get clean 2>/dev/null
     after=$(du -sk "$HOME/.npm" "$HOME/.cache" /var/cache /tmp 2>/dev/null | awk '{s+=$1} END {print s+0}')
     say "Cleared caches: freed about $(( (before - after) / 1024 )) MB.   (cf storage = full Storage Manager)" ;;
   crashes|crash) osc crashes "" ;;

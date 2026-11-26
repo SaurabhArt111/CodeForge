@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# CodeForge Linux launcher: runs a command (or a login shell) inside the Alpine root filesystem via proot.
+# CodeForge Linux launcher: runs a command (or a login shell) inside the active Linux root filesystem (Alpine, Debian or Ubuntu) via proot.
 # Adapted from Acode's init-sandbox.sh (MIT, (c) Foxdebug / Ajit Kumar).
 #
 # usage: start-linux.sh [--cwd DIR] [--] [command args...]
@@ -72,6 +72,8 @@ SHIM
 done
 # `cf`: control the IDE from the terminal (open / preview / ai / install coding CLIs …)
 if [ -f "$CF_ENV/cf.sh" ]; then cp "$CF_ENV/cf.sh" "$CF_ROOTFS/usr/local/bin/cf" 2>/dev/null && chmod 755 "$CF_ROOTFS/usr/local/bin/cf" 2>/dev/null; fi
+# `pkg`: one package command for Alpine (apk), Debian and Ubuntu (apt), like Termux's pkg
+if [ -f "$CF_ENV/pkg.sh" ]; then cp "$CF_ENV/pkg.sh" "$CF_ROOTFS/usr/local/bin/pkg" 2>/dev/null && chmod 755 "$CF_ROOTFS/usr/local/bin/pkg" 2>/dev/null; fi
 : > "$CF_ROOTFS/etc/motd" 2>/dev/null   # no banner when a terminal opens
 cat > "$CF_ROOTFS/etc/profile.d/20-codeforge-env.sh" <<'PROF'
 export BROWSER=/usr/local/bin/cf-open-url

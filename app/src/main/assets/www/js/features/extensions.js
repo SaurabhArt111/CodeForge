@@ -291,7 +291,7 @@ function settingsEditor(e) {
 async function details(e) {
   const body = h("div", { style: { minHeight: "120px" } }, h("div.loader-block", h("div.spinner"), h("span", "Loading…")));
   const readmeHold = h("div"); const actions = h("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap", margin: "8px 0" } });
-  const themeButtons = (e.manifest.contributes?.themes || []).map((t) => h("button.btn.small", { onclick: () => { A.settings.set("ui.theme", t.label || t.id); } }, `Use “${t.label || t.id}”`));
+  const themeButtons = (e.manifest.contributes?.themes || []).map((t) => h("button.btn.small", { onclick: () => { A.settings.set("ui.theme", t.label || t.id); A.settings.set("ui.appearance", "theme"); } }, `Use “${t.label || t.id}”`));
   const iconButtons = (e.manifest.contributes?.iconThemes || []).map((t) => h("button.btn.small", { onclick: () => A.settings.set("ui.iconTheme", `${e.id}:${t.id}`) }, `Use icons “${t.label || t.id}”`));
   const codeButtons = e.main ? [h("button.btn.small", { onclick: () => A.output.show(`Extension: ${e.name}`) }, "Show output"), h("button.btn.small", { onclick: async () => { await host.restart(e); A.toast(`${e.name} restarted`); } }, "Restart")] : [];
   actions.append(...themeButtons, ...iconButtons, ...codeButtons);

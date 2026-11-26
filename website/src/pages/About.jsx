@@ -8,7 +8,7 @@ const INSPIRED = [
 const BUILT = [
   ["Monaco Editor", "https://microsoft.github.io/monaco-editor/", "The editor component of VS Code (MIT)."],
   ["xterm.js", "https://xtermjs.org", "Terminal emulator (MIT)."],
-  ["PRoot and Alpine Linux", "https://proot-me.github.io", "The Linux environment that runs without root."],
+  ["PRoot with Alpine, Debian and Ubuntu", "https://proot-me.github.io", "The Linux environment that runs without root."],
   ["isomorphic-git", "https://isomorphic-git.org", "Git in JavaScript (MIT)."],
   ["Open VSX", "https://open-vsx.org", "The open registry that extensions are installed from."],
   ["Codicons and Seti icons", "https://github.com/microsoft/vscode-codicons", "Interface and file icons."],

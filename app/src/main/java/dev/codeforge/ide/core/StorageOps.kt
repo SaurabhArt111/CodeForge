@@ -72,6 +72,7 @@ object StorageOps {
             parentPath == Paths.files.path -> when (name) {
                 "home" -> "projects"
                 "rootfs-download.tar.gz" -> "leftovers"
+                "rootfs", "distros" -> "linux-system"      // Linux systems that are installed but not active
                 "crashes" -> "crashes"
                 else -> "app-data"
             }
@@ -166,7 +167,7 @@ object StorageOps {
         "imported" -> kids("$home/imported") { !isExportFile(it) }
         "inbox" -> kids("$home/inbox")
         "node-modules" -> findNodeModules(job)
-        "linux-system" -> kids(rootfs)
+        "linux-system" -> kids(rootfs) + LinuxEnv.DISTROS.map { LinuxEnv.dirOf(it.id) }.filter { it.exists() && it.path != rootfs }
         "linux-user" -> kids(home) { it.name.startsWith(".") && classify(it, "projects") == "linux-user" }
         "cache-pkg" -> listOf(File("$home/.npm"), File("$rootfs/var/cache")).filter { it.exists() }
         "cache-home" -> listOf(File("$home/.cache"), File("$home/.node-gyp")).filter { it.exists() }
@@ -211,7 +212,7 @@ object StorageOps {
 
     private fun protectedRoot(f: File): Boolean {
         val p = f.path.trimEnd('/')
-        return p == dataRoot.path || p == Paths.files.path || p == home || p == cf || p == envDir || p == rootfs ||
+        return p == dataRoot.path || p == Paths.files.path || p == home || p == cf || p == envDir || p == rootfs || p == Paths.files.path + "/distros" ||
             p == "$cf/extensions" || p == "$cf/plugins" || p.length < 10 || p.contains("/../")
     }
 

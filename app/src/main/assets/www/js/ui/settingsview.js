@@ -13,7 +13,7 @@ const FONTS = ["JetBrains Mono", "Cascadia Code", "Fira Code", "monospace"];
 const S = (key, label, type, extra = {}) => ({ key, label, type, ...extra });
 export const SCHEMA = [
   ["Appearance", [
-    S("ui.fontScale", "Text size , everything (%)", "number", { min: 70, max: 170, step: 5, hint: "Scales menus, tabs, sidebar, panels, the editor and the terminal together. Editor/terminal size below are multiplied by this." }), S("ui.theme", "Color Theme", "theme"), S("ui.iconTheme", "File Icon Theme", "icontheme"), 
+    S("ui.fontScale", "Text size , everything (%)", "number", { min: 70, max: 170, step: 5, hint: "Scales menus, tabs, sidebar, panels, the editor and the terminal together. Editor/terminal size below are multiplied by this." }), S("ui.appearance", "Appearance", "select", { options: ["system", "light", "dark", "theme"], hint: "system = follow the phone (light by day, dark at night); theme = always use the Color Theme below" }), S("ui.themeLight", "Theme when light", "theme"), S("ui.themeDark", "Theme when dark", "theme"), S("ui.theme", "Color Theme (when Appearance is “theme”)", "theme"), S("ui.iconTheme", "File Icon Theme", "icontheme"), 
     S("ui.openUrlWith", "Open links (vite “o”, xdg-open, terminal/editor links) with", "select", { options: ["browser", "preview"], hint: "browser = your default Android browser; preview = in-app preview for local URLs" }),
   ]],
   ["Keyboard & Touch", [
@@ -36,7 +36,7 @@ export const SCHEMA = [
     S("files.showHidden", "Show hidden files (dotfiles)", "bool"), S("files.confirmDelete", "Confirm before deleting", "bool"),
   ]],
   ["Terminal", [
-    S("terminal.mode", "Default shell", "select", { options: ["auto", "host", "linux"], hint: "auto = Alpine Linux if installed, else Android sh" }), S("terminal.fontSize", "Terminal font size (pinch to zoom)", "number", { min: 8, max: 32 }), S("terminal.lineHeight", "Terminal line height", "number", { min: 1, max: 2, step: 0.05 }), S("terminal.letterSpacing", "Letter Spacing (px)", "number", { min: 0, max: 4, step: 0.5 }), S("terminal.fontFamily", "Terminal font family", "select", { options: FONTS }),
+    S("terminal.mode", "Default shell", "select", { options: ["auto", "host", "linux"], hint: "auto = the active Linux system (Alpine, Debian or Ubuntu) if installed, else Android sh" }), S("terminal.fontSize", "Terminal font size (pinch to zoom)", "number", { min: 8, max: 32 }), S("terminal.lineHeight", "Terminal line height", "number", { min: 1, max: 2, step: 0.05 }), S("terminal.letterSpacing", "Letter Spacing (px)", "number", { min: 0, max: 4, step: 0.5 }), S("terminal.fontFamily", "Terminal font family", "select", { options: FONTS }),
     S("terminal.scheme", "Color Scheme (Termux:Styling)", "scheme"), S("terminal.scrollback", "Scrollback lines", "number", { min: 500, max: 50000 }), S("terminal.cursorBlink", "Terminal cursor blink", "bool"), S("terminal.bell", "Vibrate on bell", "bool"),
   ]],
   ["Live Server", [

@@ -29,8 +29,8 @@ export default function Docs() {
       <p>On Android, new projects are stored in the app's own storage by default because npm needs symbolic links there. With “All files access” you can also keep projects in the <code>CodeForge</code> folder of your device storage, which other apps can see.</p>
 
       <h2 id="terminal">Linux terminal</h2>
-      <p>Open the terminal and choose <strong>Linux</strong>. The first start downloads Alpine Linux. After that:</p>
-      <pre><code>{"apk add nodejs npm python3 git\nnpm create vite@latest my-app\ncd my-app && npm install && npm run dev"}</code></pre>
+      <p>Open the terminal and choose <strong>Linux</strong>. The first start downloads Alpine Linux (or pick Debian or Ubuntu under Terminal → Linux System). For a full-screen terminal only, use <strong>Terminal mode</strong>; the <Link to="/guide#terminal">guide</Link> shows how. After that:</p>
+      <pre><code>{"pkg install nodejs npm python3 git   # apk / apt also work\nnpm create vite@latest my-app\ncd my-app && npm install && npm run dev"}</code></pre>
       <p>Drag with one finger to scroll, pinch to change the text size, long-press for copy and paste. The <code>cf</code> command controls the editor from the shell: <code>cf open file.js:12</code>, <code>cf preview index.html</code>, <code>cf install claude</code>.</p>
 
       <h2 id="preview">Run and preview</h2>

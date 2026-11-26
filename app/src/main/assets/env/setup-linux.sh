@@ -1,17 +1,21 @@
 #!/bin/sh
-# Runs INSIDE the Alpine guest (through start-linux.sh). Installs the packages chosen in the setup wizard.
+# Runs INSIDE the Linux guest (through start-linux.sh). Installs the packages chosen in the setup wizard.
+# Works on Alpine (apk) and on Debian / Ubuntu (apt). Package names are given in Alpine spelling and mapped by `pkg`.
 # usage: setup-linux.sh <package> [<package> ...]
 set -u
 say() { printf '\033[1;34m[*]\033[0m %s\n' "$*"; }
 ok()  { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
 err() { printf '\033[1;31m[!]\033[0m %s\n' "$*"; }
 
+PKG=/usr/local/bin/pkg
+[ -x "$PKG" ] || { err "The pkg helper is missing; reopen the terminal and try again."; exit 1; }
 say "Updating package index..."
-apk update || err "apk update failed (check your network connection)"
+"$PKG" update || err "Updating the package index failed (check your network connection)"
 
-PKGS="bash coreutils findutils grep sed gawk less nano curl wget ca-certificates openssl tzdata shadow $*"
+PKGS="bash coreutils findutils grep sed gawk less nano curl wget ca-certificates openssl tzdata shadow procps $*"
 say "Installing: $PKGS"
-if apk add --no-cache $PKGS; then ok "Packages installed."; else err "Some packages failed to install; run 'apk add <name>' to retry."; fi
+# shellcheck disable=SC2086
+if "$PKG" install $PKGS; then ok "Packages installed."; else err "Some packages failed to install; run 'pkg install <name>' to retry."; fi
 
 mkdir -p /etc/profile.d /usr/local/bin
 cat > /etc/profile.d/10-codeforge.sh <<'PROFILE'
@@ -50,5 +54,6 @@ if command -v git >/dev/null 2>&1; then
   git config --global --get-all safe.directory >/dev/null 2>&1 || git config --global --add safe.directory '*'
 fi
 mkdir -p /root/.npm-global /var/cache/npm /var/cache/pip /var/cache/xdg
-touch /root/.codeforge-setup-done
+touch /etc/codeforge-setup-done
+[ -f /etc/alpine-release ] && touch /root/.codeforge-setup-done   # older CodeForge builds look here
 ok "Setup finished. Type 'code .' to open the current folder in CodeForge."

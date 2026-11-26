@@ -1,4 +1,4 @@
-// Terminal: xterm.js over native PTY sessions (host shell or proot Alpine), tabs, OSC-7770 "code" command, URL/port detection.
+// Terminal: xterm.js over native PTY sessions (host shell or proot Linux: Alpine, Debian or Ubuntu), tabs, OSC-7770 "code" command, URL/port detection.
 import * as fontscale from "../core/fontscale.js";
 import * as lazy from "../core/lazy.js";
 import { N } from "../core/bridge.js";
@@ -18,6 +18,17 @@ let activeId = null, bar, bodies, tabsEl;
 const mods = { ctrl: false, alt: false, shift: false };
 export const modifiers = mods;
 let ptyResizeTimer, creating = 0;
+let hostEl = null;   // Terminal mode: the full-screen container the terminals are shown in instead of the panel
+
+/** Show the terminals in [el] (Terminal mode) or back in the terminal panel (null). The sessions keep running. */
+export function setHost(el) {
+  hostEl = el || null;
+  (hostEl || panel.pane("terminal")).append(bodies);
+  setTimeout(fitAll, 60); setTimeout(fitAll, 300);
+}
+export const inHost = () => !!hostEl;
+export const fit = () => fitAll();
+export const theme = () => currentTheme;
 
 export function init() {
   const pane = panel.pane("terminal");
@@ -177,7 +188,7 @@ export async function create(opts = {}) {
   try { return await createInner(opts); } finally { creating--; }
 }
 async function createInner({ cwd, mode, command, title, env, focus = true } = {}) {
-  if (!panel.isShown("terminal")) panel.show("terminal");
+  if (!hostEl && !panel.isShown("terminal")) panel.show("terminal");
   const m = mode || settings.get("terminal.mode");
   await new Promise((r) => requestAnimationFrame(r));
   let info;
@@ -238,6 +249,7 @@ export function select(id) {
   refreshTabs(); const t = get(); if (t) { setTimeout(() => { fitOne(t); }, 30); }
 }
 function refreshTabs() {
+  bus.emit("term:tabs");
   tabsEl.replaceChildren(...[...terms.values()].filter((t) => !t.embedded).map((t) => h("div.term-tab" + (t.id === activeId ? ".active" : "") + (t.alive ? "" : ".dead") + (t.agentName ? ".agent" : ""), { onclick: () => { select(t.id); t.xt.focus(); }, oncontextmenu: (e) => { e.preventDefault(); termMenu(t, e.clientX, e.clientY); } },
     icon(t.agentName ? "sparkle" : t.mode === "linux" ? "server-environment" : "terminal"), h("span", t.title || "terminal"), h("span.x", { onclick: (e) => { e.stopPropagation(); closeTerm(t.id); } }, icon("close")))));
 }
@@ -246,8 +258,8 @@ export function closeTerm(id) {
   crumb("terminal close " + id);
   N.term.close(id).catch(() => {}); clearTimeout(t.ackTimer); t.xt.dispose(); t.el.remove(); terms.delete(id);
   if (t.embedded) { t.ro?.disconnect(); t.onClose?.(); return; }
-  if (activeId === id) { const n = [...terms.values()].filter((x) => !x.embedded).map((x) => x.id).pop(); activeId = n || null; if (n) select(n); else panel.hide("terminal"); }
-  refreshTabs();
+  if (activeId === id) { const n = [...terms.values()].filter((x) => !x.embedded).map((x) => x.id).pop(); activeId = n || null; if (n) select(n); else if (!hostEl) panel.hide("terminal"); }
+  refreshTabs(); if (!list().some((x) => !x.embedded)) bus.emit("term:empty");
 }
 function killActive() { const t = get(); if (t) closeTerm(t.id); }
 
@@ -272,7 +284,7 @@ export function write(data, id = activeId) { return N.term.writeStr(id, data); }
 export async function run(line, { cwd, title, reuse = true, mode } = {}) {
   let t = reuse ? [...terms.values()].find((x) => x.alive && x.runner) : null;
   if (!t) { t = await create({ cwd, title: title || "run", mode }); if (!t) return null; t.runner = true; await new Promise((r) => setTimeout(r, 600)); }
-  else { panel.show("terminal"); select(t.id); if (cwd && cwd !== t.cwd) { await write(`cd ${shellQuote(cwd)}\r`); t.cwd = cwd; } }
+  else { if (!hostEl) panel.show("terminal"); select(t.id); if (cwd && cwd !== t.cwd) { await write(`cd ${shellQuote(cwd)}\r`); t.cwd = cwd; } }
   await write(line + "\r"); t.xt.focus(); return t;
 }
 export function setMod(k, on) { mods[k] = on; bus.emit("term:mods", { ...mods }); }
@@ -316,7 +328,7 @@ function profileMenu(x, y) {
   contextMenu([
     { label: "New Terminal (default)", icon: "terminal", run: () => create() },
     { label: "New Android Shell (sh)", icon: "device-mobile", run: () => create({ mode: "host" }) },
-    { label: "New Linux Shell (Alpine)", icon: "server-environment", run: () => create({ mode: "linux" }) },
+    { label: "New Linux Shell", icon: "server-environment", run: () => create({ mode: "linux" }) },
     { separator: true },
     { label: "Set default: Auto", run: () => settings.set("terminal.mode", "auto") },
     { label: "Set default: Android shell", run: () => settings.set("terminal.mode", "host") },

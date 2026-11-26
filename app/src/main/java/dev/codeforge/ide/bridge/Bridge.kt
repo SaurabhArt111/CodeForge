@@ -212,6 +212,7 @@ object Bridge {
         "sys.vibrate" -> { vibrate(a.optLong(0, 20)); true }
         "sys.toast" -> { val t = a.str(0); main.post { Toast.makeText(Paths.app, t, Toast.LENGTH_SHORT).show() }; true }
         "sys.keepAwake" -> { host?.keepAwake(a.optBoolean(0)); true }
+        "sys.night" -> isNight()
         "sys.setStatusBar" -> { host?.setSystemBars(Color.parseColor(a.str(0)), a.optBoolean(1, false)); true }
         "sys.storageRoots" -> storageRoots()
         "sys.pickFile" -> host?.pick("file", a.obj(0))
@@ -402,11 +403,15 @@ object Bridge {
         // ---------------- linux environment
         "env.status" -> envStatus()
         "env.install" -> { val job = a.optString(0, "").ifEmpty { null }
-            LinuxEnv.install(job) { stage, done, total, msg ->
+            val distroId = a.optString(1, "").ifEmpty { LinuxEnv.active }
+            LinuxEnv.install(job, distroId) { stage, done, total, msg ->
                 emit("env.progress", JSONObject().put("stage", stage).put("done", done).put("total", total).put("msg", msg).put("job", job ?: ""))
                 if (job != null) Jobs.update(job, msg, if (stage == "download") done else -1, if (stage == "download") total else -1)
             }; envStatus() }
-        "env.reset" -> { SessionManager.killAll(); LinuxEnv.reset(); envStatus() }
+        "env.reset" -> { val id = a.optString(0, "").ifEmpty { LinuxEnv.active }
+            if (id == LinuxEnv.active) SessionManager.killAll()     // terminals of other systems keep running
+            LinuxEnv.reset(id); envStatus() }
+        "env.select" -> { LinuxEnv.select(a.str(0)); envStatus() }
         "proc.exec" -> procExec(a.obj(0))
 
         else -> throw IllegalArgumentException("Unknown bridge method: $m")
@@ -430,13 +435,24 @@ object Bridge {
                 .put("env", Paths.env.path).put("rootfs", Paths.rootfs.path).put("native", Paths.nativeDir.path)
                 .put("shared", Paths.sharedRoot().path)
                 .put("extensions", File(Paths.data, "extensions").path).put("plugins", File(Paths.data, "plugins").path))
+            .put("night", isNight())
             .put("linux", envStatus())
     }
+
+    /** true when the phone uses its dark theme (WebView's prefers-color-scheme follows the app theme, not the phone). */
+    fun isNight(): Boolean = (((host as? android.content.Context) ?: Paths.app).resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+        android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     private fun envStatus(): JSONObject = JSONObject()
         .put("installed", LinuxEnv.installed()).put("version", LinuxEnv.version() ?: JSONObject.NULL)
         .put("arch", LinuxEnv.arch() ?: JSONObject.NULL).put("setupDone", LinuxEnv.setupDone())
         .put("supported", LinuxEnv.arch() != null)
+        .put("distro", LinuxEnv.active).put("name", LinuxEnv.distro(LinuxEnv.active).name).put("pm", LinuxEnv.distro(LinuxEnv.active).pm)
+        .put("distros", JSONArray().also { arr ->
+            for (d in LinuxEnv.DISTROS) arr.put(JSONObject().put("id", d.id).put("name", d.name).put("pm", d.pm).put("size", d.size)
+                .put("installed", LinuxEnv.installed(d.id)).put("version", LinuxEnv.version(d.id) ?: JSONObject.NULL)
+                .put("active", d.id == LinuxEnv.active).put("setupDone", LinuxEnv.setupDone(d.id)))
+        })
 
     private fun clipboardGet(): String {
         val cm = Paths.app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

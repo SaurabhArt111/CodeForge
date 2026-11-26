@@ -6,7 +6,11 @@ import { P, debounce } from "./util.js";
 const phone = () => Math.min(window.screen?.width || 9999, window.innerWidth) <= 760;
 
 export const DEFAULTS = {
-  "ui.theme": "Dark Modern",
+  "ui.theme": "Dark Modern",              // the fixed theme when ui.appearance is "theme"
+  "ui.appearance": "system",
+  "app.mode": "ide",                      // ide = CodeForge All (code + AI + terminal) · terminal = full-screen terminal only              // system (follow the phone) | light | dark | theme
+  "ui.themeLight": "Light Modern",
+  "ui.themeDark": "Dark Modern",
   "ui.iconTheme": "seti",
   "ui.mobileKeyBar": true,
   "run.exposeHost": false,

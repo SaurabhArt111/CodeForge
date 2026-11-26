@@ -11,6 +11,8 @@ import crypto from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
+// a terminal helper that exits while we write to it raises ECONNRESET / EPIPE on its pipe: that must not stop the dev host
+process.on("uncaughtException", (e) => { if (["ECONNRESET", "EPIPE", "ERR_STREAM_DESTROYED"].includes(e?.code)) { console.warn("ignored", e.code); return; } console.error(e); process.exit(1); });
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const argv = Object.fromEntries(process.argv.slice(2).reduce((a, v, i, arr) => (v.startsWith("--") ? [...a, [v.slice(2), arr[i + 1]]] : a), []));
@@ -244,6 +246,15 @@ function storageRpc() {
   };
 }
 
+const DISTROS = [["alpine", "Alpine Linux", "apk", "~4 MB"], ["debian", "Debian 12 (bookworm)", "apt", "~30 MB"], ["ubuntu", "Ubuntu 24.04 LTS", "apt", "~30 MB"]];
+const devEnv = { active: "alpine", inst: new Set() };
+function envStat() {
+  const d = DISTROS.find((x) => x[0] === devEnv.active);
+  const installed = devEnv.inst.has(devEnv.active);
+  return { installed, version: installed ? "dev" : null, arch: "x86_64", setupDone: installed, supported: true, distro: d[0], name: d[1], pm: d[2],
+    distros: DISTROS.map(([id, name, pm, size]) => ({ id, name, pm, size, installed: devEnv.inst.has(id), version: devEnv.inst.has(id) ? "dev" : null, active: id === devEnv.active, setupDone: devEnv.inst.has(id) })) };
+}
+
 const methods = {
   "sys.info": async () => ({ version: "8.0.0-devhost", pkg: "dev.codeforge.ide", sdk: 34, abi: "x86_64", device: "DevHost", githubClientId: process.env.CF_GITHUB_CLIENT_ID || "dev-client-id", allFiles: true, paths: P, linux: { installed: false, version: null, arch: "x86_64", setupDone: false, supported: true }, devhost: true }),
   "sys.hasAllFiles": async () => true, "sys.requestAllFiles": async () => true,
@@ -401,9 +412,11 @@ const methods = {
   "term.list": async () => [...terms.values()].map(termInfo),
   "term.attach": async (id) => { const t = terms.get(id); return t ? { ...termInfo(t), b64: t.buf.toString("base64") } : null; },
   "term.rename": async (id, title) => { const t = terms.get(id); if (t) t.title = title; return true; },
-  "env.status": async () => ({ installed: false, version: null, arch: "x86_64", setupDone: false, supported: true }),
-  "env.install": async (job) => { for (const [i, st] of ["download", "extract", "configure"].entries()) { emit("env.progress", { stage: st, done: i + 1, total: 3, msg: st, job: job || "" }); await new Promise((r) => setTimeout(r, 100)); } return { installed: false, supported: true }; },
-  "env.reset": async () => ({ installed: false }),
+  // Linux systems are simulated: the dev host shell is always the host's bash. Installing with an explicit distro marks it installed.
+  "env.status": async () => envStat(),
+  "env.install": async (job, distro) => { for (const [i, st] of ["download", "extract", "configure"].entries()) { emit("env.progress", { stage: st, done: i + 1, total: 3, msg: st, job: job || "" }); await new Promise((r) => setTimeout(r, 100)); } if (distro) { devEnv.inst.add(distro); devEnv.active = distro; } return envStat(); },
+  "env.reset": async (distro) => { const id = distro || devEnv.active; devEnv.inst.delete(id); if (id === devEnv.active) devEnv.active = [...devEnv.inst][0] || "alpine"; return envStat(); },
+  "env.select": async (id) => { if (!devEnv.inst.has(id)) throw new Error(id + " is not installed"); devEnv.active = id; return envStat(); },
   "proc.exec": async (o) => new Promise((res) => { const args = o.command || ["/bin/sh", "-c", o.line]; execFile(args[0], args.slice(1), { cwd: o.cwd || P.home, timeout: o.timeoutMs || 120000, maxBuffer: 4e6 }, (e, so, se) => res({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: so + se, timedOut: !!e?.killed })); }),
   // ---- background tasks / restart / downloads (native: core/Jobs.kt, MainActivity)
   "jobs.begin": async (id, title) => { jobsLive.set(id, title); jobCancelled.delete(id); return true; },

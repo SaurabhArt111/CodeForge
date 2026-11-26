@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { config, url } from "../lib/site.js";
+import { ThemeButton, ThemePicker } from "./Theme.jsx";
 
 const Arrow = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>);
 export const DownloadIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 20h16" /></svg>);
@@ -18,16 +19,18 @@ export default function Layout() {
       <Link className="brand" to="/"><img src={url("assets/logo.svg")} alt="" width="26" height="26" />CodeForge</Link>
       <nav aria-label="Main">
         <NavLink to="/features">Features</NavLink>
+        <NavLink to="/guide">Guide</NavLink>
         <NavLink to="/docs">Docs</NavLink>
         <NavLink to="/updates">Release notes</NavLink>
         <NavLink to="/blog">Blog</NavLink>
         <NavLink className="keep" to="/download">Download</NavLink>
+        <ThemeButton />
         <a className="cta" href={url("app/")}>Open web editor</a>
       </nav></div></header>
     <main id="main"><Outlet /></main>
     <footer><div className="wrap">
-      <div>CodeForge {c.version} · MIT licensed · Runs on Android and in your browser</div>
-      <nav aria-label="Footer"><a href={url("app/")}>Web editor</a><Link to="/features">Features</Link><Link to="/docs">Docs</Link><Link to="/updates">Release notes</Link><Link to="/blog">Blog</Link><Link to="/download">Download</Link><Link to="/code">Source code</Link><Link to="/about">About</Link><Link to="/privacy">Privacy</Link>{c.githubUrl ? <a href={c.githubUrl}>GitHub</a> : null}</nav>
+      <div>CodeForge {c.version} · MIT licensed · Runs on Android and in your browser<div style={{ marginTop: 12 }}><ThemePicker /></div></div>
+      <nav aria-label="Footer"><a href={url("app/")}>Web editor</a><Link to="/features">Features</Link><Link to="/guide">Guide</Link><Link to="/docs">Docs</Link><Link to="/updates">Release notes</Link><Link to="/blog">Blog</Link><Link to="/download">Download</Link><Link to="/code">Source code</Link><Link to="/about">About</Link><Link to="/privacy">Privacy</Link>{c.githubUrl ? <a href={c.githubUrl}>GitHub</a> : null}</nav>
     </div></footer>
   </>);
 }

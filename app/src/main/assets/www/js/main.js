@@ -8,6 +8,7 @@ import { h, icon, P, clamp, isMobile, isTouch, copyText } from "./core/util.js";
 import { toast, toastError, contextMenu, modal, prompt, confirm, busy, quickPick, longPress } from "./core/ui.js";
 import { openUrl } from "./core/links.js";
 import * as themes from "./features/themes.js";
+import * as appearance from "./core/appearance.js";
 import * as icons from "./features/icons.js";
 import { ws } from "./ui/workspace.js";
 import * as explorer from "./ui/explorer.js";
@@ -18,6 +19,7 @@ import * as search from "./ui/search.js";
 import * as cmd from "./ui/commands.js";
 import * as status from "./ui/statusbar.js";
 import * as keybar from "./ui/keybar.js";
+import * as termmode from "./ui/termmode.js";
 import * as keyboard from "./ui/keyboard.js";
 import * as sv from "./ui/settingsview.js";
 import * as of from "./ui/openfolder.js";
@@ -71,10 +73,10 @@ async function boot() {
     await ws.init(info); of.setInfo(info);
     bootMsg("Loading themes…");
     await Promise.all([themes.init(), icons.init()]);
-    await themes.apply(settings.get("ui.theme")); icons.use(settings.get("ui.iconTheme"));
+    appearance.init(info); await themes.apply(appearance.themeId()); icons.use(settings.get("ui.iconTheme"));
     $("#app").classList.remove("hidden");
     bootMsg("Loading editor…");
-    await monacoReady; themes.attachMonaco(ed.monaco); await themes.apply(settings.get("ui.theme"));
+    await monacoReady; themes.attachMonaco(ed.monaco); await themes.apply(appearance.themeId());
     ed.initEditor(); panel.init(); panel.setViewBuilder(ensureView);
     panel.setDockHandler((name, to) => {
       if (name === "*") { showView("explorer", { silent: true }); return; }
@@ -82,6 +84,8 @@ async function boot() {
     });
     output.init(); term.init(); search.init(); explorer.init(handlers); status.init(); jobs.init(status); keybar.init(); keyboard.init(); cmd.initKeys();
     layout(); registerCommands(); wireEvents(); menubar.init(); mobileNav();
+    termmode.init({ feat, runCommand: (id) => cmd.run(id), showTerminal: () => panel.show("terminal") });
+    if (settings.get("app.mode") === "terminal") termmode.enter({ save: false });   // opened in Terminal mode last time
     // keep the splash on screen long enough for its animation to play, then fade it out
     setTimeout(() => storage.autoClean().catch(() => {}), 8000);   // optional: clear temp files / caches once the app is up (Settings → Storage)
     setTimeout(() => $("#boot").classList.add("done"), Math.max(0, 900 - performance.now()));
@@ -90,7 +94,7 @@ async function boot() {
     if (last && (await N.fs.exists(last))) { await openFolder(last, { restore: true }); }
     else if (bridgeMode !== "android" || !settings.state.recent.length) { /* explorer empty state shows the open options */ }
     showView(settings.state.view || "explorer", { silent: true });
-    if (!last) showWelcome();
+    if (!last && !termmode.isOn()) showWelcome();
     await handleIntent(await N.sys.takeIntent().catch(() => null));
     // heavier optional features after first paint
     await Promise.all(["env", "live", "git", "github", "run", "extensions", "plugins", "ai", "snippets", "format", "markdown"].map(loadFeature));
@@ -179,9 +183,9 @@ function layout() {
   apply(); window.addEventListener("resize", apply);
   // theme changes → relayout
   themes.themeEvents.on("change", () => document.body.dataset.themeType = themes.current.type);
-  settings.on("change:ui.theme", (v) => themes.apply(v));
+  appearance.events.on("change", (id) => themes.apply(id));   // System / Light / Dark / fixed theme, and the phone switching day ↔ night
   // themes / icon themes contributed by extensions register AFTER first paint: re-apply the saved choice when they appear
-  themes.themeEvents.on("registry", () => { const want = settings.get("ui.theme"); if (themes.current?.id !== want && themes.list().some((t) => t.id === want)) themes.apply(want); });
+  themes.themeEvents.on("registry", () => { const want = appearance.themeId(); if (themes.current?.id !== want && themes.list().some((t) => t.id === want)) themes.apply(want); });
   icons.iconEvents.on("registry", () => { const want = settings.get("ui.iconTheme"); if (icons.activeId() !== want && icons.list().some((t) => t.id === want)) icons.use(want); });
   settings.on("change:ui.iconTheme", (v) => icons.use(v));
   // title
@@ -191,6 +195,8 @@ function layout() {
   // android back button: close whatever is open on top; with nothing left to close the app goes to the recents list - but never with unsaved work
   window.__cfBack = () => {
     if (document.querySelector(".modal-wrap,.qp-wrap,.ctx")) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); document.querySelector(".ctx-back")?.click(); return true; }
+    if (termmode.handleBack()) return true;
+    if (termmode.isOn()) return ed.dirtyDocs().length ? (leaveApp(), true) : false;
     if ($("#sidebar").classList.contains("open")) { closeDrawer(); return true; }
     if (panel.isSheetOpen("page")) { panel.hide("page"); return true; }
     if (panel.closeLast()) return true;
@@ -370,9 +376,15 @@ function moreMenu(x, y) {
     { label: "Account / GitHub", icon: "account", run: () => accountMenu(x, y - 100) }, { label: "Settings", icon: "settings-gear", run: sv.open },
   ], x, y);
 }
+async function pickAppearance() {
+  const cur = settings.get("ui.appearance");
+  const items = [["system", "System", "follow the phone's light / dark setting"], ["light", "Light", settings.get("ui.themeLight")], ["dark", "Dark", settings.get("ui.themeDark")], ["theme", "Fixed theme", settings.get("ui.theme")]]
+    .map(([value, label, description]) => ({ label: (value === cur ? "● " : "") + label, description, value }));
+  const r = await quickPick(items, { placeholder: "Appearance" }); if (r) appearance.set(r);
+}
 async function pickTheme() {
   const cur = settings.get("ui.theme"); const items = themes.list().map((t) => ({ label: t.label || t.id, description: t.uiTheme === "vs" ? "light" : t.uiTheme?.startsWith("hc") ? "high contrast" : "dark", value: t.id }));
-  const orig = cur; const r = await quickPick(items, { placeholder: "Select Color Theme" }); if (r) settings.set("ui.theme", r); else themes.apply(orig);
+  const r = await quickPick(items, { placeholder: "Select Color Theme (fixed; use Appearance for Light / Dark / System)" }); if (r) { settings.set("ui.theme", r); appearance.set("theme"); } else themes.apply(appearance.themeId());
 }
 async function pickIconTheme() { const r = await quickPick(icons.list().map((t) => ({ label: t.label, value: t.id })), { placeholder: "Select File Icon Theme" }); if (r) settings.set("ui.iconTheme", r); }
 async function checkAllFiles() {
@@ -390,7 +402,7 @@ export const CREDITS = {
   built: [
     ["Monaco Editor", "https://microsoft.github.io/monaco-editor/", "the editor that powers VS Code (MIT)"],
     ["xterm.js", "https://xtermjs.org", "terminal emulator (MIT)"],
-    ["PRoot + Alpine Linux", "https://proot-me.github.io", "Linux environment without root: apk, Node.js, Python, Git, compilers"],
+    ["PRoot + Alpine, Debian, Ubuntu", "https://proot-me.github.io", "Linux environment without root: apk / apt, Node.js, Python, Git, compilers"],
     ["isomorphic-git", "https://isomorphic-git.org", "Git in JavaScript: clone, commit, branch, push, pull (MIT)"],
     ["Open VSX", "https://open-vsx.org", "the open extension registry CodeForge installs from"],
     ["Codicons · Seti icons", "https://github.com/microsoft/vscode-codicons", "icons (CC BY 4.0 / MIT)"],
@@ -425,7 +437,7 @@ function showWelcome() {
         h("div.wgrid",
           card("folder-opened", "Open Folder", "Browse storage, import from device", handlers.openProjectMenu), card("file-zip", "Open ZIP Project", "Extract and edit an archive", handlers.openZip),
           card("repo-clone", "Clone Repository", "From GitHub or any Git URL", handlers.cloneRepo), card("new-folder", "New Project", "HTML, Node, Python, Vite…", handlers.newProject),
-          card("terminal", "Terminal", "Android shell or Alpine Linux", () => term.create()), card("sparkle", "AI Assistant", "Claude, OpenAI, Gemini, Copilot models…", () => showView("ai"))),
+          card("terminal", "Terminal", "Android shell or Linux (Alpine, Debian, Ubuntu)", () => term.create()), card("sparkle", "AI Assistant", "Claude, OpenAI, Gemini, Copilot models…", () => showView("ai"))),
         recents.length ? h("div", h("h3", "Recent"), ...recents.map((p) => h("div.row", { onclick: () => openFolder(p), style: { paddingLeft: 0 } }, icon("folder"), h("span.label", P.base(p)), h("span.meta", P.dir(p))))) : null));
     },
   });
@@ -495,6 +507,8 @@ function registerCommands() {
   R("view.split", "Split Editor", () => ed.toggleSplit(), { category: "View", keys: "Ctrl+\\" });
   R("view.sidebar", "Toggle Sidebar", () => bus.emit("cmd:sidebar"), { category: "View", keys: "Ctrl+B" });
   R("view.theme", "Color Theme…", pickTheme, { category: "Preferences" });
+  R("view.appearance", "Appearance: Light / Dark / System…", pickAppearance, { category: "Preferences" });
+  R("view.appearance.toggle", "Appearance: Cycle System → Light → Dark", () => toast("Appearance: " + appearance.cycle()), { category: "Preferences" });
   R("view.iconTheme", "File Icon Theme…", pickIconTheme, { category: "Preferences" });
   R("view.settings", "Open Settings", () => sv.open(), { category: "Preferences" });
   R("view.settingsJson", "Open Settings (JSON)", () => ed.openFile(settings.settingsFile), { category: "Preferences" });
@@ -511,7 +525,12 @@ function registerCommands() {
   R("lang.eol", "Change End of Line Sequence", () => cmd.pickEol(), { category: "Editor" });
   R("lang.indent", "Change Indentation", () => cmd.pickIndent(), { category: "Editor" });
   R("term.new", "New Terminal", () => term.create(), { category: "Terminal", icon: "terminal" });
-  R("term.linux", "New Linux (Alpine) Terminal", () => term.create({ mode: "linux" }), { category: "Terminal" });
+  R("term.linux", "New Linux Terminal", () => term.create({ mode: "linux" }), { category: "Terminal" });
+  R("app.terminalMode", "Switch to Terminal Mode (full-screen terminal)", () => termmode.enter(), { category: "View", icon: "terminal" });
+  R("app.ideMode", "Switch to Full IDE (code + AI + terminal)", () => termmode.exit(), { category: "View", icon: "code" });
+  R("app.toggleMode", "Toggle Terminal Mode / Full IDE", () => termmode.toggle(), { category: "View", keys: "Ctrl+Alt+T" });
+  R("term.session", "Terminal: Switch Session…", () => termmode.pickSession(), { category: "Terminal" });
+  R("env.distro", "Linux System: Alpine / Debian / Ubuntu…", async () => (await feat("env")).distroPicker(), { category: "Terminal", icon: "server-environment" });
   R("term.host", "New Android Shell", () => term.create({ mode: "host" }), { category: "Terminal" });
   R("env.setup", "Set up Linux Environment…", async () => (await feat("env")).wizard(), { category: "Terminal" });
   R("run.file", "Run Active File", () => { const p = ed.activeTab()?.path; if (p) handlers.runFile(p); }, { category: "Run", keys: "F5" });

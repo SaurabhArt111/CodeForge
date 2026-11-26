@@ -43,9 +43,11 @@
 <img src="docs/screenshots/phone-editor.png" alt="CodeForge editor on a phone" width="260" />
 &nbsp;&nbsp;
 <img src="docs/screenshots/phone-menu.png" alt="The phone menu: project actions, quick access tiles, search" width="260" />
+&nbsp;&nbsp;
+<img src="docs/screenshots/phone-terminal-mode.jpg" alt="Terminal mode: CodeForge as a full-screen terminal" width="260" />
 </div>
 
-*The menu on a phone: the open project with Close / Switch / Delete, one-tap access to Storage, Background Tasks, Security, Extensions, AI, Terminal, Search and Settings, a search box for every command, then the usual File / Edit / View menus.*
+*The menu on a phone: the open project with Close / Switch, one-tap access to Storage, Background Tasks, Security, Extensions, AI, Terminal, Search and Settings, a search box for every command, then the usual File / Edit / View menus.*
 
 ## Quick start
 
@@ -55,14 +57,16 @@
 | **Build the Android app** | `./gradlew assembleDebug`. See [BUILD.md](BUILD.md) for the SDK, NDK and signing details. |
 | **Run it in a browser** | `sh tools/web/build.sh` writes a static PWA to `web-dist/`. Serve it over HTTPS (or `localhost`). See [Web version](#web-version). |
 | **Hack on the UI** | `cd tools/devhost && npm install && sh restart.sh`, then open `http://127.0.0.1:8780`. The dev host emulates the native bridge with plain Node. |
-| **Run the tests** | `node tools/e2e/v85.js` (needs Playwright). More suites live in `tools/e2e/`. |
+| **Run the tests** | `node tools/e2e/v86.js` (needs Playwright). More suites live in `tools/e2e/`. |
+| **Learn the app** | The website's **Guide** page walks through everything with screenshots, including Terminal mode and the Linux systems. |
 
 ## What's inside
 
 | | |
 |---|---|
 | **Editor** | Monaco with tabs, split view, diff, find/replace, multi-file search, Emmet, VS Code snippets and language configs, Prettier formatting, VS Code themes, file icons. |
-| **Terminal** | Native PTY sessions. An Android shell by default, or a full **Alpine Linux via proot** with `git`, `node`, `npm`, `python`, `gcc` and `apk`. Extra-keys bar, pinch zoom, touch scrolling. |
+| **Terminal** | Native PTY sessions. An Android shell by default, or a full **Linux via proot**: **Alpine, Debian or Ubuntu** (install several, switch any time) with `git`, `node`, `npm`, `python`, `gcc`. One `pkg install` command works on all three (apk or apt underneath). Extra-keys bar, pinch zoom, touch scrolling. |
+| **Terminal mode** | Use CodeForge as a **full-screen, Termux-style terminal**: session tabs, a session drawer, extra keys always on screen. Switch back to the full IDE (code + AI + terminal) at any time; sessions keep running in both. |
 | **Run and preview** | Run files by extension, `package.json` scripts, `tasks.json`. A live server with hot reload and an in-app preview (device presets, console). Previews run in a **separate process**, so a heavy page cannot crash the editor. |
 | **Git and GitHub** | Clone, stage, commit, branches, log, diff, pull, push. Sign in with a token or OAuth device flow. Tokens are injected natively and never reach scripts. |
 | **AI assistant** | Chat and an agent mode with file tools, plus Claude Code, Codex, Gemini, Copilot and other CLIs inside the app. Works with OpenAI, Anthropic, Google, OpenRouter, Groq, Mistral, DeepSeek, xAI, Ollama or any OpenAI-compatible endpoint. |
@@ -71,6 +75,7 @@
 | **Background tasks** | Downloads, installs, ZIP exports and cleanups run as tasks with progress and notifications, so the editor never blocks. |
 | **Security** | A Security Centre, PIN and biometric lock, API keys in the Android Keystore, privacy cleanup. See [Security and storage](#security-and-storage). |
 | **Crash recorder** | Uncaught Kotlin and JS errors, renderer deaths and out-of-memory kills are saved on the device with a stack, memory state and recent actions. |
+| **Appearance** | **System** (follows the phone's light / dark setting, the default), **Light**, **Dark**, or one fixed VS Code theme. The website has the same switch. |
 | **Touch workbench** | Draggable sashes with big touch targets, long-press menus, dockable top and bottom sheets, a drill-in phone menu, text size from 70 % to 170 % for the whole UI. |
 
 ## AI and CLI editing
@@ -139,6 +144,7 @@ Extension code runs in a sandboxed Worker with a subset of the `vscode` API (com
 ## Honest limitations
 
 - This source tree has **not been compiled into an APK by its author's tooling** (the build sandbox had no Android SDK). Kotlin is checked against the Android API where possible, but expect to fix small compile errors on a first build. The web UI is tested end to end in headless Chromium against the dev host (`tools/devhost`), which emulates the native bridge.
+- Debian and Ubuntu are downloaded from the official container images (Docker Hub, with Amazon ECR Public and Google's mirror as fallbacks). That download path is not tested on a phone yet. proot cannot run systemd, Docker, kernel modules or VPNs.
 - The proot Linux environment, PTY, document provider, biometrics, app lock and GitHub device flow are **not tested on real hardware**.
 - The extension host is a **best-effort subset** of the VS Code API with no Node.js. Language servers, debuggers, notebooks and anything using `child_process` will load but not work. The compatibility report says so before you rely on it.
 - GitHub Copilot's private chat API is not implemented. Use **GitHub Models** with a token, or the **Copilot CLI** helper.
@@ -162,6 +168,6 @@ The website (landing page, web editor, code browser, downloads) builds with `cd 
 
 ## Credits and license
 
-CodeForge stands on VS Code's Monaco editor, Termux, Acode, xterm.js, PRoot and Alpine Linux, isomorphic-git and Open VSX. It is an independent project and is not affiliated with or endorsed by Microsoft, Google or any of those projects. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+CodeForge stands on VS Code's Monaco editor, Termux (as inspiration; no Termux code is included), Acode, xterm.js, PRoot, Alpine, Debian and Ubuntu, isomorphic-git and Open VSX. It is an independent project and is not affiliated with or endorsed by Microsoft, Google or any of those projects. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Released under the [MIT License](LICENSE).
