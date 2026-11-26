@@ -15,7 +15,7 @@ const FAKE = {  // stands in for esm.sh (no internet in the sandbox): just enoug
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true });
   await ctx.route("https://esm.sh/**", (r) => { const k = new URL(r.request().url()).pathname.slice(1); const body = FAKE[k]; r.fulfill(body ? { contentType: "text/javascript", body, headers: { "access-control-allow-origin": "*" } } : { status: 404, body: "no " + k }); });
   const page = await ctx.newPage(); const logs = []; page.on("pageerror", (e) => logs.push("pageerror: " + e.message));
-  await page.addInitScript((p) => { window.__PFX = p; try { localStorage.setItem("cf.webLiveOk", "1"); } catch {} }, PFX);
+  await page.addInitScript((p) => { window.__PFX = p; try { localStorage.setItem("cf.webLiveOk", "1"); localStorage.setItem("cf.webrun.never:/home/p1", "1"); localStorage.setItem("cf.webrun.never:/home/p2", "1"); } catch {} }, PFX);
   await page.goto(B + "/"); await page.waitForFunction(() => window.__cfReady, null, { timeout: 40000 });
   await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForTimeout(500);
   const sw = await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => !!r && !!r.active)); ok(sw, "service worker active");

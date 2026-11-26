@@ -19,6 +19,8 @@ class CodeForgeApp : Application() {
         CrashRecorder.install(this)
         Paths.init(this)
         if (isMain) {
+            // a task that was running when the process died left its ongoing notification behind; nothing runs yet, so every progress notification is stale
+            Thread { try { dev.codeforge.ide.core.Jobs.sweepStale() } catch (_: Throwable) {} }.start()
             Thread { try { LinuxEnv.prepare() } catch (_: Throwable) {} }.start()
             Thread { try { CrashRecorder.scanPreviousExits() } catch (_: Throwable) {} }.start()
         }

@@ -7,6 +7,8 @@ import { bus } from "../core/events.js";
 import * as ed from "./editor.js";
 import * as ui from "../core/ui.js";
 import * as jobs from "../core/jobs.js";
+import * as cmd from "./commands.js";
+import * as projectops from "./projectops.js";
 
 /** label · what it is · colour · note about deleting it. `how` tells the user what happens when they clear it. */
 export const CATS = {
@@ -71,7 +73,7 @@ export async function autoClean() {
 }
 
 async function cleanIds(ids, { silent = false, quiet = false } = {}) {
-  const r = await jobs.run({ title: "Freeing space", kind: "storage", icon: "trash", silent, cancellable: true, doneText: "Space freed" }, async (job) => {
+  const r = await jobs.run({ title: "Freeing space", kind: "storage", icon: "trash", silent, quiet: quiet && silent, cancellable: true, doneText: "Space freed" }, async (job) => {
     job.on("storage.progress", (d) => { if (d.cat) job.update(`Cleared ${label(d.cat)} · ${fmtBytes(d.freed || 0)}`, null); });
     job.update("Cleaning…", -1);
     const res = await N.storage.clean(ids, job.id);
@@ -163,6 +165,10 @@ async function loadItems(box, id, redraw) {
     for (const it of items) {
       const row = h("div.stor-item", h("div.stor-iname", { title: it.path }, it.name || it.path), h("div.muted.stor-isize", fmtBytes(it.bytes)),
         h("button.btn.small.danger", { onclick: async () => {
+          if (id === "projects" || id === "imported") {     // whole projects: same confirmation + PIN as everywhere else
+            if (await projectops.deleteProject(it.path, { closeCurrent: () => cmd.run("file.closeFolder") })) { row.remove(); last = null; bus.emit("storage:changed"); }
+            return;
+          }
           if (!(await ui.confirm(`Delete “${it.name}” (${fmtBytes(it.bytes)})? This cannot be undone.`, { title: "Delete", okLabel: "Delete", danger: true }))) return;
           const r = await jobs.run({ title: `Deleting ${it.name}`, kind: "storage", icon: "trash", silent: true, cancellable: false }, async () => N.storage.delete(it.path));
           if (r.ok) { ui.toast(`Deleted ${it.name}, freed ${fmtBytes(r.result?.freed || it.bytes)}`, { kind: "success" }); row.remove(); last = null; bus.emit("storage:changed"); }

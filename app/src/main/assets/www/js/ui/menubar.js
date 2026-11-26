@@ -16,7 +16,7 @@ const MENUS = {
   File: () => [
     { label: "New File", icon: "new-file", keys: "Ctrl+N", run: run("file.new") }, { label: "New Folder", icon: "new-folder", run: run("file.newFolder") }, { label: "New Project…", icon: "add", run: run("file.newProject") },
     { separator: true }, { label: "Open Folder…", icon: "folder-opened", run: run("file.openFolder") }, { label: "Clone Repository…", icon: "repo-clone", run: run("file.clone") }, { label: "Open Zip…", icon: "file-zip", run: run("file.openZip") },
-    { separator: true }, { label: "Close Folder", icon: "close", run: run("file.closeFolder"), disabled: !ws.isOpen }, { label: "Delete Project…", icon: "trash", danger: true, run: run("file.deleteProject"), disabled: !ws.isOpen },
+    { separator: true }, { label: "Close Folder", icon: "close", run: run("file.closeFolder"), disabled: !ws.isOpen },
     { separator: true }, { label: "Save", icon: "save", keys: "Ctrl+S", run: run("file.save") }, { label: "Save All", icon: "save-all", run: run("file.saveAll") }, { label: "Save As…", icon: "save-as", run: run("file.saveAs") },
     { separator: true }, { label: "Compress & Export to Downloads…", icon: "cloud-download", run: run("file.exportDownloads") }, { label: "Export Folder to Device…", icon: "export", run: run("file.export") }, { label: "Transfer to another CodeForge…", icon: "export", run: run("file.transferOut") }, { label: "Import bundle (.cfbundle)…", icon: "package", run: run("file.transferIn") }, { label: "Close Editor", icon: "close", run: run("file.close") }, { label: "Close Folder", icon: "close-all", run: run("file.closeFolder") },
   ],
@@ -63,7 +63,7 @@ export function openMainMenu(x, y) {
     const open = ws.isOpen;
     const act = (ic, label, id, danger) => h("button.nm-pj-act" + (danger ? ".danger" : ""), { type: "button", title: label, onclick: (e) => { e.stopPropagation(); close(); cmd.run(id); } }, icon(ic), h("span", label));
     return h("div.nm-project", h("div.nm-pj-top", h("span.nm-pj-ico", icon(open ? "folder-opened" : "folder")), h("div.nm-pj-text", h("div.nm-pj-name", open ? ws.name : "No folder open"), h("div.nm-pj-path", open ? ws.root : "Open or create a project to start"))),
-      h("div.nm-pj-acts", open ? [act("close", "Close", "file.closeFolder"), act("folder-opened", "Switch", "file.openFolder"), act("trash", "Delete", "file.deleteProject", true)] : [act("folder-opened", "Open Folder", "file.openFolder"), act("add", "New Project", "file.newProject")]));
+      h("div.nm-pj-acts", open ? [act("close", "Close folder", "file.closeFolder"), act("folder-opened", "Switch", "file.openFolder")] : [act("folder-opened", "Open Folder", "file.openFolder"), act("add", "New Project", "file.newProject")]));
   };
   const tiles = [
     { label: "Storage", icon: "database", run: run("storage.open") }, { label: "Tasks", icon: "sync", run: run("jobs.open"), badge: running || "" }, { label: "Security", icon: "shield", run: run("sec.open") }, { label: "Extensions", icon: "extensions", run: run("view.extensions") },

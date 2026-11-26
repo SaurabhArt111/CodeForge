@@ -408,7 +408,7 @@ const methods = {
   // ---- background tasks / restart / downloads (native: core/Jobs.kt, MainActivity)
   "jobs.begin": async (id, title) => { jobsLive.set(id, title); jobCancelled.delete(id); return true; },
   "jobs.update": async () => true, "jobs.end": async (id, ok, text) => { jobsLive.delete(id); jobCancelled.delete(id); jobLog.push({ id, ok, text }); return true; },
-  "jobs.cancel": async (id) => { jobCancelled.add(id); streams.get(id)?.abort(); return true; },
+  "jobs.sweep": async () => true, "jobs.cancel": async (id) => { jobCancelled.add(id); streams.get(id)?.abort(); return true; },
   "sys.restart": async () => { emit("devhost.restart", {}); return true; }, "sys.openDownloads": async () => true,
   "sys.notifyStatus": async () => true, "sys.requestNotify": async () => true, "sys.openAppSettings": async () => true,
   "export.toDownloads": async (o) => {

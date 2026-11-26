@@ -26,7 +26,7 @@ object Jobs {
     private const val CH_PROGRESS = "cf_jobs"
     private const val CH_DONE = "cf_jobs_done"
 
-    private class Job(val id: String, var title: String) {
+    private class Job(val id: String, var title: String, val silent: Boolean = false) {
         @Volatile var text: String = ""
         @Volatile var done: Long = 0
         @Volatile var total: Long = -1
@@ -37,6 +37,19 @@ object Jobs {
 
     /** Set by the activity: called when the last task ended (so a WebView that was kept running for it can be paused again). */
     @Volatile var onIdle: (() -> Unit)? = null
+
+    /** Orphaned progress notifications (the process died mid-task) remove themselves this long after the last update; running tasks refresh them. */
+    private const val STALE_AFTER_MS = 150_000L
+    private const val HEARTBEAT_MS = 45_000L
+    private val lock = Any()
+    private val handler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val beat = object : Runnable {
+        override fun run() {
+            if (jobs.isEmpty()) return
+            jobs.values.forEach { post(it, force = true) }
+            handler.postDelayed(this, HEARTBEAT_MS)
+        }
+    }
 
     private val jobs = ConcurrentHashMap<String, Job>()
     private val cancelledEarly = ConcurrentHashMap.newKeySet<String>()   // cancel() arrived before begin()
@@ -58,12 +71,27 @@ object Jobs {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
-    fun begin(id: String, title: String, text: String = "") {
-        val j = Job(id, title).also { it.text = text }
+    /** [silent] tasks (background housekeeping) keep the app alive but never show a notification. */
+    fun begin(id: String, title: String, text: String = "", silent: Boolean = false) {
+        val j = Job(id, title, silent).also { it.text = text }
         if (cancelledEarly.remove(id)) j.cancelled = true
         jobs[id] = j
         SessionService.sync()
         post(j, force = true)
+        try { handler.removeCallbacks(beat); handler.postDelayed(beat, HEARTBEAT_MS) } catch (_: Throwable) {}
+    }
+
+    /**
+     * Removes progress notifications that belong to no running task. A task whose process was killed (swiped away, out of memory,
+     * phone restarted) cannot cancel its own ongoing notification, so it would stay forever. Called at every process start.
+     */
+    fun sweepStale() {
+        try {
+            val live = jobs.values.map { it.nid }.toSet()
+            for (sbn in nm.activeNotifications) {
+                if (sbn.notification.channelId == CH_PROGRESS && sbn.id !in live) nm.cancel(sbn.id)
+            }
+        } catch (_: Throwable) { /* best effort */ }
     }
 
     /** Native progress. [total] <= 0 = unknown size (indeterminate bar). Throttled to ~2 notification updates a second. */
@@ -76,6 +104,7 @@ object Jobs {
     }
 
     private fun post(j: Job, force: Boolean) {
+        if (j.silent) return
         val now = System.currentTimeMillis()
         if (!force && now - j.lastNotify < 500) return
         j.lastNotify = now
@@ -89,8 +118,10 @@ object Jobs {
                 .setContentIntent(openApp(c))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .setTimeoutAfter(STALE_AFTER_MS)
             if (j.total > 0) b.setProgress(100, ((j.done * 100) / j.total).toInt().coerceIn(0, 100), false) else b.setProgress(0, 0, true)
-            nm.notify(j.nid, b.build())
+            // end() cancels under the same lock, so a late progress update can never bring a finished task's notification back
+            synchronized(lock) { if (jobs[j.id] === j) nm.notify(j.nid, b.build()) }
         } catch (_: Throwable) { /* notifications are best effort */ }
     }
 
@@ -99,10 +130,10 @@ object Jobs {
      * Nothing is posted when [silent] (the UI is in front and shows its own toast).
      */
     fun end(id: String, ok: Boolean, text: String, openDownloads: Boolean = false, silent: Boolean = false) {
-        val j = jobs.remove(id)
+        val j = synchronized(lock) { jobs.remove(id) }
         cancelledEarly.remove(id)
         try {
-            nm.cancel(j?.nid ?: (6000 + (id.hashCode() and 0x3ff)))
+            synchronized(lock) { nm.cancel(j?.nid ?: (6000 + (id.hashCode() and 0x3ff))) }
             if (j != null && !silent && !j.cancelled) {
                 ensureChannels()
                 val c = Paths.app

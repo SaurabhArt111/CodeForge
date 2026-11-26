@@ -41,7 +41,7 @@ export const SCHEMA = [
   ]],
   ["Live Server", [
     S("preview.mode", "Run / Live Preview opens in", "select", { options: ["auto", "window", "inline"], hint: "window = separate crash-proof window (own process) · inline = Preview panel · auto = window on Android" }),
-    S("live.port", "Default Port", "number", { min: 1024, max: 65535 }), S("live.spa", "Single-page-app fallback (index.html)", "bool"), S("live.lan", "Let other devices on the network open my servers", "bool", { also: ["run.exposeHost"], hint: "One switch for the Live Server and for npm dev servers (adds “-- --host” to vite, Astro, SvelteKit…). Anyone on the same Wi-Fi can then open your app, so keep it off on shared networks." }),
+    S("live.port", "Default Port", "number", { min: 1024, max: 65535 }), S("web.offerRun", "Web: offer to run Node / Vite / React projects when I open them", "bool"), S("live.spa", "Single-page-app fallback (index.html)", "bool"), S("live.lan", "Let other devices on the network open my servers", "bool", { also: ["run.exposeHost"], hint: "One switch for the Live Server and for npm dev servers (adds “-- --host” to vite, Astro, SvelteKit…). Anyone on the same Wi-Fi can then open your app, so keep it off on shared networks." }),
   ]],
   ["Git & GitHub", [S("git.userName", "User name", "text"), S("git.userEmail", "User email", "text"), S("git.autoFetch", "Auto fetch", "bool"), S("github.clientId", "OAuth App client ID (device flow)", "text", { hint: "Create an OAuth App on GitHub with Device Flow enabled. Leave blank to use the build-time value, or sign in with a token." })]],
   ["AI Assistant", [

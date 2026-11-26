@@ -22,6 +22,7 @@ const changed = () => { bus.emit("jobs:changed"); renderStatus(); };
 /** Wires the status-bar item. Called once from main.js after the status bar exists. */
 export function init(statusbar) {
   statusItem = statusbar;
+  N.jobs.sweep?.().catch(() => {});   // drop progress notifications left behind by a task that died with the app
   renderStatus();
 }
 function renderStatus() {
@@ -73,7 +74,7 @@ class Job {
 export async function run(opts, fn) {
   const job = new Job(opts);
   jobs.set(job.id, job);
-  N.jobs.begin(job.id, job.title, job.detail).catch(() => {});
+  N.jobs.begin(job.id, job.title, job.detail, !!opts.quiet || !!opts.background).catch(() => {});
   changed();
   let overlay = null;
   if (opts.blocking) overlay = blockingCard(job);

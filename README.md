@@ -132,7 +132,7 @@ Extension code runs in a sandboxed Worker with a subset of the `vscode` API (com
 
 - **Security Centre** (menu → Security): lock now, set or change the PIN, API keys, permissions and access, privacy cleanup, hide from recents.
 - **PIN-protected deletion.** Deleting a project always asks for your PIN (or biometrics) when a lock is set, even right after unlocking. **Close Folder** never deletes anything.
-- **Delete Project** removes a folder inside CodeForge's own storage. Folders in shared device storage are never deleted by CodeForge; they are only removed from the recent list.
+- **Delete Project** is available from the project list, the Storage Manager and the command palette (not in the everyday menus). It removes a folder inside CodeForge's own storage and asks for your PIN when a lock is set. Folders in shared device storage are never deleted by CodeForge; they are only removed from the recent list.
 - **Storage Manager**: scans CodeForge's private storage by category (projects, `node_modules`, caches, the Linux environment, leftovers), shows sizes, and cleans what is safe to clean.
 - **Keys**: API keys live in the Android Keystore. Viewing one needs your PIN or biometrics.
 

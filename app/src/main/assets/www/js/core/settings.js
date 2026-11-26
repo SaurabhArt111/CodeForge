@@ -57,6 +57,7 @@ export const DEFAULTS = {
   "preview.pauseOnLowMemory": true,
   "diagnostics.notify": true,
   "live.port": 5500,
+  "web.offerRun": true,
   "live.spa": false,
   "live.lan": false,
   "git.userName": "",

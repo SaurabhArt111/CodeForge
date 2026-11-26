@@ -1,5 +1,11 @@
 // Release notes, newest first. Dates are when the build was prepared.
 export const RELEASES = [
+  { v: "8.5.1", date: "November 2026", title: "Stuck notification fixed, tidier Delete Project, run web projects",
+    items: [
+      ["fix", "The “Freeing space” notification that stayed after clearing space (even after restarting the phone) is gone. CodeForge now removes leftover progress notifications every time it starts, progress notifications expire by themselves if the app is killed, and quiet housekeeping such as automatic cleanup no longer posts one at all. Install this build and open the app once to clear the old ones."],
+      ["improve", "Delete Project is now only where you need it: the project list, Storage Manager and the command palette. It is gone from the File menu and the phone menu header. It still asks for your PIN when a lock is set."],
+      ["new", "Web version: opening a Node, Vite, React, Preact, Solid or plain HTML project now asks whether to run it in the browser. Projects that cannot run there (Next.js, Express and other servers, Angular, Astro) get a clear explanation instead, and Vue, Svelte or Sass projects get a warning. Choose Don't ask again per project, or turn it off in Settings."],
+    ] },
   { v: "8.5.0", date: "November 2026", title: "The AI agent gets its own terminals",
     items: [
       ["new", "In Agent mode the assistant can open several terminals of its own (one for a dev server, one for tests, one for installs), run commands in them, read their output, answer prompts and press Ctrl+C, like Claude Code or Codex do. They appear as normal terminal tabs marked with a sparkle, so you can watch or take over."],

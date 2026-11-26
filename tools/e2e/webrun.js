@@ -1,0 +1,51 @@
+// e2e (web build): opening a Node / Vite / React project offers to run it in the browser; unsupported kinds explain why.
+// usage: sh tools/web/build.sh /tmp/web-dist; serve it on :8790; NODE_PATH=$(npm root -g) node tools/e2e/webrun.js
+const { chromium } = require("playwright");
+let fails = 0; const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
+const B = process.env.WEB || "http://127.0.0.1:8790"; const PFX = new URL(B).pathname.replace(/\/$/, "");
+(async () => {
+  const browser = await chromium.launch(); const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.route("https://esm.sh/**", (r) => r.fulfill({ contentType: "text/javascript", body: "export default {};export const useState=(v)=>[v,()=>{}];export const jsx=()=>document.createElement('div');export const jsxs=jsx;export const Fragment=Symbol();export function createRoot(){return{render(){}}}", headers: { "access-control-allow-origin": "*" } }));
+  const page = await ctx.newPage(); const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  await page.addInitScript((p) => { window.__PFX = p; }, PFX);
+  await page.goto(B + "/"); await page.waitForFunction(() => window.__cfReady, null, { timeout: 40000 }); await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForTimeout(500);
+  const mk = (root, files) => page.evaluate(async ([root, files]) => { const { N } = await import(window.__PFX + "/js/core/bridge.js"); await N.fs.mkdir(root); for (const [f, t] of Object.entries(files)) await N.fs.writeText(root + "/" + f, t); }, [root, files]);
+  await mk("/home/p-vite", { "package.json": JSON.stringify({ name: "shop", dependencies: { react: "^18", "react-dom": "^18" }, devDependencies: { vite: "^5", typescript: "^5" } }), "index.html": "<div id=root></div><script type=module src=/src/main.tsx></script>", "src/main.tsx": "document.getElementById('root').textContent='hello vite';" });
+  await mk("/home/p-next", { "package.json": JSON.stringify({ name: "n", dependencies: { next: "14", react: "18" } }) });
+  await mk("/home/p-vue", { "package.json": JSON.stringify({ name: "v", dependencies: { vue: "3" }, devDependencies: { vite: "5" } }), "index.html": "<div id=app></div>" });
+  await mk("/home/p-api", { "package.json": JSON.stringify({ name: "api", dependencies: { express: "4" } }), "server.js": "" });
+  await mk("/home/p-static", { "index.html": "<h1>hi</h1>" });
+  await mk("/home/p-empty", { "notes.txt": "x" });
+  const det = (r) => page.evaluate(async (r) => { const m = await import(window.__PFX + "/js/ui/webrun.js"); return m.detect(r); }, r);
+  const d1 = await det("/home/p-vite"), d2 = await det("/home/p-next"), d3 = await det("/home/p-vue"), d4 = await det("/home/p-api"), d5 = await det("/home/p-static"), d6 = await det("/home/p-empty");
+  ok(d1.level === "ok" && /Vite/.test(d1.label) && /React/.test(d1.label), "Vite + React is runnable: " + d1.label);
+  ok(d2.level === "no" && /Next/.test(d2.label) && /server/i.test(d2.why), "Next.js is explained as needing a server");
+  ok(d3.level === "partial" && /Vue/.test(d3.label) && /\.vue/.test(d3.why), "Vue is partly runnable, with a warning");
+  ok(d4.level === "no" && /Node server/.test(d4.label), "Express back end cannot run in the browser");
+  ok(d5.level === "ok" && /Static/.test(d5.label), "plain index.html is runnable: " + d5.label);
+  ok(d6 === null, "a folder with no project gives no offer");
+
+  const open = (root) => page.evaluate(async (r) => { const m = await import(window.__PFX + "/js/main.js"); await m.api.openFolder(r); }, root);
+  await open("/home/p-vite"); await page.waitForSelector(".modal .webrun", { timeout: 8000 });
+  ok(/Vite \+ React/.test(await page.textContent(".modal .webrun-title")) && (await page.locator('.modal button:has-text("Run in browser")').count()) === 1, "opening a Vite + React project asks to run it");
+  await page.click('.modal button:has-text("Not now")'); await page.waitForTimeout(300);
+  await open("/home/p-empty"); await open("/home/p-vite"); await page.waitForTimeout(1800);
+  ok((await page.locator(".modal .webrun").count()) === 0, "Not now: not asked again in this session");
+  await open("/home/p-next"); await page.waitForSelector(".modal .webrun", { timeout: 8000 });
+  ok(/cannot run in the browser/i.test(await page.textContent(".modal")) && (await page.locator('.modal button:has-text("Run in browser")').count()) === 0 && /Android app/.test(await page.textContent(".modal")), "Next.js: explains it cannot run and points to the Android app");
+  await page.click('.modal button:has-text("OK")'); await page.waitForTimeout(300);
+  await page.evaluate(() => { localStorage.setItem("cf.webLiveOk", "1"); });
+  await open("/home/p-static"); await page.waitForSelector(".modal .webrun", { timeout: 8000 }); await page.click('.modal button:has-text("Run in browser")');
+  await page.waitForFunction(async () => { const { N } = await import(window.__PFX + "/js/core/bridge.js"); return (await N.live.list()).length > 0; }, null, { timeout: 10000 }).catch(() => {});
+  const live = await page.evaluate(async () => { const { N } = await import(window.__PFX + "/js/core/bridge.js"); return N.live.list(); });
+  ok(live.length === 1 && /p-static/.test(live[0].root || ""), "Run starts the in-browser server for that project");
+  await page.evaluate(async () => { const { N } = await import(window.__PFX + "/js/core/bridge.js"); for (const s of await N.live.list()) await N.live.stop(s.port); });
+  await page.evaluate(() => { document.querySelectorAll(".modal-wrap").forEach((x) => x.remove()); });
+  await open("/home/p-vue"); await page.waitForSelector(".modal .webrun", { timeout: 8000 }); ok(/Try it/.test(await page.textContent(".modal")), "Vue: offers 'Try it' with the warning");
+  await page.click('.modal button:has-text("Don\'t ask again")'); await page.waitForTimeout(300);
+  await page.evaluate(() => window.__PFX); await open("/home/p-empty"); await page.evaluate(async () => { const m = await import(window.__PFX + "/js/ui/webrun.js"); }); 
+  const again = await page.evaluate(async () => { const m = await import(window.__PFX + "/js/ui/webrun.js"); const ws = (await import(window.__PFX + "/js/ui/workspace.js")).ws; return localStorage.getItem("cf.webrun.never:/home/p-vue"); });
+  ok(again === "1", "Don't ask again is remembered for that project");
+  ok(!errs.length, "no page errors " + errs.slice(0, 2).join(" | "));
+  await browser.close(); console.log(fails ? `\n${fails} FAILED` : "\nALL PASSED"); process.exit(fails ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(2); });

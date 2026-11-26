@@ -230,7 +230,8 @@ object Bridge {
         "sys.openAppSettings" -> { host?.openAppSettings(); true }
 
         // ---------------- background tasks (progress notifications + keep-alive while the app is not on screen)
-        "jobs.begin" -> { Jobs.begin(a.str(0), a.str(1), a.optString(2, "")); true }
+        "jobs.begin" -> { Jobs.begin(a.str(0), a.str(1), a.optString(2, ""), a.optBoolean(3, false)); true }
+        "jobs.sweep" -> { Jobs.sweepStale(); true }
         "jobs.update" -> { Jobs.update(a.str(0), a.optString(1, "").ifEmpty { null }, a.optLong(2, -1), a.optLong(3, -1)); true }
         "jobs.end" -> { Jobs.end(a.str(0), a.optBoolean(1, true), a.optString(2, ""), a.optBoolean(3, false), a.optBoolean(4, false)); true }
         "jobs.cancel" -> { Jobs.cancel(a.str(0)); true }

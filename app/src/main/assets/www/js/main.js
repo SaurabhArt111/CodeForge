@@ -35,6 +35,7 @@ import * as storage from "./ui/storage.js";
 import * as seccenter from "./ui/securitycenter.js";
 import * as exporter from "./ui/exporter.js";
 import * as projectops from "./ui/projectops.js";
+import * as webrun from "./ui/webrun.js";
 
 crash.install();   // JS errors + breadcrumbs go to the crash recorder from the very first line
 
@@ -186,6 +187,7 @@ function layout() {
   // title
   const upd = () => { const t = ed.activeTab(); $("#title-text").textContent = [t?.title, ws.name].filter(Boolean).join(" , ") || "CodeForge"; document.title = $("#title-text").textContent + " , CodeForge"; };
   ed.editorEvents.on("active", upd); ws.on("root", upd); bus.on("dirty", upd);
+  webrun.init({ serveDir: async (dir) => (await feat("live")).serve(dir) });   // web version: offer to run a detected Node / Vite / React project
   // android back button: close whatever is open on top; with nothing left to close the app goes to the recents list - but never with unsaved work
   window.__cfBack = () => {
     if (document.querySelector(".modal-wrap,.qp-wrap,.ctx")) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); document.querySelector(".ctx-back")?.click(); return true; }

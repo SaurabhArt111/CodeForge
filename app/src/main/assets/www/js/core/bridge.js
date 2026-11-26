@@ -78,7 +78,7 @@ export const N = {
   },
   /** Background tasks: native keeps the process alive and shows a progress notification for each one. */
   jobs: {
-    begin: (id, title, text = "") => c("jobs.begin", id, title, text), update: (id, text, done = -1, total = -1) => c("jobs.update", id, text || "", done, total),
+    begin: (id, title, text = "", silent = false) => c("jobs.begin", id, title, text, silent), sweep: () => c("jobs.sweep"), update: (id, text, done = -1, total = -1) => c("jobs.update", id, text || "", done, total),
     end: (id, ok = true, text = "", openDownloads = false, silent = false) => c("jobs.end", id, ok, text, openDownloads, silent), cancel: (id) => c("jobs.cancel", id),
   },
   /** Storage Manager: scan / list / clean CodeForge's private storage. */

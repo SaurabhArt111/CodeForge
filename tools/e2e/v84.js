@@ -113,7 +113,7 @@ mkext("acme.lsp-1.0.0", { name: "lsp", publisher: "acme", version: "1.0.0", main
   await page.click("#btn-sidebar"); await page.waitForSelector(".navmenu .nm-tile");
   const tiles = await page.$$eval(".navmenu .nm-tile .nm-tile-label", (e) => e.map((x) => x.textContent));
   ok(tiles.length === 8 && ["Storage", "Tasks", "Security", "Extensions"].every((t) => tiles.includes(t)), "phone menu has the quick-access tiles: " + tiles.join(", "));
-  ok(/v84a/.test(await page.textContent(".navmenu .nm-project")) && (await page.$$(".navmenu .nm-pj-act")).length === 3, "phone menu shows the open project with Close / Switch / Delete");
+  ok(/v84a/.test(await page.textContent(".navmenu .nm-project")) && (await page.$$(".navmenu .nm-pj-act")).length === 2, "phone menu shows the open project with Close folder / Switch (no Delete here)");
   const box = await page.$eval(".navmenu", (e) => { const r = e.getBoundingClientRect(); return r.right <= innerWidth && r.bottom <= innerHeight + 1; }); ok(box, "menu fits the phone screen");
   await page.fill(".nm-search", "export"); await page.waitForTimeout(200);
   const hits = await page.$$eval(".navmenu .nm-results .ctx-item", (e) => e.map((x) => x.textContent)); ok(hits.some((t) => /Export/i.test(t)), "search finds menu commands (" + hits.length + " hits)");
