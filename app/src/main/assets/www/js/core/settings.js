@@ -66,6 +66,9 @@ export const DEFAULTS = {
   "ai.model": "",
   "ai.temperature": 0.2,
   "ai.agentConfirm": true,
+  "ai.terminalAccess": "ask",
+  "ai.maxTerminals": 6,
+  "ai.maxSteps": 60,
   "ai.autoApply": false,
   "ai.review": "editor",                    // editor = review tab with the real diff editor · dialog = small diff dialog
   "ai.followAgent": true,                  // open the files the agent edits so you see the changes appear

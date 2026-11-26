@@ -2,6 +2,7 @@
 // tools (read/list/search/write/edit/run).  API keys live in the native keystore (AES-GCM) and are injected into requests natively.
 import * as lazy from "../core/lazy.js";
 import * as aiedit from "./aiedit.js";
+import * as aterm from "./agentterm.js";
 import { h, icon, P, uid, debounce, esc, shellQuote, fmtBytes, textDec } from "../core/util.js";
 let A, view, msgsEl, inputEl, sendBtn, ctxEl, headEl, session = null, streaming = null;
 const chat = { id: uid(), title: "New chat", messages: [], created: Date.now() };
@@ -40,6 +41,7 @@ const CLIS = [
 
 export async function init(api) {
   await lazy.marked(); A = api; A.registerView("ai", build);
+  aterm.init(A, { approve, cancelled: () => !!streaming?.cancelled });
   aiedit.start(() => !!A.term?.list?.().some((t) => t.alive && t.mode === "linux"));   // live-sync files that a terminal tool (Claude Code, Codex …) rewrites
   A.bus.on("ai:selection", (kind) => selectionAction(kind));
   A.cmd.register({ id: "ai.new", title: "AI: New Chat", run: () => { A.showView("ai"); newChat(); } }); A.cmd.register({ id: "ai.focus", title: "AI: Focus Chat Input", run: () => { A.showView("ai"); inputEl?.focus(); } });
@@ -355,7 +357,7 @@ async function regenerate(m) {
   chat.messages.splice(i); renderMsgs(); await runTurn();
 }
 function toolCard(tc) {
-  const el = h("div.ai-tool", { dataset: { id: tc.id } }, icon("tools"), h("span.ai-tool-name", tc.name), h("span.muted.ai-tool-args", summarizeArgs(tc.input)), h("span.ai-tool-status", tc.result ? (tc.result.isError ? "✗" : "✓") : "…"));
+  const el = h("div.ai-tool", { dataset: { id: tc.id } }, icon(/^(terminal_|install_packages|setup_environment|environment_status|run_command)/.test(tc.name) ? "terminal" : "tools"), h("span.ai-tool-name", tc.name), h("span.muted.ai-tool-args", summarizeArgs(tc.input)), h("span.ai-tool-status", tc.result ? (tc.result.isError ? "✗" : "✓") : "…"));
   el.addEventListener("click", () => { const d = el.querySelector(".ai-tool-detail"); if (d) return d.remove(); el.append(h("pre.ai-tool-detail", JSON.stringify(tc.input, null, 2).slice(0, 2000) + (tc.result ? "\n→ " + String(tc.result.output).slice(0, 2000) : ""))); });
   tc.el = el; return el;
 }
@@ -383,7 +385,7 @@ async function buildContext() {
 const SLASH = { "/explain": "Explain the code clearly, step by step.", "/fix": "Find and fix the bug(s). Show the corrected code and explain the cause.", "/tests": "Write thorough unit tests for this code using the project's test framework (or a sensible default).", "/docs": "Add concise documentation comments to this code.", "/refactor": "Refactor this code for readability and maintainability without changing behaviour.", "/optimize": "Suggest and apply performance optimizations." };
 function systemPrompt() {
   const base = `You are CodeForge AI, an expert programming assistant built into an Android code editor (Monaco editor, a terminal with Alpine Linux, live preview, git).\nBe concise and practical. When you output code, use fenced code blocks with a language tag. Prefer minimal diffs: only show changed parts unless asked for the full file.\nWhen you propose a change to a project file, make it applicable with one tap: put it in its own fenced block whose FIRST line is FILE: relative/path (plain text, no comment marker). Then either give the complete new file content, or one or more edit blocks in exactly this form:\n<<<<<<< SEARCH\n(exact existing lines)\n=======\n(replacement lines)\n>>>>>>> REPLACE\nSEARCH text must match the file exactly and be unique. New files: the FILE line plus the full content. Keep prose outside the block.\n${A.ws.isOpen ? `The open project is "${A.ws.name}".` : "No project is open."}\nCurrent date: ${new Date().toDateString()}.`;
-  const agent = mode === "agent" ? `\n\nYou are in AGENT mode with tools to read, search, create and edit files in the project and run shell commands. Work step by step: find files with find_files/search, read before editing, make focused edits with edit_file (exact string replacement) or write_file, then verify with get_problems and by running the project's checks/tests when useful. You may call several read-only tools at once. Paths are relative to the project root. Stop and give a short summary when the task is done.` : "";
+  const agent = mode === "agent" ? `\n\nYou are in AGENT mode with tools to read, search, create and edit files in the project and run shell commands. Work step by step: find files with find_files/search, read before editing, make focused edits with edit_file (exact string replacement) or write_file, then verify with get_problems and by running the project's checks/tests when useful. You may call several read-only tools at once. Paths are relative to the project root.\n\nTERMINALS: you have your own terminals, like a developer at a shell. Use terminal_open to start one per job (for example "dev-server", "tests", "install"), terminal_run to run commands in it (state such as cd and exported variables is kept; use background=true for servers and watchers), terminal_read to check on a running job, terminal_send to answer a prompt or press Ctrl+C, terminal_close when finished. Run independent jobs in separate terminals at the same time. The user can watch every terminal you open. Use run_command only for one quick command. Before relying on node, npm, git or python call environment_status; if the Linux environment is missing use setup_environment, and install what a task needs with install_packages (apk / npm / pip) instead of telling the user to do it. After changing code, run the project's build or tests in a terminal and fix what fails. Stop and give a short summary when the task is done.` : "";
   const proj = rules.text ? `\n\nProject instructions found in the repository (follow them):${rules.text}` : "";
   return base + agent + proj + (A.settings.get("ai.systemPrompt") ? "\n\n" + A.settings.get("ai.systemPrompt") : "");
 }
@@ -407,7 +409,7 @@ async function send(textOverride) {
 }
 
 async function runTurn() {
-  const p = curProvider(); const max = mode === "agent" ? 25 : 1;
+  const p = curProvider(); const max = mode === "agent" ? Math.max(5, +A.settings.get("ai.maxSteps") || 60) : 1;
   streaming = { abort: null, cancelled: false }; setBusy(true); if (mode === "agent") aiedit.setBusy("agent", true);
   try {
     for (let step = 0; step < max; step++) {
@@ -420,7 +422,14 @@ async function runTurn() {
       if (!asst.toolCalls.length) break;
       let pending = [];                                  // consecutive read-only tools run at the same time, writes/commands one by one in order
       const exec = async (tc) => { tc.result = await runTool(tc); const st = tc.el?.querySelector(".ai-tool-status"); if (st) st.textContent = tc.result.isError ? "✗" : "✓"; };
-      for (const tc of asst.toolCalls) { if (streaming.cancelled) break; if (READONLY.has(tc.name)) pending.push(exec(tc)); else { await Promise.all(pending); pending = []; await exec(tc); } }
+      const busyTerms = new Set();                      // terminal_run calls for different terminals run side by side
+      for (const tc of asst.toolCalls) {
+        if (streaming.cancelled) break;
+        const tkey = tc.name === "terminal_run" ? String(tc.input?.terminal || "main").toLowerCase() : null;
+        if (READONLY.has(tc.name) && !busyTerms.size) pending.push(exec(tc));
+        else if (tkey && !busyTerms.has(tkey)) { busyTerms.add(tkey); pending.push(exec(tc)); }
+        else { await Promise.all(pending); pending = []; busyTerms.clear(); await exec(tc); }
+      }
       await Promise.all(pending);
       if (streaming.cancelled) break;
       void done;
@@ -443,7 +452,8 @@ const TOOLS = [
   { name: "delete_file", description: "Delete a file or folder (asks the user first).", props: { path: { type: "string" } }, req: ["path"] },
   { name: "write_file", description: "Create or overwrite a file with the given full content.", props: { path: { type: "string" }, content: { type: "string" } }, req: ["path", "content"] },
   { name: "edit_file", description: "Replace one exact occurrence of old_string with new_string in a file. old_string must match exactly (including whitespace) and be unique.", props: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, req: ["path", "old_string", "new_string"] },
-  { name: "run_command", description: "Run a shell command in the project root (Linux environment if installed, else Android sh). Returns exit code and output (truncated).", props: { command: { type: "string" } }, req: ["command"] },
+  { name: "run_command", description: "Run ONE short shell command in the project root and return its output (Linux environment if installed, else Android sh). Nothing is remembered between calls. For anything long, stateful (cd, venv, exports), interactive, or a server/watcher, use terminal_open and terminal_run instead.", props: { command: { type: "string" } }, req: ["command"] },
+  ...aterm.TOOLS,
 ];
 /** glob → RegExp: ** = any depth, * = within a folder, ? = one character */
 function globRe(g) {
@@ -456,7 +466,7 @@ function globRe(g) {
   }
   return new RegExp("^" + o + "$", "i");
 }
-const READONLY = new Set(["list_dir", "read_file", "search", "find_files", "get_problems", "open_file"]);
+const READONLY = new Set(["list_dir", "read_file", "search", "find_files", "get_problems", "open_file", ...aterm.READONLY]);
 const schema = (t) => ({ type: "object", properties: t.props, required: t.req });
 const toolsFor = (p) => (mode !== "agent" ? undefined : p.kind === "anthropic" ? TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: schema(t) })) : TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: schema(t) } })));
 
@@ -536,10 +546,10 @@ function diffView(oldS, newS) {
   for (const l of String(newS).split("\n").slice(0, 60)) box.append(h("div.add", "+ " + l));
   return box;
 }
-async function approve(title, detail, { diff, body: ready } = {}) {
-  if (!A.settings.get("ai.agentConfirm") || sessionAllow) return true;
+async function approve(title, detail, { diff, body: ready, force = false } = {}) {
+  if (!force && (!A.settings.get("ai.agentConfirm") || sessionAllow)) return true;
   const body = ready || (diff ? diffView(diff.old, diff.new) : h("pre.selectable", { style: { whiteSpace: "pre-wrap", maxHeight: "50vh", overflow: "auto", font: "calc(12px * var(--fz)) var(--mono)", margin: 0 } }, detail));
-  const r = await A.modal({ title, width: 600, className: "tall", body, buttons: [{ label: "Reject", value: false, danger: true }, { label: "Allow all in this chat", value: "all" }, { label: "Allow", value: true, primary: true }] });
+  const r = await A.modal({ title, width: 600, className: "tall", body, buttons: [{ label: "Reject", value: false, danger: true }, ...(force ? [] : [{ label: "Allow all in this chat", value: "all" }]), { label: "Allow", value: true, primary: true }] });
   if (r === "all") { sessionAllow = true; return true; }
   return r === true;
 }
@@ -582,8 +592,8 @@ async function runTool(tc) {
         const next = i.replace_all ? r.text.split(i.old_string).join(i.new_string) : r.text.replace(i.old_string, () => i.new_string);
         if (!(await approve(`Edit ${P.rel(A.ws.root, full)}?`, "", { body: reviewBody(P.rel(A.ws.root, full), r.text, next) }))) return bad("Rejected by user");
         await agentWrite(full, next, { exists: true, bom: r.bom }); return ok("Edited " + P.rel(A.ws.root, full)); }
-      case "run_command": { if (!(await approve("Run command?", String(i.command)))) return bad("Rejected by user"); const r = await A.N.proc.exec({ line: String(i.command), cwd: A.ws.root, timeoutMs: 120_000 }); const out = r.out.length > 8000 ? "…" + r.out.slice(-8000) : r.out; A.ws.invalidate(); return { output: `exit code ${r.code}${r.timedOut ? " (timed out)" : ""}\n${out}`, isError: r.code !== 0 }; }
-      default: return bad("unknown tool " + tc.name);
+      case "run_command": { if (!(await aterm.allowRun("Run command?", String(i.command)))) return bad("Rejected by user"); const r = await A.N.proc.exec({ line: String(i.command), cwd: A.ws.root, timeoutMs: 120_000 }); const out = r.out.length > 8000 ? "…" + r.out.slice(-8000) : r.out; A.ws.invalidate(); return { output: `exit code ${r.code}${r.timedOut ? " (timed out)" : ""}\n${out}`, isError: r.code !== 0 }; }
+      default: if (aterm.has(tc.name)) return await aterm.call(tc.name, i, { cancelled: () => !!streaming?.cancelled }); return bad("unknown tool " + tc.name);
     }
   } catch (e) { return bad(e); }
 }

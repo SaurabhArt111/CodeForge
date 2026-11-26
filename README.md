@@ -55,7 +55,7 @@
 | **Build the Android app** | `./gradlew assembleDebug`. See [BUILD.md](BUILD.md) for the SDK, NDK and signing details. |
 | **Run it in a browser** | `sh tools/web/build.sh` writes a static PWA to `web-dist/`. Serve it over HTTPS (or `localhost`). See [Web version](#web-version). |
 | **Hack on the UI** | `cd tools/devhost && npm install && sh restart.sh`, then open `http://127.0.0.1:8780`. The dev host emulates the native bridge with plain Node. |
-| **Run the tests** | `node tools/e2e/v84.js` (needs Playwright). More suites live in `tools/e2e/`. |
+| **Run the tests** | `node tools/e2e/v85.js` (needs Playwright). More suites live in `tools/e2e/`. |
 
 ## What's inside
 
@@ -84,6 +84,17 @@ Edits made by the AI agent, by a pasted `FILE:` block, or by a CLI tool running 
 - **Live from disk.** While an agent or a Linux-terminal CLI is working, CodeForge checks open files every 1.5 seconds. Clean files update in place. If you have unsaved changes in a file that changed on disk, you choose **Keep mine**, **Compare** or **Use the disk version**; nothing is discarded silently.
 
 The same code path serves the Android app and the web version.
+
+### The agent's own terminals
+
+In **Agent** mode the assistant works in a shell the way Claude Code or Codex do:
+
+- **Several terminals.** It opens one per job (`dev-server`, `tests`, `install` …). They show up as terminal tabs marked with a sparkle, so you can watch them or take over. Commands in different terminals run at the same time.
+- **A real shell.** Each terminal keeps its state (`cd`, exported variables, virtualenvs). The agent runs commands and gets the output and exit code, starts servers in the background and checks on them later, answers prompts (`y/N`), and presses Ctrl+C.
+- **Its own tools.** It can check what is installed, set up the Linux environment, and install tools and libraries with `apk`, `npm` or `pip`, after asking you.
+- **You stay in control.** *Settings → AI Assistant → Terminal access*: **ask** (confirm each command, or allow all for one chat), **auto** (no prompts; risky commands such as `rm -rf /`, `curl … | sh`, force-push and `git reset --hard` still ask) or **off**. Your own terminals are read-only for the agent.
+
+Real Claude Code, Codex, Gemini and other CLIs still run as full tools in their own tabs (*AI side bar → CLIs*).
 
 ## VS Code extensions
 

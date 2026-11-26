@@ -1,5 +1,13 @@
 // Release notes, newest first. Dates are when the build was prepared.
 export const RELEASES = [
+  { v: "8.5.0", date: "November 2026", title: "The AI agent gets its own terminals",
+    items: [
+      ["new", "In Agent mode the assistant can open several terminals of its own (one for a dev server, one for tests, one for installs), run commands in them, read their output, answer prompts and press Ctrl+C, like Claude Code or Codex do. They appear as normal terminal tabs marked with a sparkle, so you can watch or take over."],
+      ["new", "Independent jobs run side by side: when the agent starts commands in different terminals at once, they run at the same time. Servers and watchers run in the background and can be checked later."],
+      ["new", "The agent can check which tools exist (environment_status), install the Linux environment (setup_environment) and install tools and libraries with apk, npm or pip (install_packages), instead of asking you to. You are asked first."],
+      ["new", "Settings → AI Assistant → Terminal access: ask (confirm each command, or allow all in a chat), auto (run without asking; risky commands such as rm -rf /, curl | sh, force-push still ask) or off. Also the most terminals and the most steps per request (now 60 by default, was 25)."],
+      ["improve", "The agent's terminals keep their mark after the app restarts. Your own terminals are read-only for the agent: it can read them but never type into or close them."],
+    ] },
   { v: "8.4.0", date: "November 2026", title: "Better menu, native-feeling AI edits, extension reports",
     items: [
       ["new", "The phone menu has a project header (Close, Switch, Delete), quick-access tiles (Storage, Background Tasks, Security, Extensions, AI, Terminal, Search, Settings) and a search box that finds any menu command."],

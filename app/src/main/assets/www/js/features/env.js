@@ -43,7 +43,7 @@ export async function wizard() {
   return true;
 }
 
-async function install() {
+export async function install() {
   const r = await jobs.run({ title: "Installing Linux environment", kind: "linux", icon: "server-environment", blocking: true, cancellable: true, doneText: "Linux environment installed" }, async (job) => {
     job.update("Downloading Alpine Linux…", -1);
     job.on("env.progress", (d) => job.update(`${d.msg || d.stage}`, d.total ? d.done / d.total : -1));

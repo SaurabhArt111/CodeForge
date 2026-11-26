@@ -33,10 +33,10 @@ export function init() {
   panel.panelEvents.on("resize", () => { clearTimeout(ptyResizeTimer); ptyResizeTimer = setTimeout(fitAll, 60); });
   // Rendering is acknowledged to the native side (flow control): a program that floods the terminal is slowed down instead of
   // queueing megabytes in the WebView, which is what used to freeze / crash the app with TUIs and noisy logs.
-  N.on("term.data", (d) => { const t = terms.get(d.id); if (t) { const bytes = b64ToBytes(d.b64); t.xt.write(bytes, () => ack(t, bytes.length)); scanOutput(t, bytes); } });
+  N.on("term.data", (d) => { const t = terms.get(d.id); if (t) { const bytes = b64ToBytes(d.b64); t.xt.write(bytes, () => ack(t, bytes.length)); scanOutput(t, bytes); capture(t, bytes); } });
   // output produced while the app was paused was kept natively: rebuild the screen from the replay buffer
   N.on("term.resync", async (d) => { const t = terms.get(d.id); if (!t) return; try { const a = await N.term.attach(d.id); t.xt.reset(); if (a?.b64) t.xt.write(b64ToBytes(a.b64)); fitOne(t); } catch { /* ignore */ } });
-  N.on("term.exit", (d) => { const t = terms.get(d.id); if (!t) return; t.alive = false; t.diedAt = Date.now(); crumb(`terminal exit ${d.id} code ${d.code} mode ${t.mode}`); t.xt.write(`\r\n\x1b[2m[Process exited with code ${d.code}]  press any key to close\x1b[0m\r\n`); refreshTabs(); t.onExit?.(d.code); });
+  N.on("term.exit", (d) => { const t = terms.get(d.id); if (!t) return; t.alive = false; t.exitCode = d.code; t.diedAt = Date.now(); crumb(`terminal exit ${d.id} code ${d.code} mode ${t.mode}`); t.xt.write(`\r\n\x1b[2m[Process exited with code ${d.code}]  press any key to close\x1b[0m\r\n`); refreshTabs(); t.onExit?.(d.code); });
   // xterm measures glyph cells once: if the web font arrives later the rows overlap. Re-measure when fonts are ready.
   try { document.fonts.load(`14px "${settings.get("terminal.fontFamily")}"`).then(() => document.fonts.ready).then(() => applyTheme()); } catch { /* ignore */ }
   themes.themeEvents.on("change", applyTheme);
@@ -100,7 +100,7 @@ function newXterm(t) {
   // OSC 7770: "open;<abs path>" emitted by the `code`/`codeforge` command inside the shell
   xt.parser.registerOscHandler(7770, (data) => { const i = data.indexOf(";"); const verb = data.slice(0, i), arg = data.slice(i + 1); bus.emit("term:cmd", verb, arg, t); return true; });
   xt.parser.registerOscHandler(7, (data) => { try { const u = new URL(data); t.cwd = decodeURIComponent(u.pathname); } catch { /* ignore */ } return false; });
-  xt.onTitleChange((title) => { t.title = title.slice(0, 40); refreshTabs(); });
+  xt.onTitleChange((title) => { if (t.agentName) return; t.title = title.slice(0, 40); refreshTabs(); });
   xt.onData((d) => {
     if (!t.alive) {
       // only a real key press closes a finished terminal: xterm's automatic answers to the shell's queries (cursor position, device
@@ -198,6 +198,7 @@ async function createInner({ cwd, mode, command, title, env, focus = true } = {}
 async function adopt(info) {
   if (terms.has(info.id)) return;
   const t = { id: info.id, title: info.title || "terminal", alive: info.alive, mode: info.mode, cwd: info.cwd };
+  { const m = /^AI · (.+)$/.exec(t.title); if (m) t.agentName = m[1]; }       // the assistant's terminals stay marked after a restart
   await mount(t);
   currentTheme = currentTheme.foreground ? currentTheme : await computeTheme(); t.xt.options.theme = currentTheme;
   const a = await N.term.attach(info.id); if (a?.b64) t.xt.write(b64ToBytes(a.b64));
@@ -211,6 +212,25 @@ function fitOne(t) {
 function fitAll() { const t = get(); if (t) fitOne(t); }
 
 export const get = (id = activeId) => terms.get(id) || null;
+export const retitle = () => refreshTabs();
+
+// ---- output capture: lets the AI agent read what a terminal printed (raw text, offsets stay valid after old text is trimmed)
+const LOG_MAX = 400_000, LOG_KEEP = 250_000;
+function capture(t, bytes) {
+  t.dec ||= new TextDecoder(); t.raw = (t.raw || "") + t.dec.decode(bytes, { stream: true }); t.rawBase ||= 0; t.lastOut = Date.now();
+  if (t.raw.length > LOG_MAX) { const cut = t.raw.length - LOG_KEEP; t.raw = t.raw.slice(cut); t.rawBase += cut; }
+}
+/** absolute end offset of everything the terminal has printed so far */
+export const logEnd = (t) => (t.rawBase || 0) + (t.raw || "").length;
+/** printable text from absolute offset `from` (ANSI sequences removed, carriage-return overwrites resolved) */
+export function logText(t, from = 0) {
+  const raw = t.raw || "", base = t.rawBase || 0; const txt = raw.slice(Math.max(0, from - base));
+  return cleanTerminalText(txt);
+}
+export function cleanTerminalText(txt) {
+  return txt.replace(/\x1b\[[0-?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[=>78cDEHM]/g, "").replace(/\r\n/g, "\n")
+    .split("\n").map((l) => { const i = l.lastIndexOf("\r"); return i >= 0 ? l.slice(i + 1) || l.slice(0, i) : l; }).join("\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
 export const list = () => [...terms.values()];
 export function select(id) {
   activeId = id;
@@ -218,8 +238,8 @@ export function select(id) {
   refreshTabs(); const t = get(); if (t) { setTimeout(() => { fitOne(t); }, 30); }
 }
 function refreshTabs() {
-  tabsEl.replaceChildren(...[...terms.values()].filter((t) => !t.embedded).map((t) => h("div.term-tab" + (t.id === activeId ? ".active" : "") + (t.alive ? "" : ".dead"), { onclick: () => { select(t.id); t.xt.focus(); }, oncontextmenu: (e) => { e.preventDefault(); termMenu(t, e.clientX, e.clientY); } },
-    icon(t.mode === "linux" ? "server-environment" : "terminal"), h("span", t.title || "terminal"), h("span.x", { onclick: (e) => { e.stopPropagation(); closeTerm(t.id); } }, icon("close")))));
+  tabsEl.replaceChildren(...[...terms.values()].filter((t) => !t.embedded).map((t) => h("div.term-tab" + (t.id === activeId ? ".active" : "") + (t.alive ? "" : ".dead") + (t.agentName ? ".agent" : ""), { onclick: () => { select(t.id); t.xt.focus(); }, oncontextmenu: (e) => { e.preventDefault(); termMenu(t, e.clientX, e.clientY); } },
+    icon(t.agentName ? "sparkle" : t.mode === "linux" ? "server-environment" : "terminal"), h("span", t.title || "terminal"), h("span.x", { onclick: (e) => { e.stopPropagation(); closeTerm(t.id); } }, icon("close")))));
 }
 export function closeTerm(id) {
   const t = terms.get(id); if (!t) return;
