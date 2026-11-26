@@ -275,3 +275,34 @@ ol.steps{padding-left:1.2em;margin:0}ol.steps li{margin:0 0 8px}
 @media (max-width:860px){.scrolly-after{display:block}}
 .g-layout>*{min-width:0}
 @media (min-width:721px) and (max-width:980px){.top nav a:not(.cta):not(.keep):not(.mid){display:none}}
+
+/* ---- no grey flash when tapping links and buttons on phones (keyboard focus rings stay) ---- */
+html{-webkit-tap-highlight-color:transparent}
+*{-webkit-tap-highlight-color:transparent}
+
+/* ---- see-through top bar over the page backgrounds ---- */
+.top{transition:background-color .25s,border-color .25s,backdrop-filter .25s;background:color-mix(in srgb,var(--paper) 72%,transparent);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4)}
+.top.at-top{background:transparent;border-bottom-color:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+/* the first section's background starts under the 60px bar */
+main>.has-fx:first-child{margin-top:-60px}
+main>.page-head.has-fx:first-child{padding-top:calc(60px + clamp(36px,6vw,72px))}
+main>.hero.has-fx:first-child{padding-top:calc(60px + clamp(40px,8vw,96px))}
+.page-head.has-fx{padding-bottom:clamp(40px,6vw,64px);overflow:hidden}
+
+/* ---- hero: same treatment as the page headers, with a gentler veil so the beam reads ---- */
+.hero.has-fx .fx-fluid::after{background:linear-gradient(to bottom,color-mix(in srgb,var(--paper) 35%,transparent),transparent 30%,transparent 62%,var(--paper))}
+.page-head.has-fx .fx-fluid::after{background:linear-gradient(to bottom,color-mix(in srgb,var(--paper) 35%,transparent),transparent 35%,transparent 55%,var(--paper))}
+
+/* ---- guide part 2 / docs ---- */
+.g-part{padding:56px 0 24px;border-top:1px solid var(--steel);scroll-margin-top:80px}
+.g-part>h2{margin:0 0 8px;font:400 clamp(28px,4vw,44px)/1.1 var(--mono);letter-spacing:-.04em}
+.g-docs h3{font-size:22px;margin:40px 0 10px;scroll-margin-top:84px}
+.g-docs{max-width:46em}
+.g-toc a.g-toc-part{margin-top:10px;font-weight:600;color:var(--ink-2)}
+.g-toc a.g-toc-sub{padding-left:18px;font-size:13px}
+.res-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin:16px 0}
+.faq dt{font-weight:600;margin-top:18px;color:var(--ink)}.faq dd{margin:6px 0 0;color:var(--ink-2)}
+.g-toc{max-height:calc(100vh - 100px);overflow-y:auto;scrollbar-width:thin}@media (max-width:1100px){.g-toc{max-height:none;overflow-y:hidden}}
+.g-shot img{height:auto}
+.g-step>*,.g-part,.g-docs{min-width:0}
+pre{max-width:100%;overflow-x:auto}

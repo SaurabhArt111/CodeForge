@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { config, url } from "../lib/site.js";
 import { ThemeButton, ThemePicker } from "./Theme.jsx";
@@ -16,9 +16,16 @@ export default function Layout() {
     if (hash && !hash.includes(":")) { const t = document.getElementById(hash.slice(1)); if (t) { t.scrollIntoView(); return; } }
     if (!pathname.startsWith("/code")) window.scrollTo(0, 0);
   }, [pathname, hash]);
+  // the top bar is see-through at the very top of the page (the page's background runs behind it) and frosted once you scroll
+  const [atTop, setAtTop] = useState(true);
+  useEffect(() => {
+    const on = () => setAtTop(window.scrollY < 8);
+    on(); window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, [pathname]);
   return (<>
     <a className="skip" href="#main">Skip to content</a>
-    <header className="top"><div className="wrap">
+    <header className={"top" + (atTop ? " at-top" : "")}><div className="wrap">
       <Link className="brand" to="/"><img src={url("assets/logo.svg")} alt="" width="26" height="26" />CodeForge</Link>
       <nav aria-label="Main">
         <NavLink className="mid" to="/features">Features</NavLink>

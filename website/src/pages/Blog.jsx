@@ -1,8 +1,9 @@
 import { POSTS } from "../content/posts.js";
+import { Fluid } from "../components/Fx.jsx";
 
 export default function Blog() {
   return (<>
-    <section className="page-head"><div className="wrap prose">
+    <section className="page-head has-fx"><Fluid /><div className="wrap prose">
       <h1>Blog</h1>
       <p className="sub" style={{ margin: 0 }}>Notes on how CodeForge works and why.</p>
     </div></section>

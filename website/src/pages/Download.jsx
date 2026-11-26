@@ -3,12 +3,13 @@ import { config, url, useApk } from "../lib/site.js";
 import { RELEASES } from "../content/releases.js";
 import CopyBlock from "../components/CopyBlock.jsx";
 import { DownloadIcon } from "../components/Layout.jsx";
+import { Fluid } from "../components/Fx.jsx";
 
 export default function Download() {
   const c = config(); const apk = useApk(); const ready = !!apk;
   const mb = apk?.size ? (apk.size / 1048576).toFixed(1) + " MB" : null;
   return (<>
-    <section className="page-head"><div className="wrap">
+    <section className="page-head has-fx"><Fluid /><div className="wrap">
       <h1>Download CodeForge</h1>
       <p className="sub" style={{ margin: 0 }}>Version {c.version} for Android 8.0 and newer. Prefer not to install anything? <a href={url("app/")}>Use the web editor</a>.</p>
     </div></section>

@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { FEATURES } from "../content/features.js";
 import { url } from "../lib/site.js";
+import { Fluid } from "../components/Fx.jsx";
 
 export default function Features() {
   return (<>
-    <section className="page-head"><div className="wrap">
+    <section className="page-head has-fx"><Fluid /><div className="wrap">
       <h1>Features</h1>
       <p className="sub" style={{ margin: 0 }}>Everything below ships in the Android app. The web editor has the same interface without the Linux terminal.</p>
       <nav className="toc" aria-label="On this page">{FEATURES.map((f) => <a key={f.id} href={"#" + f.id}>{f.title}</a>)}</nav>

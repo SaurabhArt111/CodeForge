@@ -1,8 +1,9 @@
 import { RELEASES } from "../content/releases.js";
+import { Fluid } from "../components/Fx.jsx";
 
 export default function Updates() {
   return (<>
-    <section className="page-head"><div className="wrap prose">
+    <section className="page-head has-fx"><Fluid /><div className="wrap prose">
       <h1>Release notes</h1>
       <p className="sub" style={{ margin: 0 }}>What changed in each version, newest first.</p>
     </div></section>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Fluid } from "../components/Fx.jsx";
+import DocsBody from "../components/DocsBody.jsx";
 import { url } from "../lib/site.js";
 import CopyBlock from "../components/CopyBlock.jsx";
 
@@ -9,8 +10,9 @@ const Code = ({ c }) => <CopyBlock text={c}>{c}</CopyBlock>;
 // Step-by-step guide with real screenshots. Each picture exists in a dark and a light version and follows the site theme.
 const Shot = ({ name, alt, wide = false }) => (
   <figure className={"g-shot" + (wide ? " wide" : "")}>
-    <img className="only-dark" src={url(`assets/guide/${name}-dark.jpg`)} alt={alt} loading="lazy" decoding="async" />
-    <img className="only-light" src={url(`assets/guide/${name}-light.jpg`)} alt={alt} loading="lazy" decoding="async" />
+    {/* width/height reserve the space, so the page does not jump while pictures load */}
+    <img className="only-dark" src={url(`assets/guide/${name}-dark.jpg`)} alt={alt} loading="lazy" decoding="async" width={wide ? 1280 : 800} height={wide ? 780 : 1640} />
+    <img className="only-light" src={url(`assets/guide/${name}-light.jpg`)} alt={alt} loading="lazy" decoding="async" width={wide ? 1280 : 800} height={wide ? 780 : 1640} />
     <figcaption>{alt}</figcaption>
   </figure>
 );
@@ -23,7 +25,8 @@ const Step = ({ id, n, title, children, shots }) => (
 );
 
 const TOC = [["get", "Get CodeForge"], ["project", "First project"], ["menu", "The menu"], ["modes", "Two modes"], ["terminal", "Terminal mode"],
-  ["linux", "Linux systems"], ["server", "Use it like a server"], ["desktop", "Big screens & web"], ["appearance", "Light & dark"], ["storage", "Storage"], ["ai", "AI assistant"], ["limits", "Limits & fixes"]];
+  ["linux", "Linux systems"], ["server", "Use it like a server"], ["desktop", "Big screens & web"], ["appearance", "Light & dark"], ["storage", "Storage"], ["ai", "AI assistant"], ["limits", "Limits & fixes"],
+  ["docs", "Docs & resources"], ["d-files", "Where files live"], ["d-cf", "The cf command"], ["d-preview", "Run & preview"], ["d-github", "GitHub"], ["d-extensions", "Extensions"], ["d-keys", "Shortcuts"], ["d-security", "Privacy & security"], ["d-faq", "FAQ"], ["d-more", "Resources"]];
 
 /** Which step is being read: the last one whose top has passed a line a third of the way down the screen. */
 function useSpy(ids) {
@@ -50,7 +53,7 @@ function Toc({ cur }) {
   return (<nav className="g-toc" aria-label="On this page" ref={bar}>
     <p className="g-toc-h">On this page</p>
     <div className="g-toc-track"><i style={{ height: `${((at + 1) / TOC.length) * 100}%` }} /></div>
-    {TOC.map(([id, t], n) => <a key={id} href={"#" + id} aria-current={id === cur}><span>{n + 1}</span>{t}</a>)}
+    {TOC.map(([id, t], n) => <a key={id} href={"#" + id} aria-current={id === cur} className={n === 12 ? "g-toc-part" : n > 12 ? "g-toc-sub" : ""}><span>{n < 12 ? n + 1 : n === 12 ? "" : "·"}</span>{t}</a>)}
   </nav>);
 }
 const IDS = TOC.map(([id]) => id);
@@ -172,6 +175,13 @@ export default function Guide() {
         <p><strong>Something broke?</strong> Remove and reinstall the system from the Linux system picker; your projects in <code>~</code> are not touched. Help → Crash Reports and Diagnostics collect details you can attach to a bug report.</p>
         <p>More detail is in the <Link to="/docs">Docs</Link>.</p>
       </Step>
+
+      <article id="docs" className="g-part">
+        <p className="g-n">Part 2</p>
+        <h2>Docs and resources</h2>
+        <p className="sub">Reference for when you know the basics: where files live, every <code>cf</code> command, previews, GitHub, extensions, shortcuts and links. The same text is on the <Link to="/docs">Docs</Link> page.</p>
+        <div className="prose g-docs"><DocsBody idp="d-" heading="h3" /></div>
+      </article>
     </div></div></section>
   </>);
 }
